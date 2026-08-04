@@ -27,7 +27,21 @@ const (
 )
 
 var (
-	user32                     = syscall.NewLazyDLL("user32.dll")
+	kernel32 = syscall.NewLazyDLL("kernel32.dll")
+	user32   = syscall.NewLazyDLL("user32.dll")
+)
+
+var (
+	globalAlloc   = kernel32.NewProc("GlobalAlloc")
+	globalLock    = kernel32.NewProc("GlobalLock")
+	globalUnlock  = kernel32.NewProc("GlobalUnlock")
+	globalFree    = kernel32.NewProc("GlobalFree")
+	globalSize    = kernel32.NewProc("GlobalSize")
+	rtlMoveMemory = kernel32.NewProc("RtlMoveMemory")
+	lstrlenW      = kernel32.NewProc("lstrlenW")
+)
+
+var (
 	openClipboard              = user32.NewProc("OpenClipboard")
 	closeClipboard             = user32.NewProc("CloseClipboard")
 	emptyClipboard             = user32.NewProc("EmptyClipboard")
@@ -36,14 +50,6 @@ var (
 	isClipboardFormatAvailable = user32.NewProc("IsClipboardFormatAvailable")
 	getClipboardSequenceNumber = user32.NewProc("GetClipboardSequenceNumber")
 	sendInput                  = user32.NewProc("SendInput")
-	lstrlenW                   = user32.NewProc("lstrlenW")
-	kernel32                   = syscall.NewLazyDLL("kernel32.dll")
-	globalAlloc                = kernel32.NewProc("GlobalAlloc")
-	globalLock                 = kernel32.NewProc("GlobalLock")
-	globalUnlock               = kernel32.NewProc("GlobalUnlock")
-	globalFree                 = kernel32.NewProc("GlobalFree")
-	globalSize                 = kernel32.NewProc("GlobalSize")
-	rtlMoveMemory              = kernel32.NewProc("RtlMoveMemory")
 )
 
 type Manager struct{ logger *log.Logger }
@@ -149,15 +155,14 @@ func (m *Manager) read(ctx context.Context) (string, bool, error) {
 	if size < 2 {
 		return "", true, nil
 	}
-	length, _, _ := lstrlenW.Call(pointer)
-	if length > size/2 {
+	maxLength := size / 2
+	values := make([]uint16, int(maxLength)+1)
+	rtlMoveMemory.Call(uintptr(unsafe.Pointer(&values[0])), pointer, maxLength*2)
+	length, _, _ := lstrlenW.Call(uintptr(unsafe.Pointer(&values[0])))
+	if length >= maxLength {
 		return "", false, errors.New("некорректный Unicode-текст в буфере обмена")
 	}
-	values := make([]uint16, int(length))
-	if len(values) > 0 {
-		rtlMoveMemory.Call(uintptr(unsafe.Pointer(&values[0])), pointer, uintptr(len(values)*2))
-	}
-	return string(utf16.Decode(values)), true, nil
+	return string(utf16.Decode(values[:int(length)])), true, nil
 }
 
 func (m *Manager) write(ctx context.Context, text string) error {
