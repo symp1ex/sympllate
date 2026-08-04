@@ -1,0 +1,10 @@
+/dist/
+/frontend/node_modules/
+/frontend/dist/
+*.tsbuildinfo
+/translator.log
+/config.json
+.codegraph/
+.skills/
+rules/
+AGENTS.md

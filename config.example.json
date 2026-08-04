@@ -1,0 +1,32 @@
+{
+  "ollama": {
+    "baseUrl": "http://127.0.0.1:11434",
+    "model": "translator-gemma",
+    "timeoutSeconds": 120,
+    "keepAlive": "10m",
+    "numCtx": 2048,
+    "numPredict": 1024,
+    "temperature": 0
+  },
+  "hotkeys": {
+    "showTranslation": "Ctrl+Alt+T",
+    "replaceSelection": "Ctrl+Alt+R"
+  },
+  "defaultLanguagePair": {
+    "first": "ru",
+    "second": "en"
+  },
+  "fallbackTargetLanguage": "ru",
+  "ui": {
+    "mainWindowWidth": 900,
+    "mainWindowHeight": 620,
+    "popupWidth": 520,
+    "popupHeight": 360,
+    "alwaysOnTopPopup": true
+  },
+  "limits": {
+    "maxInputCharacters": 12000,
+    "clipboardWaitMilliseconds": 800
+  }
+}
+
