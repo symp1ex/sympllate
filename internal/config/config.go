@@ -12,12 +12,26 @@ import (
 )
 
 type Config struct {
-	Ollama                 OllamaConfig `json:"ollama"`
-	Hotkeys                HotkeyConfig `json:"hotkeys"`
-	DefaultLanguagePair    LanguagePair `json:"defaultLanguagePair"`
-	FallbackTargetLanguage string       `json:"fallbackTargetLanguage"`
-	UI                     UIConfig     `json:"ui"`
-	Limits                 LimitsConfig `json:"limits"`
+	Provider               string           `json:"provider,omitempty"`
+	LocalModel             LocalModelConfig `json:"localModel,omitempty"`
+	Ollama                 OllamaConfig     `json:"ollama"`
+	Hotkeys                HotkeyConfig     `json:"hotkeys"`
+	DefaultLanguagePair    LanguagePair     `json:"defaultLanguagePair"`
+	FallbackTargetLanguage string           `json:"fallbackTargetLanguage"`
+	UI                     UIConfig         `json:"ui"`
+	Limits                 LimitsConfig     `json:"limits"`
+}
+
+const (
+	ProviderAuto   = "auto"
+	ProviderOllama = "ollama"
+	ProviderLocal  = "local"
+)
+
+type LocalModelConfig struct {
+	ModelFile             string `json:"modelFile"`
+	StartupTimeoutSeconds int    `json:"startupTimeoutSeconds"`
+	FitTargetMiB          int    `json:"fitTargetMiB"`
 }
 
 type OllamaConfig struct {
@@ -55,6 +69,8 @@ type LimitsConfig struct {
 
 func Default() Config {
 	return Config{
+		Provider:               ProviderAuto,
+		LocalModel:             LocalModelConfig{StartupTimeoutSeconds: 180, FitTargetMiB: 1024},
 		Ollama:                 OllamaConfig{BaseURL: "http://127.0.0.1:11434", Model: "translator-gemma", TimeoutSeconds: 120, KeepAlive: "10m", NumCtx: 2048, NumPredict: 1024, Temperature: 0},
 		Hotkeys:                HotkeyConfig{ShowTranslation: "Ctrl+Alt+T", ReplaceSelection: "Ctrl+Alt+R"},
 		DefaultLanguagePair:    LanguagePair{First: "ru", Second: "en"},
@@ -64,7 +80,7 @@ func Default() Config {
 	}
 }
 
-func ExecutablePath() (string, error) {
+func ExecutableDir() (string, error) {
 	executable, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("определить путь приложения: %w", err)
@@ -73,7 +89,15 @@ func ExecutablePath() (string, error) {
 	if err == nil {
 		executable = resolved
 	}
-	return filepath.Join(filepath.Dir(executable), "config.json"), nil
+	return filepath.Dir(executable), nil
+}
+
+func ExecutablePath() (string, error) {
+	directory, err := ExecutableDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(directory, "config.json"), nil
 }
 
 func Load(path string) (Config, error) {
@@ -81,7 +105,9 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("прочитать конфигурацию %q: %w", path, err)
 	}
-	var cfg Config
+	// Provider was introduced after the first config format. Its absence must
+	// keep selecting Ollama instead of changing existing installations to auto.
+	cfg := Config{Provider: ProviderOllama}
 	decoder := json.NewDecoder(strings.NewReader(string(data)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&cfg); err != nil {
@@ -128,6 +154,19 @@ func unwrapPathError(err error) error {
 }
 
 func (c Config) Validate() error {
+	switch c.Provider {
+	case ProviderAuto, ProviderOllama, ProviderLocal:
+	default:
+		return errors.New("provider должен быть auto, ollama или local")
+	}
+	if c.Provider == ProviderAuto || c.Provider == ProviderLocal {
+		if c.LocalModel.StartupTimeoutSeconds <= 0 {
+			return errors.New("localModel.startupTimeoutSeconds должен быть больше нуля")
+		}
+		if c.LocalModel.FitTargetMiB <= 0 {
+			return errors.New("localModel.fitTargetMiB должен быть больше нуля")
+		}
+	}
 	parsed, err := url.ParseRequestURI(strings.TrimSpace(c.Ollama.BaseURL))
 	if err != nil || parsed.Host == "" || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return errors.New("ollama.baseUrl должен быть корректным HTTP(S) URL")

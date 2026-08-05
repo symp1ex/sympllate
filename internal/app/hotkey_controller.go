@@ -12,7 +12,7 @@ import (
 
 	"github.com/sympllate/translator/internal/config"
 	"github.com/sympllate/translator/internal/language"
-	"github.com/sympllate/translator/internal/ollama"
+	"github.com/sympllate/translator/internal/translation"
 )
 
 type ClipboardSnapshot struct {
@@ -81,7 +81,7 @@ type translationRequest struct {
 	generation uint64
 	ctx        context.Context
 	cancel     context.CancelFunc
-	request    ollama.TranslateRequest
+	request    translation.TranslateRequest
 }
 
 type linkedReplacement struct {
@@ -294,7 +294,7 @@ func (c *HotkeyController) queueTranslationLocked(session *quickTranslationSessi
 		generation: session.requestGeneration,
 		ctx:        requestContext,
 		cancel:     cancel,
-		request:    ollama.TranslateRequest{Text: session.sourceText, Source: session.source, Target: session.target},
+		request:    translation.TranslateRequest{Text: session.sourceText, Source: session.source, Target: session.target},
 	}
 	c.requests.Add(1)
 	return request, c.popupStateLocked(session)
@@ -461,7 +461,7 @@ func (c *HotkeyController) replaceDirectly() {
 	}
 	direction := c.direction(text)
 	started := time.Now()
-	result, err := c.translator.Translate(c.ctx, ollama.TranslateRequest{Text: text, Source: direction.Source, Target: direction.Target})
+	result, err := c.translator.Translate(c.ctx, translation.TranslateRequest{Text: text, Source: direction.Source, Target: direction.Target})
 	if err != nil {
 		c.failReplace(err)
 		return

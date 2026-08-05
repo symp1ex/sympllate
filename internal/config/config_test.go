@@ -21,6 +21,25 @@ func TestLoadValidConfig(t *testing.T) {
 	if cfg.Ollama.Model != "m" || cfg.DefaultLanguagePair.Second != "en" {
 		t.Fatalf("unexpected config: %+v", cfg)
 	}
+	if cfg.Provider != ProviderOllama {
+		t.Fatalf("legacy config provider = %q, want ollama", cfg.Provider)
+	}
+}
+
+func TestValidateProviders(t *testing.T) {
+	t.Parallel()
+	for _, provider := range []string{ProviderAuto, ProviderOllama, ProviderLocal} {
+		cfg := Default()
+		cfg.Provider = provider
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("provider %q: %v", provider, err)
+		}
+	}
+	cfg := Default()
+	cfg.Provider = "unexpected"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "provider") {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
 }
 
 func TestLoadRejectsBrokenAndInvalidConfig(t *testing.T) {

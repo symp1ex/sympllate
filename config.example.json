@@ -1,4 +1,10 @@
 {
+  "provider": "auto",
+  "localModel": {
+    "modelFile": "",
+    "startupTimeoutSeconds": 180,
+    "fitTargetMiB": 1024
+  },
   "ollama": {
     "baseUrl": "http://127.0.0.1:11434",
     "model": "translator-gemma",
@@ -29,4 +35,3 @@
     "clipboardWaitMilliseconds": 800
   }
 }
-

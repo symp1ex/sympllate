@@ -11,17 +11,17 @@ import (
 	"time"
 
 	"github.com/sympllate/translator/internal/language"
-	"github.com/sympllate/translator/internal/ollama"
+	"github.com/sympllate/translator/internal/translation"
 )
 
 type Translator interface {
-	Translate(ctx context.Context, req ollama.TranslateRequest) (ollama.TranslateResult, error)
+	Translate(ctx context.Context, req translation.TranslateRequest) (translation.TranslateResult, error)
 }
 
 type JobStatus struct {
-	State  string                  `json:"state"`
-	Result *ollama.TranslateResult `json:"result,omitempty"`
-	Error  string                  `json:"error,omitempty"`
+	State  string                       `json:"state"`
+	Result *translation.TranslateResult `json:"result,omitempty"`
+	Error  string                       `json:"error,omitempty"`
 }
 
 type Service struct {
@@ -32,6 +32,7 @@ type Service struct {
 	manualBusy atomic.Bool
 	nextID     atomic.Uint64
 	mu         sync.Mutex
+	closed     bool
 	jobs       map[string]JobStatus
 	wg         sync.WaitGroup
 }
@@ -40,15 +41,20 @@ func NewService(ctx context.Context, translator Translator, detector language.De
 	return &Service{ctx: ctx, translator: translator, detector: detector, logger: logger, jobs: make(map[string]JobStatus)}
 }
 
-func (s *Service) StartTranslate(req ollama.TranslateRequest) (string, error) {
+func (s *Service) StartTranslate(req translation.TranslateRequest) (string, error) {
 	if !s.manualBusy.CompareAndSwap(false, true) {
 		return "", errors.New("предыдущий перевод ещё выполняется")
 	}
-	id := strconv.FormatUint(s.nextID.Add(1), 10)
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		s.manualBusy.Store(false)
+		return "", errors.New("сервис перевода завершает работу")
+	}
+	id := strconv.FormatUint(s.nextID.Add(1), 10)
 	s.jobs[id] = JobStatus{State: "pending"}
-	s.mu.Unlock()
 	s.wg.Add(1)
+	s.mu.Unlock()
 	go func() {
 		defer s.wg.Done()
 		defer s.manualBusy.Store(false)
@@ -72,6 +78,12 @@ func (s *Service) StartTranslate(req ollama.TranslateRequest) (string, error) {
 
 func (s *Service) Wait() { s.wg.Wait() }
 
+func (s *Service) Close() {
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
+}
+
 func (s *Service) Job(id string) (JobStatus, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -85,10 +97,16 @@ func (s *Service) Job(id string) (JobStatus, error) {
 	return status, nil
 }
 
-func (s *Service) Translate(ctx context.Context, req ollama.TranslateRequest) (ollama.TranslateResult, error) {
+func (s *Service) Translate(ctx context.Context, req translation.TranslateRequest) (translation.TranslateResult, error) {
+	s.mu.Lock()
+	closed := s.closed
+	s.mu.Unlock()
+	if closed {
+		return translation.TranslateResult{}, errors.New("сервис перевода завершает работу")
+	}
 	result, err := s.translator.Translate(ctx, req)
 	if err != nil {
-		return ollama.TranslateResult{}, err
+		return translation.TranslateResult{}, err
 	}
 	if req.Source == "auto" {
 		result.DetectedLanguage = s.detector.Detect(req.Text)

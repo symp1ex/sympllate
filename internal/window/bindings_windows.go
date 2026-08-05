@@ -10,7 +10,7 @@ import (
 	"github.com/sympllate/translator/internal/clipboard"
 	"github.com/sympllate/translator/internal/config"
 	"github.com/sympllate/translator/internal/language"
-	"github.com/sympllate/translator/internal/ollama"
+	"github.com/sympllate/translator/internal/translation"
 )
 
 type ClientConfig struct {
@@ -24,7 +24,7 @@ func bindCommon(w webview.WebView, mode string, cfg config.Config, service *app.
 		name string
 		fn   any
 	}{
-		{"Translate", func(req ollama.TranslateRequest) (string, error) { return service.StartTranslate(req) }},
+		{"Translate", func(req translation.TranslateRequest) (string, error) { return service.StartTranslate(req) }},
 		{"GetTranslation", func(id string) (app.JobStatus, error) { return service.Job(id) }},
 		{"GetConfig", func() ClientConfig {
 			return ClientConfig{cfg.DefaultLanguagePair, cfg.FallbackTargetLanguage, cfg.Limits.MaxInputCharacters}

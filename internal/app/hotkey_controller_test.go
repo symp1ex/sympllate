@@ -11,7 +11,7 @@ import (
 
 	"github.com/sympllate/translator/internal/config"
 	"github.com/sympllate/translator/internal/language"
-	"github.com/sympllate/translator/internal/ollama"
+	"github.com/sympllate/translator/internal/translation"
 )
 
 type copyResult struct {
@@ -62,20 +62,20 @@ func (f *fakeSelection) counts() (int, int) {
 	return f.copyCalls, len(f.pastes)
 }
 
-type translatorFunc func(context.Context, ollama.TranslateRequest) (ollama.TranslateResult, error)
+type translatorFunc func(context.Context, translation.TranslateRequest) (translation.TranslateResult, error)
 
-func (f translatorFunc) Translate(ctx context.Context, request ollama.TranslateRequest) (ollama.TranslateResult, error) {
+func (f translatorFunc) Translate(ctx context.Context, request translation.TranslateRequest) (translation.TranslateResult, error) {
 	return f(ctx, request)
 }
 
 type pendingTranslation struct {
 	ctx      context.Context
-	request  ollama.TranslateRequest
+	request  translation.TranslateRequest
 	response chan translationResponse
 }
 
 type translationResponse struct {
-	result ollama.TranslateResult
+	result translation.TranslateResult
 	err    error
 }
 
@@ -88,7 +88,7 @@ func newPendingTranslator(ignoreCancellation bool) *pendingTranslator {
 	return &pendingTranslator{calls: make(chan *pendingTranslation, 10), ignoreCancellation: ignoreCancellation}
 }
 
-func (f *pendingTranslator) Translate(ctx context.Context, request ollama.TranslateRequest) (ollama.TranslateResult, error) {
+func (f *pendingTranslator) Translate(ctx context.Context, request translation.TranslateRequest) (translation.TranslateResult, error) {
 	call := &pendingTranslation{ctx: ctx, request: request, response: make(chan translationResponse, 1)}
 	f.calls <- call
 	if f.ignoreCancellation {
@@ -99,7 +99,7 @@ func (f *pendingTranslator) Translate(ctx context.Context, request ollama.Transl
 	case response := <-call.response:
 		return response.result, response.err
 	case <-ctx.Done():
-		return ollama.TranslateResult{}, ctx.Err()
+		return translation.TranslateResult{}, ctx.Err()
 	}
 }
 
@@ -189,7 +189,7 @@ func waitTranslation(t *testing.T, translator *pendingTranslator) *pendingTransl
 }
 
 func respond(call *pendingTranslation, text string, err error) {
-	call.response <- translationResponse{result: ollama.TranslateResult{Text: text}, err: err}
+	call.response <- translationResponse{result: translation.TranslateResult{Text: text}, err: err}
 }
 
 func waitFor(t *testing.T, condition func() bool) {
@@ -205,10 +205,10 @@ func waitFor(t *testing.T, condition func() bool) {
 
 func TestReplaceSelectionWithoutSessionUsesDirectFlow(t *testing.T) {
 	selection := &fakeSelection{copies: []copyResult{{text: "Привет", snapshot: ClipboardSnapshot{Text: "clipboard", HasText: true}}}}
-	var requests []ollama.TranslateRequest
-	translator := translatorFunc(func(_ context.Context, request ollama.TranslateRequest) (ollama.TranslateResult, error) {
+	var requests []translation.TranslateRequest
+	translator := translatorFunc(func(_ context.Context, request translation.TranslateRequest) (translation.TranslateResult, error) {
 		requests = append(requests, request)
-		return ollama.TranslateResult{Text: "Hello"}, nil
+		return translation.TranslateResult{Text: "Hello"}, nil
 	})
 	targets := &fakeTargets{exists: true}
 	controller := testController(translator, selection, targets, &fakePopup{})
@@ -378,8 +378,8 @@ func TestLinkedReplaceRequiresConfirmedLiveOrigin(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			selection := &fakeSelection{copies: []copyResult{{text: "Привет", snapshot: ClipboardSnapshot{Text: "saved", HasText: true}}}}
-			translator := translatorFunc(func(context.Context, ollama.TranslateRequest) (ollama.TranslateResult, error) {
-				return ollama.TranslateResult{Text: "Hello"}, nil
+			translator := translatorFunc(func(context.Context, translation.TranslateRequest) (translation.TranslateResult, error) {
+				return translation.TranslateResult{Text: "Hello"}, nil
 			})
 			targets := &fakeTargets{target: OriginTarget{Window: 1, ThreadID: 2, ProcessID: 3}, exists: true}
 			popup := &fakePopup{}
@@ -413,8 +413,8 @@ func TestPasteStartsOnlyAfterOriginActivation(t *testing.T) {
 			t.Fatal("PasteText started before origin activation was confirmed")
 		}
 	}
-	controller := testController(translatorFunc(func(context.Context, ollama.TranslateRequest) (ollama.TranslateResult, error) {
-		return ollama.TranslateResult{Text: "Hello"}, nil
+	controller := testController(translatorFunc(func(context.Context, translation.TranslateRequest) (translation.TranslateResult, error) {
+		return translation.TranslateResult{Text: "Hello"}, nil
 	}), selection, targets, &fakePopup{})
 	controller.ShowTranslation()
 	controller.requests.Wait()
@@ -467,13 +467,13 @@ func TestQuickTranslationSessionLifecycle(t *testing.T) {
 
 	t.Run("successful replace returns to direct flow", func(t *testing.T) {
 		selection := &fakeSelection{copies: []copyResult{{text: "Привет"}, {text: "Пока"}}}
-		var requests []ollama.TranslateRequest
-		translator := translatorFunc(func(_ context.Context, request ollama.TranslateRequest) (ollama.TranslateResult, error) {
+		var requests []translation.TranslateRequest
+		translator := translatorFunc(func(_ context.Context, request translation.TranslateRequest) (translation.TranslateResult, error) {
 			requests = append(requests, request)
 			if request.Text == "Привет" {
-				return ollama.TranslateResult{Text: "Hello"}, nil
+				return translation.TranslateResult{Text: "Hello"}, nil
 			}
-			return ollama.TranslateResult{Text: "Bye"}, nil
+			return translation.TranslateResult{Text: "Bye"}, nil
 		})
 		controller := testController(translator, selection, &fakeTargets{target: OriginTarget{Window: 1, ThreadID: 2, ProcessID: 3}, exists: true}, &fakePopup{})
 		controller.ShowTranslation()

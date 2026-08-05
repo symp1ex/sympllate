@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/sympllate/translator/internal/app"
@@ -18,6 +19,7 @@ import (
 	"github.com/sympllate/translator/internal/config"
 	"github.com/sympllate/translator/internal/hotkeys"
 	"github.com/sympllate/translator/internal/language"
+	"github.com/sympllate/translator/internal/localmodel"
 	"github.com/sympllate/translator/internal/ollama"
 	"github.com/sympllate/translator/internal/tray"
 	"github.com/sympllate/translator/internal/webassets"
@@ -46,6 +48,51 @@ func run() error {
 	if created {
 		logger.Printf("default config created: path=%s", configPath)
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	selectedProvider, localLayout, err := localmodel.SelectProvider(cfg.Provider, filepath.Dir(configPath), cfg.LocalModel)
+	if err != nil {
+		return err
+	}
+	var translator app.Translator
+	var localRuntime *localmodel.Runtime
+	var instanceLock *localmodel.InstanceLock
+	if selectedProvider == config.ProviderLocal {
+		instanceLock, err = localmodel.AcquireInstanceLock(filepath.Dir(configPath))
+		if err != nil {
+			return err
+		}
+		defer instanceLock.Close()
+		localRuntime, err = localmodel.Start(ctx, localmodel.RuntimeConfig{
+			Layout:             localLayout,
+			StartupTimeout:     time.Duration(cfg.LocalModel.StartupTimeoutSeconds) * time.Second,
+			RequestTimeout:     time.Duration(cfg.Ollama.TimeoutSeconds) * time.Second,
+			NumCtx:             cfg.Ollama.NumCtx,
+			NumPredict:         cfg.Ollama.NumPredict,
+			Temperature:        cfg.Ollama.Temperature,
+			FitTargetMiB:       cfg.LocalModel.FitTargetMiB,
+			MaxInputCharacters: cfg.Limits.MaxInputCharacters,
+		}, logger.Writer())
+		if err != nil {
+			return fmt.Errorf("запустить local provider: %w", err)
+		}
+		translator = localRuntime.Client()
+		logger.Printf("translation provider selected: local model=%s", filepath.Base(localLayout.ModelPath))
+	} else {
+		client, clientErr := ollama.New(cfg.Ollama, cfg.Limits.MaxInputCharacters)
+		if clientErr != nil {
+			return clientErr
+		}
+		translator = client
+		logger.Printf("translation provider selected: ollama")
+	}
+	defer func() {
+		if localRuntime != nil {
+			_ = localRuntime.Close()
+		}
+	}()
+
 	showCombination, err := hotkeys.Parse(cfg.Hotkeys.ShowTranslation)
 	if err != nil {
 		return fmt.Errorf("неверная hotkeys.showTranslation: %w", err)
@@ -54,18 +101,12 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("неверная hotkeys.replaceSelection: %w", err)
 	}
-	client, err := ollama.New(cfg.Ollama, cfg.Limits.MaxInputCharacters)
-	if err != nil {
-		return err
-	}
 	html, err := webassets.HTML()
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	detector := language.SimpleDetector{}
-	service := app.NewService(ctx, client, detector, logger)
+	service := app.NewService(ctx, translator, detector, logger)
 	clip := clipboard.New(logger)
 	popup := window.NewPopup(cfg, html, service, clip)
 	if err := popup.Start(); err != nil {
@@ -87,13 +128,24 @@ func run() error {
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
+			service.Close()
 			systemTray.Close()
+			hotkeyManager.Close()
 			mainWindow.Shutdown()
 			cancel()
-			hotkeyManager.Close()
 			controller.Close()
 			service.Wait()
 			popup.Close()
+			if localRuntime != nil {
+				if err := localRuntime.Close(); err != nil {
+					logger.Printf("local provider shutdown failed: %v", err)
+				}
+			}
+			if instanceLock != nil {
+				if err := instanceLock.Close(); err != nil {
+					logger.Printf("single-instance mutex close failed: %v", err)
+				}
+			}
 			logger.Printf("application stopping")
 		})
 	}
