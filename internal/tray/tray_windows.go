@@ -5,11 +5,12 @@ package tray
 import (
 	"errors"
 	"fmt"
-	"log"
 	"runtime"
 	"sync"
 	"syscall"
 	"unsafe"
+
+	"github.com/sympllate/translator/internal/logger"
 )
 
 const (
@@ -130,7 +131,7 @@ type notifyIconData struct {
 }
 
 type Tray struct {
-	logger     *log.Logger
+	logger     logger.PrintLogger
 	onOpen     func()
 	onSettings func()
 	quit       *quitSignal
@@ -149,7 +150,7 @@ type Tray struct {
 	taskbarCreated uint32
 }
 
-func New(onOpen, onSettings func(), logger *log.Logger) *Tray {
+func New(onOpen, onSettings func(), logger logger.PrintLogger) *Tray {
 	return &Tray{
 		logger:     logger,
 		onOpen:     onOpen,

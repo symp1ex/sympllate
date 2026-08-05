@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/sympllate/translator/internal/language"
+	"github.com/sympllate/translator/internal/logger"
 	"github.com/sympllate/translator/internal/translation"
 )
 
@@ -28,7 +28,7 @@ type Service struct {
 	ctx        context.Context
 	translator Translator
 	detector   language.Detector
-	logger     *log.Logger
+	logger     logger.PrintLogger
 	manualBusy atomic.Bool
 	nextID     atomic.Uint64
 	mu         sync.Mutex
@@ -37,7 +37,7 @@ type Service struct {
 	wg         sync.WaitGroup
 }
 
-func NewService(ctx context.Context, translator Translator, detector language.Detector, logger *log.Logger) *Service {
+func NewService(ctx context.Context, translator Translator, detector language.Detector, logger logger.PrintLogger) *Service {
 	return &Service{ctx: ctx, translator: translator, detector: detector, logger: logger, jobs: make(map[string]JobStatus)}
 }
 

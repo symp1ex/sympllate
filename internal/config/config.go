@@ -23,7 +23,11 @@ type Config struct {
 	FallbackTargetLanguage SelectSetting    `json:"fallbackTargetLanguage"`
 	UI                     UIConfig         `json:"ui"`
 	Limits                 LimitsConfig     `json:"limits"`
+	Updater                UpdaterConfig    `json:"updater"`
+	Logs                   LogsConfig       `json:"logs"`
 }
+
+var Cfg = Default()
 
 const (
 	ProviderAuto   = "auto"
@@ -104,6 +108,15 @@ type LimitsConfig struct {
 	ClipboardWaitMilliseconds int `json:"clipboardWaitMilliseconds"`
 }
 
+type UpdaterConfig struct {
+	Enabled bool `json:"enabled"`
+}
+
+type LogsConfig struct {
+	LogLevel  string `json:"log_level"`
+	StoreDays int    `json:"store_days"`
+}
+
 func Default() Config {
 	languages := supportedTargetLanguages()
 	return Config{
@@ -115,7 +128,13 @@ func Default() Config {
 		FallbackTargetLanguage: newSelectSetting("ru", languages),
 		UI:                     UIConfig{MainWindowWidth: 900, MainWindowHeight: 620, PopupWidth: 520, PopupHeight: 360, AlwaysOnTopPopup: true},
 		Limits:                 LimitsConfig{MaxInputCharacters: 12000, ClipboardWaitMilliseconds: 800},
+		Updater:                UpdaterConfig{Enabled: true},
+		Logs:                   LogsConfig{LogLevel: "warning", StoreDays: 2},
 	}
+}
+
+func SetCurrent(cfg Config) {
+	Cfg = cfg
 }
 
 func newSelectSetting(active string, values []string) SelectSetting {
@@ -150,6 +169,14 @@ func ExecutablePath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(directory, "config.json"), nil
+}
+
+func WorkDir() string {
+	directory, err := ExecutableDir()
+	if err != nil {
+		panic(err)
+	}
+	return directory
 }
 
 func Load(path string) (Config, error) {
@@ -278,6 +305,14 @@ func (c Config) Validate() error {
 	}
 	if c.Limits.MaxInputCharacters <= 0 || c.Limits.ClipboardWaitMilliseconds <= 0 {
 		return errors.New("limits must be greater than zero")
+	}
+	if c.Logs.StoreDays <= 0 {
+		return errors.New("logs.store_days must be greater than zero")
+	}
+	switch strings.ToUpper(strings.TrimSpace(c.Logs.LogLevel)) {
+	case "DEBUG", "INFO", "WARNING", "ERROR":
+	default:
+		return errors.New("logs.log_level must be debug, info, warning, or error")
 	}
 	return nil
 }

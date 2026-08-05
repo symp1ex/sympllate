@@ -78,6 +78,51 @@ button, input, select, textarea { font: inherit; }
   letter-spacing: 0.2px;
   pointer-events: none;
 }
+.custom-titlebar button.custom-titlebar__version {
+  height: 26px;
+  margin-left: 2px;
+  border: 0;
+  border-radius: 4px;
+  padding: 0 7px;
+  color: var(--text-muted);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.custom-titlebar button.custom-titlebar__version--idle:hover { color: #fff; background: rgba(230, 246, 248, 0.07); }
+.custom-titlebar button.custom-titlebar__version--disabled,
+.custom-titlebar button.custom-titlebar__version--checking,
+.custom-titlebar button.custom-titlebar__version--installing { cursor: default; }
+.custom-titlebar button.custom-titlebar__version--disabled:hover,
+.custom-titlebar button.custom-titlebar__version--checking:hover,
+.custom-titlebar button.custom-titlebar__version--installing:hover { color: var(--text-muted); background: transparent; }
+.custom-titlebar button.custom-titlebar__version--available,
+.custom-titlebar button.custom-titlebar__version--error,
+.custom-titlebar button.custom-titlebar__version--installing { color: #df9a9a; }
+.custom-titlebar button.custom-titlebar__version--available:hover,
+.custom-titlebar button.custom-titlebar__version--error:hover { color: #f0b1b1; background: rgba(223, 94, 94, 0.08); }
+.custom-titlebar__spinner {
+  width: 12px;
+  height: 12px;
+  margin-left: -2px;
+  border: 2px solid rgba(159, 181, 186, 0.34);
+  border-top-color: #e2f0f2;
+  border-radius: 50%;
+  animation: titlebar-spinner 760ms linear infinite;
+  pointer-events: none;
+}
+@keyframes titlebar-spinner { to { transform: rotate(360deg); } }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .custom-titlebar__actions { height: 36px; display: flex; align-items: center; gap: 6px; padding-right: 4px; }
 .custom-titlebar__button {
   width: 29px;

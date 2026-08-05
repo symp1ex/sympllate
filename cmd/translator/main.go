@@ -6,8 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,13 +20,16 @@ import (
 	"github.com/sympllate/translator/internal/hotkeys"
 	"github.com/sympllate/translator/internal/language"
 	"github.com/sympllate/translator/internal/localmodel"
+	"github.com/sympllate/translator/internal/logger"
 	"github.com/sympllate/translator/internal/ollama"
 	"github.com/sympllate/translator/internal/tray"
+	"github.com/sympllate/translator/internal/updater"
 	"github.com/sympllate/translator/internal/webassets"
 	"github.com/sympllate/translator/internal/window"
 )
 
 var errRestartRequested = errors.New("application restart requested")
+var version = "0.2.3.0"
 
 func main() {
 	if err := run(); errors.Is(err, errRestartRequested) {
@@ -47,15 +48,18 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	logger, closeLog := newLogger(filepath.Dir(configPath))
-	defer closeLog()
-	logger.Printf("application starting: config=%s", configPath)
 	cfg, created, err := config.LoadOrCreate(configPath)
 	if err != nil {
 		return err
 	}
+	config.SetCurrent(cfg)
+	logger.Configure(cfg.Logs)
+	config.SetLogger(logger.Sympllate)
+	updater.SetLogger(logger.Sympllate)
+	applicationLogger := logger.Sympllate
+	applicationLogger.Printf("application starting: config=%s", configPath)
 	if created {
-		logger.Printf("default config created: path=%s", configPath)
+		applicationLogger.Printf("default config created: path=%s", configPath)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -82,19 +86,19 @@ func run() error {
 			Temperature:        cfg.Ollama.Temperature,
 			FitTargetMiB:       cfg.LocalModel.FitTargetMiB,
 			MaxInputCharacters: cfg.Limits.MaxInputCharacters,
-		}, logger.Writer())
+		}, applicationLogger.Writer())
 		if err != nil {
 			return fmt.Errorf("start local provider: %w", err)
 		}
 		translator = localRuntime.Client()
-		logger.Printf("translation provider selected: local model=%s", filepath.Base(localLayout.ModelPath))
+		applicationLogger.Printf("translation provider selected: local model=%s", filepath.Base(localLayout.ModelPath))
 	} else {
 		client, clientErr := ollama.New(cfg.Ollama, cfg.Limits.MaxInputCharacters)
 		if clientErr != nil {
 			return clientErr
 		}
 		translator = client
-		logger.Printf("translation provider selected: ollama")
+		applicationLogger.Printf("translation provider selected: ollama")
 	}
 	defer func() {
 		if localRuntime != nil {
@@ -115,14 +119,14 @@ func run() error {
 		return err
 	}
 	detector := language.SimpleDetector{}
-	service := app.NewService(ctx, translator, detector, logger)
-	clip := clipboard.New(logger)
+	service := app.NewService(ctx, translator, detector, applicationLogger)
+	clip := clipboard.New(applicationLogger)
 	popup := window.NewPopup(cfg, html, service, clip)
 	if err := popup.Start(); err != nil {
 		return err
 	}
 	targets := window.NewOriginTargetManager()
-	controller := app.NewHotkeyController(ctx, cfg, service, detector, clip, targets, popup, logger)
+	controller := app.NewHotkeyController(ctx, cfg, service, detector, clip, targets, popup, applicationLogger)
 	popup.SetQuickTranslationHandler(controller)
 	hotkeyManager := hotkeys.NewManager(showCombination, replaceCombination, controller.ShowTranslation, controller.ReplaceSelection)
 	if err := hotkeyManager.Start(); err != nil {
@@ -130,7 +134,7 @@ func run() error {
 		popup.Close()
 		return err
 	}
-	logger.Printf("global hotkeys registered: show=%s replace=%s", showCombination.Display, replaceCombination.Display)
+	applicationLogger.Printf("global hotkeys registered: show=%s replace=%s", showCombination.Display, replaceCombination.Display)
 
 	restartRequested := make(chan struct{}, 1)
 	requestRestart := func() {
@@ -139,8 +143,8 @@ func run() error {
 		default:
 		}
 	}
-	mainWindow := window.NewMainWindow(cfg, configPath, html, service, clip, popup, logger, showError, requestRestart)
-	systemTray := tray.New(mainWindow.Open, mainWindow.OpenSettings, logger)
+	mainWindow := window.NewMainWindow(cfg, configPath, version, html, service, clip, popup, applicationLogger, showError, requestRestart)
+	systemTray := tray.New(mainWindow.Open, mainWindow.OpenSettings, applicationLogger)
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
@@ -154,29 +158,29 @@ func run() error {
 			popup.Close()
 			if localRuntime != nil {
 				if err := localRuntime.Close(); err != nil {
-					logger.Printf("local provider shutdown failed: %v", err)
+					applicationLogger.Printf("local provider shutdown failed: %v", err)
 				}
 			}
 			if instanceLock != nil {
 				if err := instanceLock.Close(); err != nil {
-					logger.Printf("single-instance mutex close failed: %v", err)
+					applicationLogger.Printf("single-instance mutex close failed: %v", err)
 				}
 			}
-			logger.Printf("application stopping")
+			applicationLogger.Printf("application stopping")
 		})
 	}
 	defer cleanup()
 	if err := systemTray.Start(); err != nil {
 		return fmt.Errorf("start system tray: %w", err)
 	}
-	logger.Printf("system tray started")
+	applicationLogger.Printf("system tray started")
 	restart := false
 	select {
 	case <-systemTray.Quit():
-		logger.Printf("Quit selected from system tray")
+		applicationLogger.Printf("Quit selected from system tray")
 	case <-restartRequested:
 		restart = true
-		logger.Printf("application restart requested after settings save")
+		applicationLogger.Printf("application restart requested after settings save")
 	}
 	cleanup()
 	if restart {
@@ -198,14 +202,6 @@ func restartApplication() error {
 		return fmt.Errorf("release restarted application process: %w", err)
 	}
 	return nil
-}
-
-func newLogger(directory string) (*log.Logger, func()) {
-	file, err := os.OpenFile(filepath.Join(directory, "translator.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
-	if err != nil {
-		return log.New(os.Stderr, "translator: ", log.LstdFlags|log.Lmicroseconds), func() {}
-	}
-	return log.New(io.MultiWriter(os.Stderr, file), "translator: ", log.LstdFlags|log.Lmicroseconds), func() { _ = file.Close() }
 }
 
 func showError(err error) {

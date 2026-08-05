@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/sympllate/translator/internal/config"
 	"github.com/sympllate/translator/internal/language"
+	"github.com/sympllate/translator/internal/logger"
 	"github.com/sympllate/translator/internal/translation"
 )
 
@@ -102,7 +102,7 @@ type HotkeyController struct {
 	selection   SelectionIO
 	targets     OriginTargets
 	popup       Popup
-	logger      *log.Logger
+	logger      logger.PrintLogger
 	showBusy    atomic.Bool
 	replaceBusy atomic.Bool
 
@@ -114,7 +114,7 @@ type HotkeyController struct {
 	requests       sync.WaitGroup
 }
 
-func NewHotkeyController(ctx context.Context, cfg config.Config, translator Translator, detector language.Detector, selection SelectionIO, targets OriginTargets, popup Popup, logger *log.Logger) *HotkeyController {
+func NewHotkeyController(ctx context.Context, cfg config.Config, translator Translator, detector language.Detector, selection SelectionIO, targets OriginTargets, popup Popup, logger logger.PrintLogger) *HotkeyController {
 	return &HotkeyController{ctx: ctx, cfg: cfg, translator: translator, detector: detector, selection: selection, targets: targets, popup: popup, logger: logger}
 }
 

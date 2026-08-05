@@ -63,6 +63,21 @@ func TestMainWindowRemembersRequestedSettingsView(t *testing.T) {
 	}
 }
 
+func TestMainWindowRejectsParallelUpdateCheck(t *testing.T) {
+	t.Parallel()
+	window := &MainWindow{}
+	if !window.beginApplicationUpdateCheck() {
+		t.Fatal("first update check was rejected")
+	}
+	if window.beginApplicationUpdateCheck() {
+		t.Fatal("parallel update check was accepted")
+	}
+	window.endApplicationUpdateCheck()
+	if !window.beginApplicationUpdateCheck() {
+		t.Fatal("update check remained locked after completion")
+	}
+}
+
 type assertionError string
 
 func (e assertionError) Error() string { return string(e) }

@@ -5,7 +5,6 @@ package window
 import (
 	"errors"
 	"fmt"
-	"log"
 	"runtime"
 	"sync"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/sympllate/translator/internal/app"
 	"github.com/sympllate/translator/internal/clipboard"
 	"github.com/sympllate/translator/internal/config"
+	"github.com/sympllate/translator/internal/logger"
 )
 
 type mainWindowState uint8
@@ -34,11 +34,12 @@ const (
 type MainWindow struct {
 	cfg       config.Config
 	cfgPath   string
+	version   string
 	html      string
 	service   *app.Service
 	clip      *clipboard.Manager
 	popup     *Popup
-	logger    *log.Logger
+	logger    logger.PrintLogger
 	onError   func(error)
 	onRestart func()
 
@@ -48,12 +49,16 @@ type MainWindow struct {
 	hwnd  uintptr
 	done  chan struct{}
 	view  mainWindowView
+
+	updateMu           sync.Mutex
+	updateCheckRunning bool
 }
 
-func NewMainWindow(cfg config.Config, cfgPath, html string, service *app.Service, clip *clipboard.Manager, popup *Popup, logger *log.Logger, onError func(error), onRestart func()) *MainWindow {
+func NewMainWindow(cfg config.Config, cfgPath, version, html string, service *app.Service, clip *clipboard.Manager, popup *Popup, logger logger.PrintLogger, onError func(error), onRestart func()) *MainWindow {
 	return &MainWindow{
 		cfg:       cfg,
 		cfgPath:   cfgPath,
+		version:   version,
 		html:      html,
 		service:   service,
 		clip:      clip,
@@ -184,6 +189,11 @@ func (m *MainWindow) run() {
 	if err := bindMainSettings(w, m); err != nil {
 		m.destroyWebView(w, hwnd)
 		m.failOpen(fmt.Errorf("configure settings window bindings: %w", err))
+		return
+	}
+	if err := bindApplicationUpdater(w, m); err != nil {
+		m.destroyWebView(w, hwnd)
+		m.failOpen(fmt.Errorf("configure application updater bindings: %w", err))
 		return
 	}
 	if err := applyWindowChrome(w, 476, 561, m.Hide); err != nil {

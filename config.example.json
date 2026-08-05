@@ -49,5 +49,12 @@
   "limits": {
     "maxInputCharacters": 12000,
     "clipboardWaitMilliseconds": 800
+  },
+  "updater": {
+    "enabled": true
+  },
+  "logs": {
+    "log_level": "warning",
+    "store_days": 2
   }
 }

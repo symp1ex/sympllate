@@ -45,6 +45,17 @@ func TestValidateProviders(t *testing.T) {
 	}
 }
 
+func TestDefaultEnablesUpdaterAndConfiguresLogs(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	if !cfg.Updater.Enabled {
+		t.Fatal("default updater is disabled")
+	}
+	if cfg.Logs.LogLevel != "warning" || cfg.Logs.StoreDays != 2 {
+		t.Fatalf("default logs config = %+v", cfg.Logs)
+	}
+}
+
 func TestValidateMainWindowMinimumSize(t *testing.T) {
 	t.Parallel()
 	for _, size := range []struct{ width, height int }{{475, 561}, {476, 560}} {

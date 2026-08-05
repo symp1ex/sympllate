@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"syscall"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"unsafe"
 
 	"github.com/sympllate/translator/internal/app"
+	"github.com/sympllate/translator/internal/logger"
 )
 
 const (
@@ -52,9 +52,9 @@ var (
 	sendInput                  = user32.NewProc("SendInput")
 )
 
-type Manager struct{ logger *log.Logger }
+type Manager struct{ logger logger.PrintLogger }
 
-func New(logger *log.Logger) *Manager { return &Manager{logger: logger} }
+func New(logger logger.PrintLogger) *Manager { return &Manager{logger: logger} }
 
 func (m *Manager) CopySelection(ctx context.Context, wait time.Duration) (string, app.ClipboardSnapshot, error) {
 	previous, err := m.snapshot(ctx)

@@ -15,6 +15,9 @@ export interface PopupState {
 export type JsonSettingValue = string | number | boolean | null | JsonSettingObject | JsonSettingValue[]
 export interface JsonSettingObject { [key: string]: JsonSettingValue }
 export interface SelectSetting extends JsonSettingObject { active: string; list: string[] }
+export type ApplicationInfo = { version: string; updaterEnabled: boolean }
+export type CheckApplicationUpdateResult = { ok: boolean; updateAvailable: boolean; message?: string }
+export type InstallApplicationUpdateResult = { ok: boolean; message?: string }
 
 declare global {
   interface Window {
@@ -35,6 +38,9 @@ declare global {
     HidePopup(): Promise<void>
     SetQuickTranslationTarget(target: string): Promise<void>
     GetPopupState(): Promise<PopupState>
+    getApplicationInfo?: () => ApplicationInfo | Promise<ApplicationInfo>
+    checkApplicationUpdate?: () => CheckApplicationUpdateResult | Promise<CheckApplicationUpdateResult>
+    installApplicationUpdate?: () => InstallApplicationUpdateResult | Promise<InstallApplicationUpdateResult>
   }
 }
 
