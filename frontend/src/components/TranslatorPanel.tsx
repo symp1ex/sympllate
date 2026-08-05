@@ -51,13 +51,13 @@ export function TranslatorPanel({ config, languages }: Props) {
         <label><span>Исходный текст</span><textarea value={sourceText} maxLength={config.maxInputCharacters} onChange={(event) => setSourceText(event.target.value)} onKeyDown={(event) => { if (event.ctrlKey && event.key === 'Enter') { event.preventDefault(); void runTranslation() } }} placeholder="Введите текст…" disabled={loading} /></label>
         <label><span>Перевод</span><textarea value={translatedText} readOnly placeholder="Здесь появится перевод" /></label>
       </section>
+      {error && <ErrorMessage message={error} />}
       <div className="actions">
         <button className="primary" onClick={() => void runTranslation()} disabled={loading || !sourceText.trim()}>{loading ? 'Переводим…' : 'Перевести'}</button>
         <button onClick={() => void copyTranslation()} disabled={!translatedText}>Копировать перевод</button>
         {loading && <LoadingIndicator />}
         <span className="hint">Ctrl+Enter</span>
       </div>
-      {error && <ErrorMessage message={error} />}
     </main>
   )
 }
