@@ -15,6 +15,7 @@ import (
 	"github.com/sympllate/translator/internal/app"
 	"github.com/sympllate/translator/internal/clipboard"
 	"github.com/sympllate/translator/internal/config"
+	"github.com/sympllate/translator/internal/logger"
 )
 
 const (
@@ -88,11 +89,23 @@ func (p *Popup) run(ready chan<- error) {
 		ready <- errors.New("failed to create popup WebView2")
 		return
 	}
+	hwnd := uintptr(w.Window())
 	p.mu.Lock()
 	p.w = w
-	p.hwnd = uintptr(w.Window())
+	p.hwnd = hwnd
 	p.mu.Unlock()
-	defer func() { p.mu.Lock(); p.w = nil; p.hwnd = 0; p.mu.Unlock(); w.Destroy() }()
+	icons, err := setTaskbarIcon(hwnd)
+	if err != nil {
+		logger.Sympllate.Warnf("popup window taskbar icon was not set: %v", err)
+	}
+	defer func() {
+		p.mu.Lock()
+		p.w = nil
+		p.hwnd = 0
+		p.mu.Unlock()
+		w.Destroy()
+		icons.destroy()
+	}()
 	if err := bindCommon(w, "popup", p.cfg, p.service, p.clip, p); err != nil {
 		ready <- err
 		return

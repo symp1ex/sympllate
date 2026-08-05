@@ -181,6 +181,11 @@ func (m *MainWindow) run() {
 		m.failOpen(errors.New("the main WebView2 window did not provide an HWND"))
 		return
 	}
+	icons, err := setTaskbarIcon(hwnd)
+	if err != nil {
+		logger.Sympllate.Warnf("main window taskbar icon was not set: %v", err)
+	}
+	defer icons.destroy()
 	if err := bindCommon(w, "main", m.cfg, m.service, m.clip, m.popup); err != nil {
 		m.destroyWebView(w, hwnd)
 		m.failOpen(fmt.Errorf("configure main window: %w", err))
