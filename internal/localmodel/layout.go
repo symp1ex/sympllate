@@ -104,6 +104,7 @@ func BuildArguments(layout Layout, port int, apiKey string, numCtx, fitTargetMiB
 		"--port", fmt.Sprintf("%d", port),
 		"--api-key", apiKey,
 		"--no-webui",
+		"--no-jinja",
 		"--offline",
 		"--parallel", "1",
 		"--ctx-size", fmt.Sprintf("%d", numCtx),

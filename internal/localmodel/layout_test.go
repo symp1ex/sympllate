@@ -98,7 +98,7 @@ func TestBuildArgumentsRequiresAutomaticGPUFit(t *testing.T) {
 	joined := strings.Join(args, " ")
 	for _, required := range []string{
 		"--host 127.0.0.1", "--port 4321", "--alias " + ModelAlias,
-		"--no-webui", "--offline", "--parallel 1", "--ctx-size 2048",
+		"--no-webui", "--no-jinja", "--offline", "--parallel 1", "--ctx-size 2048",
 		"--gpu-layers auto", "--fit on", "--fit-target 1024",
 	} {
 		if !strings.Contains(joined, required) {

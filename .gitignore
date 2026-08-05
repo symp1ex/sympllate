@@ -9,3 +9,5 @@
 rules/
 AGENTS.md
 .idea/
+_resources/
+*.txt

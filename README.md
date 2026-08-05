@@ -9,7 +9,7 @@ Sympllate собирается в двух вариантах для Windows x64
 
 ## Конфигурация provider
 
-Поддерживаются `provider: "auto"`, `"ollama"` и `"local"`. Старый `config.json` без поля `provider` продолжает означать Ollama. В режиме `auto` полный локальный layout выбирает local provider, иначе используется Ollama. В режиме `local` отсутствие runtime или модели является ошибкой.
+Поддерживаются `provider: "auto"`, `"ollama"` и `"local"`. В режиме `auto` полный локальный layout выбирает local provider, иначе используется Ollama. В режиме `local` отсутствие runtime или модели является ошибкой.
 
 Если `localModel.modelFile` пуст, в каталоге `models` должна находиться ровно одна модель с расширением `.gguf`. Относительный `modelFile` всегда разрешается относительно каталога `translator.exe`.
 
