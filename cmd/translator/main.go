@@ -94,7 +94,7 @@ func newLogger(directory string) (*log.Logger, func()) {
 }
 
 func showError(err error) {
-	title, _ := syscall.UTF16PtrFromString("Ollama Переводчик — ошибка")
+	title, _ := syscall.UTF16PtrFromString("Sympllate — ошибка")
 	message, _ := syscall.UTF16PtrFromString(err.Error())
 	proc := syscall.NewLazyDLL("user32.dll").NewProc("MessageBoxW")
 	proc.Call(0, uintptr(unsafe.Pointer(message)), uintptr(unsafe.Pointer(title)), 0x10)

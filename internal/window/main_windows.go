@@ -15,7 +15,7 @@ import (
 func RunMain(cfg config.Config, html string, service *app.Service, clip *clipboard.Manager, popup *Popup) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	w := webview.NewWithOptions(webview.WebViewOptions{AutoFocus: true, WindowOptions: webview.WindowOptions{Title: "Ollama Переводчик", Width: uint(cfg.UI.MainWindowWidth), Height: uint(cfg.UI.MainWindowHeight), Center: true}})
+	w := webview.NewWithOptions(webview.WebViewOptions{AutoFocus: true, WindowOptions: webview.WindowOptions{Title: "Sympllate", Width: uint(cfg.UI.MainWindowWidth), Height: uint(cfg.UI.MainWindowHeight), Center: true}})
 	if w == nil {
 		return errors.New("не удалось создать основное окно WebView2; проверьте наличие Microsoft Edge WebView2 Runtime")
 	}
