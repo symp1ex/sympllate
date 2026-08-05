@@ -35,6 +35,7 @@ var (
 	getCursorPos        = windowUser32.NewProc("GetCursorPos")
 	monitorFromPoint    = windowUser32.NewProc("MonitorFromPoint")
 	getMonitorInfo      = windowUser32.NewProc("GetMonitorInfoW")
+	destroyNativeWindow = windowUser32.NewProc("DestroyWindow")
 )
 
 type point struct{ X, Y int32 }

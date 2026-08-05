@@ -83,7 +83,8 @@ type chromeOptions struct {
 }
 
 var (
-	chromeUser32 = syscall.NewLazyDLL("user32.dll")
+	chromeUser32   = syscall.NewLazyDLL("user32.dll")
+	chromeKernel32 = syscall.NewLazyDLL("kernel32.dll")
 
 	chromeGetWindowLongPtr = chromeUser32.NewProc("GetWindowLongPtrW")
 	chromeSetWindowLongPtr = chromeUser32.NewProc("SetWindowLongPtrW")
@@ -97,6 +98,7 @@ var (
 	chromePostMessage      = chromeUser32.NewProc("PostMessageW")
 	chromeReleaseCapture   = chromeUser32.NewProc("ReleaseCapture")
 	chromeSendMessage      = chromeUser32.NewProc("SendMessageW")
+	chromeCopyMemory       = chromeKernel32.NewProc("RtlMoveMemory")
 
 	chromeOnce       sync.Once
 	chromeWindowProc uintptr
@@ -234,13 +236,7 @@ func windowChromeProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr 
 	case chromeWMNCCalcSize:
 		return 0
 	case chromeWMGetMinMaxInfo:
-		info := (*chromeMinMaxInfo)(unsafe.Pointer(lParam))
-		if options.minWidth > 0 {
-			info.MinTrackSize.X = options.minWidth
-		}
-		if options.minHeight > 0 {
-			info.MinTrackSize.Y = options.minHeight
-		}
+		updateMinMaxInfo(lParam, options)
 		return 0
 	case chromeWMNCHitTest:
 		return hitTestWindowChrome(hwnd, lParam, options)
@@ -264,6 +260,22 @@ func windowChromeProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr 
 		return result
 	}
 	return chromeHTClient
+}
+
+func updateMinMaxInfo(lParam uintptr, options chromeOptions) {
+	if lParam == 0 {
+		return
+	}
+	var info chromeMinMaxInfo
+	size := unsafe.Sizeof(info)
+	chromeCopyMemory.Call(uintptr(unsafe.Pointer(&info)), lParam, size)
+	if options.minWidth > 0 {
+		info.MinTrackSize.X = options.minWidth
+	}
+	if options.minHeight > 0 {
+		info.MinTrackSize.Y = options.minHeight
+	}
+	chromeCopyMemory.Call(lParam, uintptr(unsafe.Pointer(&info)), size)
 }
 
 func chromeOptionsForWindow(hwnd uintptr) chromeOptions {

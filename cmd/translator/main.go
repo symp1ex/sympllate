@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"unsafe"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/sympllate/translator/internal/hotkeys"
 	"github.com/sympllate/translator/internal/language"
 	"github.com/sympllate/translator/internal/ollama"
+	"github.com/sympllate/translator/internal/tray"
 	"github.com/sympllate/translator/internal/webassets"
 	"github.com/sympllate/translator/internal/window"
 )
@@ -79,14 +81,31 @@ func run() error {
 		return err
 	}
 	logger.Printf("global hotkeys registered: show=%s replace=%s", showCombination.Display, replaceCombination.Display)
-	err = window.RunMain(cfg, html, service, clip, popup)
-	cancel()
-	hotkeyManager.Close()
-	controller.Close()
-	service.Wait()
-	popup.Close()
-	logger.Printf("application stopping")
-	return err
+
+	mainWindow := window.NewMainWindow(cfg, html, service, clip, popup, logger, showError)
+	systemTray := tray.New(mainWindow.Open, logger)
+	var cleanupOnce sync.Once
+	cleanup := func() {
+		cleanupOnce.Do(func() {
+			systemTray.Close()
+			mainWindow.Shutdown()
+			cancel()
+			hotkeyManager.Close()
+			controller.Close()
+			service.Wait()
+			popup.Close()
+			logger.Printf("application stopping")
+		})
+	}
+	defer cleanup()
+	if err := systemTray.Start(); err != nil {
+		return fmt.Errorf("запустить system tray: %w", err)
+	}
+	logger.Printf("system tray started")
+	<-systemTray.Quit()
+	logger.Printf("Quit selected from system tray")
+	cleanup()
+	return nil
 }
 
 func newLogger(directory string) (*log.Logger, func()) {
