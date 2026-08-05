@@ -33,6 +33,11 @@ const (
 	ProviderAuto   = "auto"
 	ProviderOllama = "ollama"
 	ProviderLocal  = "local"
+
+	LogLevelDebug   = "debug"
+	LogLevelInfo    = "info"
+	LogLevelWarning = "warning"
+	LogLevelError   = "error"
 )
 
 type SelectSetting struct {
@@ -113,8 +118,8 @@ type UpdaterConfig struct {
 }
 
 type LogsConfig struct {
-	LogLevel  string `json:"log_level"`
-	StoreDays int    `json:"store_days"`
+	LogLevel  SelectSetting `json:"log_level"`
+	StoreDays int           `json:"store_days"`
 }
 
 func Default() Config {
@@ -129,7 +134,7 @@ func Default() Config {
 		UI:                     UIConfig{MainWindowWidth: 900, MainWindowHeight: 620, PopupWidth: 520, PopupHeight: 360, AlwaysOnTopPopup: true},
 		Limits:                 LimitsConfig{MaxInputCharacters: 12000, ClipboardWaitMilliseconds: 800},
 		Updater:                UpdaterConfig{Enabled: true},
-		Logs:                   LogsConfig{LogLevel: "warning", StoreDays: 2},
+		Logs:                   LogsConfig{LogLevel: newSelectSetting(LogLevelWarning, []string{LogLevelDebug, LogLevelInfo, LogLevelWarning, LogLevelError}), StoreDays: 2},
 	}
 }
 
@@ -196,6 +201,7 @@ func Load(path string) (Config, error) {
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return Config{}, errors.New("invalid config.json: extra data follows the root object")
 	}
+	cfg.Logs.LogLevel = normalizedLogLevelSetting(cfg.Logs.LogLevel)
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
@@ -223,6 +229,7 @@ func LoadOrCreate(path string) (Config, bool, error) {
 }
 
 func Save(path string, cfg Config) error {
+	cfg.Logs.LogLevel = normalizedLogLevelSetting(cfg.Logs.LogLevel)
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
@@ -309,12 +316,39 @@ func (c Config) Validate() error {
 	if c.Logs.StoreDays <= 0 {
 		return errors.New("logs.store_days must be greater than zero")
 	}
-	switch strings.ToUpper(strings.TrimSpace(c.Logs.LogLevel)) {
-	case "DEBUG", "INFO", "WARNING", "ERROR":
-	default:
-		return errors.New("logs.log_level must be debug, info, warning, or error")
+	logLevel := normalizedLogLevelSetting(c.Logs.LogLevel)
+	if !validLogLevel(logLevel.Active) {
+		return errors.New("logs.log_level.active must be debug, info, warning, or error")
+	}
+	if err := validateSelectSetting("logs.log_level", logLevel); err != nil {
+		return err
+	}
+	for _, level := range logLevel.List {
+		if !validLogLevel(level) {
+			return fmt.Errorf("logs.log_level.list contains unknown value %q", level)
+		}
 	}
 	return nil
+}
+
+func normalizedLogLevelSetting(setting SelectSetting) SelectSetting {
+	result := SelectSetting{
+		Active: strings.ToLower(strings.TrimSpace(setting.Active)),
+		List:   make([]string, len(setting.List)),
+	}
+	for index, level := range setting.List {
+		result.List[index] = strings.ToLower(strings.TrimSpace(level))
+	}
+	return result
+}
+
+func validLogLevel(level string) bool {
+	switch level {
+	case LogLevelDebug, LogLevelInfo, LogLevelWarning, LogLevelError:
+		return true
+	default:
+		return false
+	}
 }
 
 func validateSelectSetting(name string, setting SelectSetting) error {

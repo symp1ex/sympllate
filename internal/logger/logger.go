@@ -33,7 +33,7 @@ func Configure(cfg config.LogsConfig) {
 	mu.Lock()
 	logDir = filepath.Join(config.WorkDir(), "logs")
 	retainDays = cfg.StoreDays
-	logLevel = cfg.LogLevel
+	logLevel = cfg.LogLevel.Active
 	loggers = make(map[string]*slog.Logger)
 	mu.Unlock()
 
@@ -41,14 +41,14 @@ func Configure(cfg config.LogsConfig) {
 }
 
 func levelFromString(level string) slog.Level {
-	switch strings.ToUpper(level) {
-	case "DEBUG":
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case config.LogLevelDebug:
 		return slog.LevelDebug
-	case "INFO":
+	case config.LogLevelInfo:
 		return slog.LevelInfo
-	case "WARNING":
+	case config.LogLevelWarning:
 		return slog.LevelWarn
-	case "ERROR":
+	case config.LogLevelError:
 		return slog.LevelError
 	default:
 		return slog.LevelInfo

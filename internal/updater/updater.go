@@ -253,7 +253,7 @@ func updaterLoggingArgs() []string {
 		"--logs-dir",
 		filepath.Join(config.WorkDir(), "logs"),
 		"--logs-level",
-		config.Cfg.Logs.LogLevel,
+		config.Cfg.Logs.LogLevel.Active,
 		"--logs-clear",
 		strconv.Itoa(config.Cfg.Logs.StoreDays),
 	}

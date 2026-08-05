@@ -54,7 +54,10 @@
     "enabled": true
   },
   "logs": {
-    "log_level": "warning",
+    "log_level": {
+      "active": "warning",
+      "list": ["debug", "info", "warning", "error"]
+    },
     "store_days": 2
   }
 }

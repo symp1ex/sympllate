@@ -51,8 +51,54 @@ func TestDefaultEnablesUpdaterAndConfiguresLogs(t *testing.T) {
 	if !cfg.Updater.Enabled {
 		t.Fatal("default updater is disabled")
 	}
-	if cfg.Logs.LogLevel != "warning" || cfg.Logs.StoreDays != 2 {
+	if cfg.Logs.LogLevel.Active != LogLevelWarning || cfg.Logs.StoreDays != 2 {
 		t.Fatalf("default logs config = %+v", cfg.Logs)
+	}
+	wantLevels := []string{LogLevelDebug, LogLevelInfo, LogLevelWarning, LogLevelError}
+	if strings.Join(cfg.Logs.LogLevel.List, ",") != strings.Join(wantLevels, ",") {
+		t.Fatalf("default log levels = %v, want %v", cfg.Logs.LogLevel.List, wantLevels)
+	}
+}
+
+func TestLoadLegacyLogLevelPopulatesSelectOptions(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "config.json")
+	data := `{"logs":{"log_level":" ERROR ","store_days":2}}`
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Logs.LogLevel.Active != LogLevelError || len(cfg.Logs.LogLevel.List) != 4 {
+		t.Fatalf("legacy log level = %+v", cfg.Logs.LogLevel)
+	}
+	if err := Save(path, cfg); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	saved, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(saved), `"log_level": {`) || !strings.Contains(string(saved), `"active": "error"`) {
+		t.Fatalf("log level was not saved in select format: %s", saved)
+	}
+}
+
+func TestValidateLogLevels(t *testing.T) {
+	t.Parallel()
+	for _, level := range []string{LogLevelDebug, LogLevelInfo, LogLevelWarning, LogLevelError} {
+		cfg := Default()
+		cfg.Logs.LogLevel.Active = level
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("log level %q: %v", level, err)
+		}
+	}
+	cfg := Default()
+	cfg.Logs.LogLevel.Active = "unexpected"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "logs.log_level") {
+		t.Fatalf("unexpected validation error: %v", err)
 	}
 }
 

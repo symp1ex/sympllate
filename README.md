@@ -11,8 +11,6 @@ Sympllate собирается в двух вариантах для Windows x64
 
 Активный provider задаётся в `provider.active`; поддерживаются `"auto"`, `"ollama"` и `"local"`. Массив `provider.list` содержит варианты для выпадающего списка окна настроек. В режиме `auto` полный локальный layout выбирает local provider, иначе используется Ollama. В режиме `local` отсутствие runtime или модели является ошибкой.
 
-Поля `defaultLanguagePair.first`, `defaultLanguagePair.second` и `fallbackTargetLanguage` используют тот же формат `{ "active": "...", "list": [...] }`. Старый строковый формат этих полей читается для совместимости и преобразуется при сохранении через окно настроек.
-
 Если `localModel.modelFile` пуст, в каталоге `models` должна находиться ровно одна модель с расширением `.gguf`. Относительный `modelFile` всегда разрешается относительно каталога `translator.exe`.
 
 Portable layout:
