@@ -42,7 +42,6 @@ export function TranslatorPanel({ config, languages }: Props) {
 
   return (
     <main className="app-shell">
-      <header><h1>Sympllate</h1><p>Локальный перевод без отправки текста в облачный сервис</p></header>
       <section className="language-row">
         <LanguageSelect id="source-language" label="Исходный язык" value={source} languages={languages} onChange={setSource} disabled={loading} />
         <button className="swap" onClick={swap} disabled={loading} aria-label="Поменять языки и тексты местами">⇄</button>

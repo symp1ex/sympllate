@@ -23,6 +23,9 @@ func RunMain(cfg config.Config, html string, service *app.Service, clip *clipboa
 	if err := bindCommon(w, "main", cfg, service, clip, popup); err != nil {
 		return err
 	}
+	if err := applyWindowChrome(w, 400, 300, nil); err != nil {
+		return err
+	}
 	w.SetHtml(html)
 	w.Run()
 	return nil

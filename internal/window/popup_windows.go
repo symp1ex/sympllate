@@ -22,15 +22,8 @@ const (
 	swShow                  = 5
 	swpNoActivate           = 0x0010
 	swpShowWindow           = 0x0040
-	swpNoSize               = 0x0001
-	swpNoMove               = 0x0002
-	swpNoZOrder             = 0x0004
-	swpFrameChanged         = 0x0020
 	hwndTopmost             = ^uintptr(0)
 	hwndTop                 = uintptr(0)
-	wsSysMenu               = 0x00080000
-	wsMinimizeBox           = 0x00020000
-	wsMaximizeBox           = 0x00010000
 	monitorDefaultToNearest = 2
 )
 
@@ -42,8 +35,6 @@ var (
 	getCursorPos        = windowUser32.NewProc("GetCursorPos")
 	monitorFromPoint    = windowUser32.NewProc("MonitorFromPoint")
 	getMonitorInfo      = windowUser32.NewProc("GetMonitorInfoW")
-	getWindowLong       = windowUser32.NewProc("GetWindowLongW")
-	setWindowLong       = windowUser32.NewProc("SetWindowLongW")
 )
 
 type point struct{ X, Y int32 }
@@ -101,16 +92,15 @@ func (p *Popup) run(ready chan<- error) {
 	p.hwnd = uintptr(w.Window())
 	p.mu.Unlock()
 	defer func() { p.mu.Lock(); p.w = nil; p.hwnd = 0; p.mu.Unlock(); w.Destroy() }()
-	styleIndex := ^uintptr(15)
-	style, _, _ := getWindowLong.Call(p.hwnd, styleIndex)
-	style &^= wsSysMenu | wsMinimizeBox | wsMaximizeBox
-	setWindowLong.Call(p.hwnd, styleIndex, style)
-	setWindowPos.Call(p.hwnd, 0, 0, 0, 0, 0, swpNoSize|swpNoMove|swpNoZOrder|swpNoActivate|swpFrameChanged)
-	showWindow.Call(p.hwnd, swHide)
 	if err := bindCommon(w, "popup", p.cfg, p.service, p.clip, p); err != nil {
 		ready <- err
 		return
 	}
+	if err := applyWindowChrome(w, 320, 240, p.Hide); err != nil {
+		ready <- err
+		return
+	}
+	showWindow.Call(p.hwnd, swHide)
 	w.SetHtml(p.html)
 	ready <- nil
 	w.Run()
@@ -139,6 +129,7 @@ func (p *Popup) setState(state app.PopupState, show bool) {
 }
 
 func (p *Popup) position(hwnd uintptr) {
+	restoreWindowIfNeeded(hwnd)
 	var cursor point
 	if result, _, _ := getCursorPos.Call(uintptr(unsafe.Pointer(&cursor))); result == 0 {
 		return

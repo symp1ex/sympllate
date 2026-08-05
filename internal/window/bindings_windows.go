@@ -31,6 +31,17 @@ func bindCommon(w webview.WebView, mode string, cfg config.Config, service *app.
 		}},
 		{"GetSupportedLanguages", func() []language.Language { return language.Supported() }},
 		{"GetWindowMode", func() string { return mode }},
+		{"WindowMinimize", func() { minimizeWindow(w) }},
+		{"WindowToggleMaximize", func() bool { return toggleWindowMaximized(w) }},
+		{"WindowClose", func() {
+			if mode == "popup" && popup != nil {
+				popup.Hide()
+				return
+			}
+			closeWindow(w)
+		}},
+		{"WindowDrag", func() { dragWindow(w) }},
+		{"WindowResize", func(hitTest float64) { resizeWindow(w, uintptr(hitTest)) }},
 		{"CopyText", func(text string) error {
 			if text == "" {
 				return errors.New("нечего копировать")

@@ -20,6 +20,11 @@ declare global {
     GetConfig(): Promise<ClientConfig>
     GetSupportedLanguages(): Promise<Language[]>
     GetWindowMode(): Promise<'main' | 'popup'>
+    WindowMinimize(): Promise<void>
+    WindowToggleMaximize(): Promise<boolean>
+    WindowClose(): Promise<void>
+    WindowDrag(): Promise<void>
+    WindowResize(hitTest: number): Promise<void>
     CopyText(text: string): Promise<void>
     HidePopup(): Promise<void>
     SetQuickTranslationTarget(target: string): Promise<void>

@@ -34,7 +34,6 @@ export function TranslationPopup({ languages }: { languages: Language[]; config:
 
   return (
     <main className="popup-shell">
-      <header className="popup-header"><strong>Быстрый перевод</strong><button className="icon-button" onClick={() => void window.HidePopup()} aria-label="Закрыть">×</button></header>
       <section className="language-row popup-languages">
         <LanguageSelect id="popup-from-language" label="Из" value={state.source || 'auto'} languages={languages} onChange={() => {}} disabled />
         <LanguageSelect id="popup-target" label="На" value={state.target || 'ru'} languages={languages} onChange={changeTarget} allowAuto={false} />
