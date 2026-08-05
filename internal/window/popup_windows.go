@@ -61,6 +61,7 @@ type Popup struct {
 	service *app.Service
 	clip    *clipboard.Manager
 	mu      sync.RWMutex
+	handler app.QuickTranslationHandler
 	w       webview.WebView
 	hwnd    uintptr
 	state   app.PopupState
@@ -69,6 +70,12 @@ type Popup struct {
 
 func NewPopup(cfg config.Config, html string, service *app.Service, clip *clipboard.Manager) *Popup {
 	return &Popup{cfg: cfg, html: html, service: service, clip: clip}
+}
+
+func (p *Popup) SetQuickTranslationHandler(handler app.QuickTranslationHandler) {
+	p.mu.Lock()
+	p.handler = handler
+	p.mu.Unlock()
 }
 
 func (p *Popup) Start() error {
@@ -168,11 +175,24 @@ func (p *Popup) position(hwnd uintptr) {
 
 func (p *Popup) Hide() {
 	p.mu.RLock()
-	hwnd := p.hwnd
+	hwnd, handler := p.hwnd, p.handler
 	p.mu.RUnlock()
 	if hwnd != 0 {
 		showWindow.Call(hwnd, swHide)
 	}
+	if handler != nil {
+		handler.EndQuickTranslation()
+	}
+}
+
+func (p *Popup) ChangeQuickTranslationTarget(target string) error {
+	p.mu.RLock()
+	handler := p.handler
+	p.mu.RUnlock()
+	if handler == nil {
+		return errors.New("обработчик быстрого перевода не настроен")
+	}
+	return handler.ChangeQuickTranslationTarget(target)
 }
 func (p *Popup) State() app.PopupState { p.mu.RLock(); defer p.mu.RUnlock(); return p.state }
 func (p *Popup) Close() {

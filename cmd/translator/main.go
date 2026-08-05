@@ -69,9 +69,12 @@ func run() error {
 	if err := popup.Start(); err != nil {
 		return err
 	}
-	controller := app.NewHotkeyController(ctx, cfg, service, detector, clip, popup, logger)
+	targets := window.NewOriginTargetManager()
+	controller := app.NewHotkeyController(ctx, cfg, service, detector, clip, targets, popup, logger)
+	popup.SetQuickTranslationHandler(controller)
 	hotkeyManager := hotkeys.NewManager(showCombination, replaceCombination, controller.ShowTranslation, controller.ReplaceSelection)
 	if err := hotkeyManager.Start(); err != nil {
+		controller.Close()
 		popup.Close()
 		return err
 	}
@@ -79,6 +82,7 @@ func run() error {
 	err = window.RunMain(cfg, html, service, clip, popup)
 	cancel()
 	hotkeyManager.Close()
+	controller.Close()
 	service.Wait()
 	popup.Close()
 	logger.Printf("application stopping")

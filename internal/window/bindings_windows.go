@@ -42,6 +42,12 @@ func bindCommon(w webview.WebView, mode string, cfg config.Config, service *app.
 				popup.Hide()
 			}
 		}},
+		{"SetQuickTranslationTarget", func(target string) error {
+			if popup == nil {
+				return errors.New("popup быстрого перевода недоступен")
+			}
+			return popup.ChangeQuickTranslationTarget(target)
+		}},
 		{"GetPopupState", func() app.PopupState {
 			if popup == nil {
 				return app.PopupState{}

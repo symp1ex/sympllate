@@ -8,7 +8,6 @@ export interface PopupState {
   source: string
   target: string
   detectedLanguage?: string
-  sourceText: string
   translatedText?: string
   loading: boolean
   error?: string
@@ -23,6 +22,7 @@ declare global {
     GetWindowMode(): Promise<'main' | 'popup'>
     CopyText(text: string): Promise<void>
     HidePopup(): Promise<void>
+    SetQuickTranslationTarget(target: string): Promise<void>
     GetPopupState(): Promise<PopupState>
   }
 }
@@ -43,4 +43,3 @@ export function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
   return typeof error === 'string' ? error : 'Неизвестная ошибка'
 }
-

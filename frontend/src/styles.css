@@ -30,8 +30,7 @@ textarea[readonly] { background: #151b22; }
 .popup-shell { padding: 12px 14px; min-height: 100vh; }
 .popup-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .icon-button { width: 32px; height: 30px; padding: 0; border: 0; background: transparent; font-size: 24px; }
-.popup-languages { grid-template-columns: 1fr auto 1fr; gap: 8px; margin-bottom: 9px; }
-.popup-source { max-height: 54px; overflow: hidden; padding: 8px 10px; border-radius: 7px; background: #191f28; color: #9eaabd; font-size: 12px; white-space: pre-wrap; }
+.popup-languages { grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 9px; }
 .popup-result { min-height: 78px; max-height: 110px; overflow: auto; margin-top: 8px; padding: 10px; border: 1px solid #343e4c; border-radius: 8px; background: #151a21; white-space: pre-wrap; line-height: 1.4; }
 .popup-actions { margin-top: 8px; min-height: 38px; }
 .popup-actions button { padding: 7px 10px; font-size: 12px; }

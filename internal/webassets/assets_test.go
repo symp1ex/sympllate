@@ -17,3 +17,19 @@ func TestHTMLInlinesProductionAssets(t *testing.T) {
 		t.Fatal("external frontend asset reference remains")
 	}
 }
+
+func TestPopupUsesAutomaticTargetTranslationWithoutSourceText(t *testing.T) {
+	page, err := HTML()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(page, "Перевести снова") {
+		t.Fatal("popup retry button remains in production assets")
+	}
+	if strings.Contains(page, "popup-source") {
+		t.Fatal("popup source text remains in production assets")
+	}
+	if !strings.Contains(page, "SetQuickTranslationTarget") {
+		t.Fatal("popup target language does not call the automatic translation binding")
+	}
+}
