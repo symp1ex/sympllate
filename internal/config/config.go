@@ -273,7 +273,7 @@ func (c Config) Validate() error {
 	if err := validateLanguageSetting("fallbackTargetLanguage", c.FallbackTargetLanguage); err != nil {
 		return err
 	}
-	if c.UI.MainWindowWidth < 400 || c.UI.MainWindowHeight < 300 || c.UI.PopupWidth < 320 || c.UI.PopupHeight < 240 {
+	if c.UI.MainWindowWidth < 476 || c.UI.MainWindowHeight < 561 || c.UI.PopupWidth < 320 || c.UI.PopupHeight < 240 {
 		return errors.New("размеры окон слишком малы")
 	}
 	if c.Limits.MaxInputCharacters <= 0 || c.Limits.ClipboardWaitMilliseconds <= 0 {

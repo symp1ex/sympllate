@@ -4,6 +4,7 @@ interface Props {
   children: ReactNode
   mode: 'main' | 'popup'
   onSettings?: () => void
+  lockContentOverflow?: boolean
 }
 
 const resizeHandles = [
@@ -17,7 +18,7 @@ const resizeHandles = [
   ['bottom-right', 17],
 ] as const
 
-export function WindowChrome({ children, mode, onSettings }: Props) {
+export function WindowChrome({ children, mode, onSettings, lockContentOverflow = false }: Props) {
   const resize = (event: PointerEvent<HTMLDivElement>, hitTest: number) => {
     if (event.button !== 0) return
     event.preventDefault()
@@ -90,7 +91,7 @@ export function WindowChrome({ children, mode, onSettings }: Props) {
           </button>
         </div>
       </header>
-      <div className="window-content">{children}</div>
+      <div className={lockContentOverflow ? 'window-content window-content--locked' : 'window-content'}>{children}</div>
     </div>
   )
 }

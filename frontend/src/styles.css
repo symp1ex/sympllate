@@ -40,6 +40,7 @@ button, input, select, textarea { font: inherit; }
 }
 
 .window-content { min-width: 0; min-height: 0; flex: 1 1 auto; overflow: auto; }
+.window-content--locked { overflow: hidden; }
 
 .window-resize-handle { position: fixed; z-index: 20; pointer-events: auto; background: transparent; }
 .window-resize-handle--left { left: 0; top: 1px; bottom: 1px; width: 3px; cursor: ew-resize; }
@@ -169,13 +170,16 @@ textarea[readonly] { background: rgba(12, 18, 27, 0.56); }
 .centered { min-height: 100%; display: grid; place-items: center; padding: 20px; }
 
 .settings-window {
-  width: 100%;
-  height: 100%;
+  --settings-scale: 0.75;
+  width: calc(100% / var(--settings-scale));
+  height: calc(100% / var(--settings-scale));
   min-height: 0;
   overflow: hidden;
   padding: 18px;
   color: var(--text-main);
   background: rgba(13, 19, 28, 0.44);
+  transform: scale(var(--settings-scale));
+  transform-origin: left top;
 }
 .settings-content-area {
   position: relative;

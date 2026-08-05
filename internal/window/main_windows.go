@@ -186,7 +186,7 @@ func (m *MainWindow) run() {
 		m.failOpen(fmt.Errorf("настроить bindings окна настроек: %w", err))
 		return
 	}
-	if err := applyWindowChrome(w, 400, 300, m.Hide); err != nil {
+	if err := applyWindowChrome(w, 476, 561, m.Hide); err != nil {
 		m.destroyWebView(w, hwnd)
 		m.failOpen(fmt.Errorf("настроить рамку основного окна: %w", err))
 		return

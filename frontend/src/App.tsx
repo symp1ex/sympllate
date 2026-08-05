@@ -57,6 +57,12 @@ export default function App() {
 
   if (!mode) return content
   return (
-    <WindowChrome mode={mode} onSettings={mode === 'main' ? () => setView('settings') : undefined}>{content}</WindowChrome>
+    <WindowChrome
+      mode={mode}
+      onSettings={mode === 'main' ? () => setView('settings') : undefined}
+      lockContentOverflow={mode === 'main' && view === 'settings'}
+    >
+      {content}
+    </WindowChrome>
   )
 }

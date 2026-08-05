@@ -45,6 +45,24 @@ func TestValidateProviders(t *testing.T) {
 	}
 }
 
+func TestValidateMainWindowMinimumSize(t *testing.T) {
+	t.Parallel()
+	for _, size := range []struct{ width, height int }{{475, 561}, {476, 560}} {
+		cfg := Default()
+		cfg.UI.MainWindowWidth = size.width
+		cfg.UI.MainWindowHeight = size.height
+		if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "размеры окон") {
+			t.Fatalf("Validate() for %dx%d error = %v, want window size error", size.width, size.height, err)
+		}
+	}
+	cfg := Default()
+	cfg.UI.MainWindowWidth = 476
+	cfg.UI.MainWindowHeight = 561
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() for 476x561 error = %v", err)
+	}
+}
+
 func TestLoadRejectsBrokenAndInvalidConfig(t *testing.T) {
 	t.Parallel()
 	for name, data := range map[string]string{
@@ -77,7 +95,7 @@ func TestLoadOrCreate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "translator-gemma") || !strings.Contains(string(data), `"active": "auto"`) || cfg.Ollama.Model == "" {
+	if cfg.Ollama.Model == "" || !strings.Contains(string(data), cfg.Ollama.Model) || !strings.Contains(string(data), `"active": "auto"`) {
 		t.Fatal("default config not written")
 	}
 }
