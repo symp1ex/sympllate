@@ -3,6 +3,7 @@ import type { PointerEvent, ReactNode } from 'react'
 interface Props {
   children: ReactNode
   mode: 'main' | 'popup'
+  onSettings?: () => void
 }
 
 const resizeHandles = [
@@ -16,7 +17,7 @@ const resizeHandles = [
   ['bottom-right', 17],
 ] as const
 
-export function WindowChrome({ children, mode }: Props) {
+export function WindowChrome({ children, mode, onSettings }: Props) {
   const resize = (event: PointerEvent<HTMLDivElement>, hitTest: number) => {
     if (event.button !== 0) return
     event.preventDefault()
@@ -45,6 +46,18 @@ export function WindowChrome({ children, mode }: Props) {
           <span className="custom-titlebar__name">Sympllate</span>
         </div>
         <div className="custom-titlebar__actions">
+          {mode === 'main' && onSettings && (
+            <button
+              type="button"
+              className="custom-titlebar__button custom-titlebar__button--settings"
+              aria-label="Settings"
+              title="Settings"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={onSettings}
+            >
+              ⚙
+            </button>
+          )}
           <button
             type="button"
             className="custom-titlebar__button"

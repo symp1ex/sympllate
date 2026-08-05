@@ -4,10 +4,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"syscall"
@@ -26,8 +28,15 @@ import (
 	"github.com/sympllate/translator/internal/window"
 )
 
+var errRestartRequested = errors.New("application restart requested")
+
 func main() {
-	if err := run(); err != nil {
+	if err := run(); errors.Is(err, errRestartRequested) {
+		if restartErr := restartApplication(); restartErr != nil {
+			showError(restartErr)
+			os.Exit(1)
+		}
+	} else if err != nil {
 		showError(err)
 		os.Exit(1)
 	}
@@ -51,7 +60,7 @@ func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	selectedProvider, localLayout, err := localmodel.SelectProvider(cfg.Provider, filepath.Dir(configPath), cfg.LocalModel)
+	selectedProvider, localLayout, err := localmodel.SelectProvider(cfg.Provider.Active, filepath.Dir(configPath), cfg.LocalModel)
 	if err != nil {
 		return err
 	}
@@ -123,8 +132,15 @@ func run() error {
 	}
 	logger.Printf("global hotkeys registered: show=%s replace=%s", showCombination.Display, replaceCombination.Display)
 
-	mainWindow := window.NewMainWindow(cfg, html, service, clip, popup, logger, showError)
-	systemTray := tray.New(mainWindow.Open, logger)
+	restartRequested := make(chan struct{}, 1)
+	requestRestart := func() {
+		select {
+		case restartRequested <- struct{}{}:
+		default:
+		}
+	}
+	mainWindow := window.NewMainWindow(cfg, configPath, html, service, clip, popup, logger, showError, requestRestart)
+	systemTray := tray.New(mainWindow.Open, mainWindow.OpenSettings, logger)
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
@@ -154,9 +170,33 @@ func run() error {
 		return fmt.Errorf("запустить system tray: %w", err)
 	}
 	logger.Printf("system tray started")
-	<-systemTray.Quit()
-	logger.Printf("Quit selected from system tray")
+	restart := false
+	select {
+	case <-systemTray.Quit():
+		logger.Printf("Quit selected from system tray")
+	case <-restartRequested:
+		restart = true
+		logger.Printf("application restart requested after settings save")
+	}
 	cleanup()
+	if restart {
+		return errRestartRequested
+	}
+	return nil
+}
+
+func restartApplication() error {
+	executable, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("определить приложение для перезапуска: %w", err)
+	}
+	command := exec.Command(executable, os.Args[1:]...)
+	if err := command.Start(); err != nil {
+		return fmt.Errorf("перезапустить приложение: %w", err)
+	}
+	if err := command.Process.Release(); err != nil {
+		return fmt.Errorf("освободить процесс перезапущенного приложения: %w", err)
+	}
 	return nil
 }
 

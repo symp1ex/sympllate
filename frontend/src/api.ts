@@ -12,6 +12,9 @@ export interface PopupState {
   loading: boolean
   error?: string
 }
+export type JsonSettingValue = string | number | boolean | null | JsonSettingObject | JsonSettingValue[]
+export interface JsonSettingObject { [key: string]: JsonSettingValue }
+export interface SelectSetting extends JsonSettingObject { active: string; list: string[] }
 
 declare global {
   interface Window {
@@ -20,6 +23,9 @@ declare global {
     GetConfig(): Promise<ClientConfig>
     GetSupportedLanguages(): Promise<Language[]>
     GetWindowMode(): Promise<'main' | 'popup'>
+    GetInitialView(): Promise<'main' | 'settings'>
+    GetSettingsConfig(): Promise<JsonSettingObject>
+    SaveSettingsConfig(config: JsonSettingObject): Promise<void>
     WindowMinimize(): Promise<void>
     WindowToggleMaximize(): Promise<boolean>
     WindowClose(): Promise<void>

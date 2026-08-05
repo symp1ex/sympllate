@@ -97,7 +97,7 @@ function Build-Portable {
     }
 
     $portableConfig = Get-Content -LiteralPath (Join-Path $projectRoot 'config.example.json') -Raw | ConvertFrom-Json
-    $portableConfig.provider = 'local'
+    $portableConfig.provider.active = 'local'
     $portableConfig.localModel.modelFile = ('models/' + $modelName)
     $configJSON = $portableConfig | ConvertTo-Json -Depth 10
     $utf8WithoutBOM = New-Object System.Text.UTF8Encoding($false)

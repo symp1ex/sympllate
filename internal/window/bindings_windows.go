@@ -4,6 +4,7 @@ package window
 
 import (
 	"errors"
+	"time"
 
 	webview "github.com/jchv/go-webview2"
 	"github.com/sympllate/translator/internal/app"
@@ -13,10 +14,43 @@ import (
 	"github.com/sympllate/translator/internal/translation"
 )
 
+func bindMainSettings(w webview.WebView, mainWindow *MainWindow) error {
+	bindings := []struct {
+		name string
+		fn   any
+	}{
+		{"GetInitialView", func() string { return mainWindow.currentView() }},
+		{"GetSettingsConfig", func() (config.Config, error) { return config.Load(mainWindow.cfgPath) }},
+		{"SaveSettingsConfig", func(cfg config.Config) error {
+			if err := config.Save(mainWindow.cfgPath, cfg); err != nil {
+				return err
+			}
+			if mainWindow.onRestart != nil {
+				go func() {
+					time.Sleep(200 * time.Millisecond)
+					mainWindow.onRestart()
+				}()
+			}
+			return nil
+		}},
+	}
+	for _, binding := range bindings {
+		if err := w.Bind(binding.name, binding.fn); err != nil {
+			return errors.New("создать binding " + binding.name + ": " + err.Error())
+		}
+	}
+	return nil
+}
+
 type ClientConfig struct {
-	DefaultLanguagePair    config.LanguagePair `json:"defaultLanguagePair"`
-	FallbackTargetLanguage string              `json:"fallbackTargetLanguage"`
-	MaxInputCharacters     int                 `json:"maxInputCharacters"`
+	DefaultLanguagePair    ClientLanguagePair `json:"defaultLanguagePair"`
+	FallbackTargetLanguage string             `json:"fallbackTargetLanguage"`
+	MaxInputCharacters     int                `json:"maxInputCharacters"`
+}
+
+type ClientLanguagePair struct {
+	First  string `json:"first"`
+	Second string `json:"second"`
 }
 
 func bindCommon(w webview.WebView, mode string, cfg config.Config, service *app.Service, clip *clipboard.Manager, popup *Popup) error {
@@ -27,7 +61,11 @@ func bindCommon(w webview.WebView, mode string, cfg config.Config, service *app.
 		{"Translate", func(req translation.TranslateRequest) (string, error) { return service.StartTranslate(req) }},
 		{"GetTranslation", func(id string) (app.JobStatus, error) { return service.Job(id) }},
 		{"GetConfig", func() ClientConfig {
-			return ClientConfig{cfg.DefaultLanguagePair, cfg.FallbackTargetLanguage, cfg.Limits.MaxInputCharacters}
+			return ClientConfig{
+				ClientLanguagePair{cfg.DefaultLanguagePair.First.Active, cfg.DefaultLanguagePair.Second.Active},
+				cfg.FallbackTargetLanguage.Active,
+				cfg.Limits.MaxInputCharacters,
+			}
 		}},
 		{"GetSupportedLanguages", func() []language.Language { return language.Supported() }},
 		{"GetWindowMode", func() string { return mode }},

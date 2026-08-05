@@ -16,6 +16,7 @@ import (
 )
 
 type mainWindowState uint8
+type mainWindowView string
 
 const (
 	mainWindowIdle mainWindowState = iota
@@ -25,41 +26,63 @@ const (
 	mainWindowStopped
 )
 
+const (
+	mainWindowViewMain     mainWindowView = "main"
+	mainWindowViewSettings mainWindowView = "settings"
+)
+
 type MainWindow struct {
-	cfg     config.Config
-	html    string
-	service *app.Service
-	clip    *clipboard.Manager
-	popup   *Popup
-	logger  *log.Logger
-	onError func(error)
+	cfg       config.Config
+	cfgPath   string
+	html      string
+	service   *app.Service
+	clip      *clipboard.Manager
+	popup     *Popup
+	logger    *log.Logger
+	onError   func(error)
+	onRestart func()
 
 	mu    sync.Mutex
 	state mainWindowState
 	w     webview.WebView
 	hwnd  uintptr
 	done  chan struct{}
+	view  mainWindowView
 }
 
-func NewMainWindow(cfg config.Config, html string, service *app.Service, clip *clipboard.Manager, popup *Popup, logger *log.Logger, onError func(error)) *MainWindow {
+func NewMainWindow(cfg config.Config, cfgPath, html string, service *app.Service, clip *clipboard.Manager, popup *Popup, logger *log.Logger, onError func(error), onRestart func()) *MainWindow {
 	return &MainWindow{
-		cfg:     cfg,
-		html:    html,
-		service: service,
-		clip:    clip,
-		popup:   popup,
-		logger:  logger,
-		onError: onError,
-		state:   mainWindowIdle,
+		cfg:       cfg,
+		cfgPath:   cfgPath,
+		html:      html,
+		service:   service,
+		clip:      clip,
+		popup:     popup,
+		logger:    logger,
+		onError:   onError,
+		onRestart: onRestart,
+		state:     mainWindowIdle,
+		view:      mainWindowViewMain,
 	}
 }
 
 // Open schedules the first WebView creation on its own OS thread, or shows the
 // existing instance. It intentionally returns before WebView creation begins.
 func (m *MainWindow) Open() {
-	start, w, hwnd := m.beginOpen()
+	m.open(mainWindowViewMain)
+}
+
+func (m *MainWindow) OpenSettings() {
+	m.open(mainWindowViewSettings)
+}
+
+func (m *MainWindow) open(view mainWindowView) {
+	start, w, hwnd := m.beginOpen(view)
 	if w != nil {
-		w.Dispatch(func() { showMainWindow(hwnd) })
+		w.Dispatch(func() {
+			showMainWindow(hwnd)
+			w.Eval("window.dispatchEvent(new CustomEvent('sympllate-view',{detail:'" + string(view) + "'}))")
+		})
 		return
 	}
 	if start {
@@ -106,9 +129,12 @@ func (m *MainWindow) Shutdown() {
 	}
 }
 
-func (m *MainWindow) beginOpen() (bool, webview.WebView, uintptr) {
+func (m *MainWindow) beginOpen(view mainWindowView) (bool, webview.WebView, uintptr) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.state != mainWindowStopping && m.state != mainWindowStopped {
+		m.view = view
+	}
 	switch m.state {
 	case mainWindowIdle:
 		m.state = mainWindowStarting
@@ -119,6 +145,12 @@ func (m *MainWindow) beginOpen() (bool, webview.WebView, uintptr) {
 	default:
 		return false, nil, 0
 	}
+}
+
+func (m *MainWindow) currentView() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return string(m.view)
 }
 
 func (m *MainWindow) run() {
@@ -147,6 +179,11 @@ func (m *MainWindow) run() {
 	if err := bindCommon(w, "main", m.cfg, m.service, m.clip, m.popup); err != nil {
 		m.destroyWebView(w, hwnd)
 		m.failOpen(fmt.Errorf("настроить основное окно: %w", err))
+		return
+	}
+	if err := bindMainSettings(w, m); err != nil {
+		m.destroyWebView(w, hwnd)
+		m.failOpen(fmt.Errorf("настроить bindings окна настроек: %w", err))
 		return
 	}
 	if err := applyWindowChrome(w, 400, 300, m.Hide); err != nil {

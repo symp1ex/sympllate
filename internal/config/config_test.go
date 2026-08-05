@@ -18,11 +18,14 @@ func TestLoadValidConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Ollama.Model != "m" || cfg.DefaultLanguagePair.Second != "en" {
+	if cfg.Ollama.Model != "m" || cfg.DefaultLanguagePair.Second.Active != "en" {
 		t.Fatalf("unexpected config: %+v", cfg)
 	}
-	if cfg.Provider != ProviderOllama {
-		t.Fatalf("legacy config provider = %q, want ollama", cfg.Provider)
+	if cfg.Provider.Active != ProviderOllama {
+		t.Fatalf("legacy config provider = %q, want ollama", cfg.Provider.Active)
+	}
+	if len(cfg.Provider.List) == 0 || len(cfg.DefaultLanguagePair.First.List) == 0 {
+		t.Fatal("legacy select values were not populated with default options")
 	}
 }
 
@@ -30,13 +33,13 @@ func TestValidateProviders(t *testing.T) {
 	t.Parallel()
 	for _, provider := range []string{ProviderAuto, ProviderOllama, ProviderLocal} {
 		cfg := Default()
-		cfg.Provider = provider
+		cfg.Provider.Active = provider
 		if err := cfg.Validate(); err != nil {
 			t.Errorf("provider %q: %v", provider, err)
 		}
 	}
 	cfg := Default()
-	cfg.Provider = "unexpected"
+	cfg.Provider.Active = "unexpected"
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "provider") {
 		t.Fatalf("unexpected validation error: %v", err)
 	}
@@ -45,10 +48,11 @@ func TestValidateProviders(t *testing.T) {
 func TestLoadRejectsBrokenAndInvalidConfig(t *testing.T) {
 	t.Parallel()
 	for name, data := range map[string]string{
-		"broken":   `{`,
-		"unknown":  `{"unexpected":true}`,
-		"invalid":  `{"ollama":{"baseUrl":"file:///tmp/x"}}`,
-		"trailing": `{} {}`,
+		"broken":         `{`,
+		"unknown":        `{"unexpected":true}`,
+		"unknown select": `{"provider":{"active":"auto","list":["auto"],"unexpected":true}}`,
+		"invalid":        `{"ollama":{"baseUrl":"file:///tmp/x"}}`,
+		"trailing":       `{} {}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.json")
@@ -73,7 +77,45 @@ func TestLoadOrCreate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "translator-gemma") || cfg.Ollama.Model == "" {
+	if !strings.Contains(string(data), "translator-gemma") || !strings.Contains(string(data), `"active": "auto"`) || cfg.Ollama.Model == "" {
 		t.Fatal("default config not written")
+	}
+}
+
+func TestSaveAndLoadSelectSettings(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "config.json")
+	cfg := Default()
+	cfg.Provider.Active = ProviderOllama
+	cfg.DefaultLanguagePair.First.Active = "de"
+	if err := Save(path, cfg); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if loaded.Provider.Active != ProviderOllama || loaded.DefaultLanguagePair.First.Active != "de" {
+		t.Fatalf("unexpected round trip config: %+v", loaded)
+	}
+}
+
+func TestSaveRejectsInvalidConfigBeforeWriting(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Default()
+	cfg.Provider.Active = "unexpected"
+	if err := Save(path, cfg); err == nil {
+		t.Fatal("Save() expected validation error")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "original" {
+		t.Fatalf("invalid config overwrote file: %q", data)
 	}
 }

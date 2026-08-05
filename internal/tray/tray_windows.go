@@ -39,8 +39,9 @@ const (
 	tpmRightButton = 0x0002
 	tpmReturnCmd   = 0x0100
 
-	menuOpen = 1
-	menuQuit = 2
+	menuOpen     = 1
+	menuSettings = 2
+	menuQuit     = 3
 
 	smCXSmallIcon = 49
 	smCYSmallIcon = 50
@@ -129,9 +130,10 @@ type notifyIconData struct {
 }
 
 type Tray struct {
-	logger *log.Logger
-	onOpen func()
-	quit   *quitSignal
+	logger     *log.Logger
+	onOpen     func()
+	onSettings func()
+	quit       *quitSignal
 
 	mu       sync.Mutex
 	launched bool
@@ -147,12 +149,13 @@ type Tray struct {
 	taskbarCreated uint32
 }
 
-func New(onOpen func(), logger *log.Logger) *Tray {
+func New(onOpen, onSettings func(), logger *log.Logger) *Tray {
 	return &Tray{
-		logger: logger,
-		onOpen: onOpen,
-		quit:   newQuitSignal(),
-		done:   make(chan struct{}),
+		logger:     logger,
+		onOpen:     onOpen,
+		onSettings: onSettings,
+		quit:       newQuitSignal(),
+		done:       make(chan struct{}),
 	}
 }
 
@@ -361,7 +364,9 @@ func (t *Tray) showMenu() {
 	}
 	defer destroyMenu.Call(menu)
 
-	if !appendMenuItem(menu, menuOpen, "Open") || !appendMenuItem(menu, menuQuit, "Quit") {
+	if !appendMenuItem(menu, menuOpen, "Open") ||
+		!appendMenuItem(menu, menuSettings, "Settings") ||
+		!appendMenuItem(menu, menuQuit, "Quit") {
 		t.logf("create tray menu items")
 		return
 	}
@@ -388,19 +393,24 @@ func (t *Tray) showMenu() {
 
 	switch command {
 	case menuOpen:
-		t.launchOpen()
+		t.launchAction(t.onOpen)
+	case menuSettings:
+		t.launchAction(t.onSettings)
 	case menuQuit:
 		t.requestQuit()
 	}
 }
 
 func (t *Tray) launchOpen() {
+	t.launchAction(t.onOpen)
+}
+
+func (t *Tray) launchAction(callback func()) {
 	t.mu.Lock()
-	if t.quitting || t.closing || t.onOpen == nil {
+	if t.quitting || t.closing || callback == nil {
 		t.mu.Unlock()
 		return
 	}
-	callback := t.onOpen
 	t.handlers.Add(1)
 	t.mu.Unlock()
 	go func() {

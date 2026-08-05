@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,15 +10,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/sympllate/translator/internal/language"
 )
 
 type Config struct {
-	Provider               string           `json:"provider,omitempty"`
+	Provider               SelectSetting    `json:"provider"`
 	LocalModel             LocalModelConfig `json:"localModel,omitempty"`
 	Ollama                 OllamaConfig     `json:"ollama"`
 	Hotkeys                HotkeyConfig     `json:"hotkeys"`
 	DefaultLanguagePair    LanguagePair     `json:"defaultLanguagePair"`
-	FallbackTargetLanguage string           `json:"fallbackTargetLanguage"`
+	FallbackTargetLanguage SelectSetting    `json:"fallbackTargetLanguage"`
 	UI                     UIConfig         `json:"ui"`
 	Limits                 LimitsConfig     `json:"limits"`
 }
@@ -27,6 +30,40 @@ const (
 	ProviderOllama = "ollama"
 	ProviderLocal  = "local"
 )
+
+type SelectSetting struct {
+	Active string   `json:"active"`
+	List   []string `json:"list"`
+}
+
+// UnmarshalJSON accepts the previous string representation so existing
+// config.json files can still be opened and then saved in the select format.
+func (s *SelectSetting) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return errors.New("пустое значение выпадающего списка")
+	}
+	if trimmed[0] == '"' {
+		var active string
+		if err := json.Unmarshal(trimmed, &active); err != nil {
+			return err
+		}
+		s.Active = active
+		return nil
+	}
+	if trimmed[0] != '{' {
+		return errors.New("выпадающий список должен быть строкой или объектом с active и list")
+	}
+	type selectSettingAlias SelectSetting
+	next := selectSettingAlias(*s)
+	decoder := json.NewDecoder(bytes.NewReader(trimmed))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&next); err != nil {
+		return err
+	}
+	*s = SelectSetting(next)
+	return nil
+}
 
 type LocalModelConfig struct {
 	ModelFile             string `json:"modelFile"`
@@ -50,8 +87,8 @@ type HotkeyConfig struct {
 }
 
 type LanguagePair struct {
-	First  string `json:"first"`
-	Second string `json:"second"`
+	First  SelectSetting `json:"first"`
+	Second SelectSetting `json:"second"`
 }
 
 type UIConfig struct {
@@ -68,16 +105,31 @@ type LimitsConfig struct {
 }
 
 func Default() Config {
+	languages := supportedTargetLanguages()
 	return Config{
-		Provider:               ProviderAuto,
-		LocalModel:             LocalModelConfig{StartupTimeoutSeconds: 180, FitTargetMiB: 1024},
-		Ollama:                 OllamaConfig{BaseURL: "http://127.0.0.1:11434", Model: "translator-gemma", TimeoutSeconds: 120, KeepAlive: "10m", NumCtx: 2048, NumPredict: 1024, Temperature: 0},
-		Hotkeys:                HotkeyConfig{ShowTranslation: "Ctrl+Alt+T", ReplaceSelection: "Ctrl+Alt+R"},
-		DefaultLanguagePair:    LanguagePair{First: "ru", Second: "en"},
-		FallbackTargetLanguage: "ru",
+		Provider:               newSelectSetting(ProviderAuto, []string{ProviderAuto, ProviderOllama, ProviderLocal}),
+		LocalModel:             LocalModelConfig{ModelFile: "translator.gguf", StartupTimeoutSeconds: 180, FitTargetMiB: 1024},
+		Ollama:                 OllamaConfig{BaseURL: "http://127.0.0.1:11434", Model: "translategemma:latest", TimeoutSeconds: 120, KeepAlive: "10m", NumCtx: 2048, NumPredict: 1024, Temperature: 0},
+		Hotkeys:                HotkeyConfig{ShowTranslation: "Ctrl+Win+X", ReplaceSelection: "Ctrl+Win+R"},
+		DefaultLanguagePair:    LanguagePair{First: newSelectSetting("ru", languages), Second: newSelectSetting("en", languages)},
+		FallbackTargetLanguage: newSelectSetting("ru", languages),
 		UI:                     UIConfig{MainWindowWidth: 900, MainWindowHeight: 620, PopupWidth: 520, PopupHeight: 360, AlwaysOnTopPopup: true},
 		Limits:                 LimitsConfig{MaxInputCharacters: 12000, ClipboardWaitMilliseconds: 800},
 	}
+}
+
+func newSelectSetting(active string, values []string) SelectSetting {
+	return SelectSetting{Active: active, List: append([]string(nil), values...)}
+}
+
+func supportedTargetLanguages() []string {
+	values := make([]string, 0, len(language.Supported()))
+	for _, item := range language.Supported() {
+		if item.Code != "auto" {
+			values = append(values, item.Code)
+		}
+	}
+	return values
 }
 
 func ExecutableDir() (string, error) {
@@ -107,7 +159,8 @@ func Load(path string) (Config, error) {
 	}
 	// Provider was introduced after the first config format. Its absence must
 	// keep selecting Ollama instead of changing existing installations to auto.
-	cfg := Config{Provider: ProviderOllama}
+	cfg := Default()
+	cfg.Provider.Active = ProviderOllama
 	decoder := json.NewDecoder(strings.NewReader(string(data)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&cfg); err != nil {
@@ -142,6 +195,21 @@ func LoadOrCreate(path string) (Config, bool, error) {
 	return cfg, true, nil
 }
 
+func Save(path string, cfg Config) error {
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("сформировать конфигурацию: %w", err)
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("сохранить config.json: %w", err)
+	}
+	return nil
+}
+
 func unwrapPathError(err error) error {
 	for err != nil {
 		var pathErr *os.PathError
@@ -154,12 +222,22 @@ func unwrapPathError(err error) error {
 }
 
 func (c Config) Validate() error {
-	switch c.Provider {
+	if err := validateSelectSetting("provider", c.Provider); err != nil {
+		return err
+	}
+	switch c.Provider.Active {
 	case ProviderAuto, ProviderOllama, ProviderLocal:
 	default:
 		return errors.New("provider должен быть auto, ollama или local")
 	}
-	if c.Provider == ProviderAuto || c.Provider == ProviderLocal {
+	for _, provider := range c.Provider.List {
+		switch provider {
+		case ProviderAuto, ProviderOllama, ProviderLocal:
+		default:
+			return fmt.Errorf("provider.list содержит неизвестное значение %q", provider)
+		}
+	}
+	if c.Provider.Active == ProviderAuto || c.Provider.Active == ProviderLocal {
 		if c.LocalModel.StartupTimeoutSeconds <= 0 {
 			return errors.New("localModel.startupTimeoutSeconds должен быть больше нуля")
 		}
@@ -183,17 +261,53 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Hotkeys.ShowTranslation) == "" || strings.TrimSpace(c.Hotkeys.ReplaceSelection) == "" {
 		return errors.New("обе глобальные горячие клавиши обязательны")
 	}
-	if !validLanguageCode(c.DefaultLanguagePair.First) || !validLanguageCode(c.DefaultLanguagePair.Second) || c.DefaultLanguagePair.First == "auto" || c.DefaultLanguagePair.Second == "auto" || c.DefaultLanguagePair.First == c.DefaultLanguagePair.Second {
+	if err := validateLanguageSetting("defaultLanguagePair.first", c.DefaultLanguagePair.First); err != nil {
+		return err
+	}
+	if err := validateLanguageSetting("defaultLanguagePair.second", c.DefaultLanguagePair.Second); err != nil {
+		return err
+	}
+	if c.DefaultLanguagePair.First.Active == c.DefaultLanguagePair.Second.Active {
 		return errors.New("defaultLanguagePair должна содержать два разных языка")
 	}
-	if !validLanguageCode(c.FallbackTargetLanguage) || c.FallbackTargetLanguage == "auto" {
-		return errors.New("fallbackTargetLanguage не может быть пустым")
+	if err := validateLanguageSetting("fallbackTargetLanguage", c.FallbackTargetLanguage); err != nil {
+		return err
 	}
 	if c.UI.MainWindowWidth < 400 || c.UI.MainWindowHeight < 300 || c.UI.PopupWidth < 320 || c.UI.PopupHeight < 240 {
 		return errors.New("размеры окон слишком малы")
 	}
 	if c.Limits.MaxInputCharacters <= 0 || c.Limits.ClipboardWaitMilliseconds <= 0 {
 		return errors.New("limits должны быть больше нуля")
+	}
+	return nil
+}
+
+func validateSelectSetting(name string, setting SelectSetting) error {
+	if strings.TrimSpace(setting.Active) == "" {
+		return fmt.Errorf("%s.active не может быть пустым", name)
+	}
+	if len(setting.List) == 0 {
+		return fmt.Errorf("%s.list не может быть пустым", name)
+	}
+	for _, option := range setting.List {
+		if option == setting.Active {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s.active должен присутствовать в list", name)
+}
+
+func validateLanguageSetting(name string, setting SelectSetting) error {
+	if err := validateSelectSetting(name, setting); err != nil {
+		return err
+	}
+	if !validLanguageCode(setting.Active) || setting.Active == "auto" {
+		return fmt.Errorf("%s.active должен содержать код поддерживаемого языка", name)
+	}
+	for _, code := range setting.List {
+		if !validLanguageCode(code) || code == "auto" {
+			return fmt.Errorf("%s.list содержит недопустимый язык %q", name, code)
+		}
 	}
 	return nil
 }

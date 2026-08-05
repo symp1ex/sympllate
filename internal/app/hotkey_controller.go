@@ -267,8 +267,8 @@ func (c *HotkeyController) showFailedSession(generation uint64, origin OriginTar
 		id:               c.nextSessionID,
 		clipboard:        previous,
 		origin:           origin,
-		source:           c.cfg.DefaultLanguagePair.First,
-		target:           c.cfg.DefaultLanguagePair.Second,
+		source:           c.cfg.DefaultLanguagePair.First.Active,
+		target:           c.cfg.DefaultLanguagePair.Second.Active,
 		translationError: cause.Error(),
 		err:              cause.Error(),
 	}
@@ -500,7 +500,12 @@ func (c *HotkeyController) clipboardWait() time.Duration {
 }
 
 func (c *HotkeyController) direction(text string) language.Direction {
-	return language.ChooseDirection(c.detector.Detect(text), c.cfg.DefaultLanguagePair.First, c.cfg.DefaultLanguagePair.Second, c.cfg.FallbackTargetLanguage)
+	return language.ChooseDirection(
+		c.detector.Detect(text),
+		c.cfg.DefaultLanguagePair.First.Active,
+		c.cfg.DefaultLanguagePair.Second.Active,
+		c.cfg.FallbackTargetLanguage.Active,
+	)
 }
 
 func (c *HotkeyController) failReplace(err error) {
