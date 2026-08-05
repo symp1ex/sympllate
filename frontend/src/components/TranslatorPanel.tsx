@@ -43,18 +43,18 @@ export function TranslatorPanel({ config, languages }: Props) {
   return (
     <main className="app-shell">
       <section className="language-row">
-        <LanguageSelect id="source-language" label="Исходный язык" value={source} languages={languages} onChange={setSource} disabled={loading} />
-        <button className="swap" onClick={swap} disabled={loading} aria-label="Поменять языки и тексты местами">⇄</button>
-        <LanguageSelect id="target-language" label="Целевой язык" value={target} languages={languages} onChange={setTarget} disabled={loading} allowAuto={false} />
+        <LanguageSelect id="source-language" label="Source language" value={source} languages={languages} onChange={setSource} disabled={loading} />
+        <button className="swap" onClick={swap} disabled={loading} aria-label="Swap languages and texts">⇄</button>
+        <LanguageSelect id="target-language" label="Target language" value={target} languages={languages} onChange={setTarget} disabled={loading} allowAuto={false} />
       </section>
       <section className="text-grid">
-        <label><span>Исходный текст</span><textarea value={sourceText} maxLength={config.maxInputCharacters} onChange={(event) => setSourceText(event.target.value)} onKeyDown={(event) => { if (event.ctrlKey && event.key === 'Enter') { event.preventDefault(); void runTranslation() } }} placeholder="Введите текст…" disabled={loading} /></label>
-        <label><span>Перевод</span><textarea value={translatedText} readOnly placeholder="Здесь появится перевод" /></label>
+        <label><span>Source text</span><textarea value={sourceText} maxLength={config.maxInputCharacters} onChange={(event) => setSourceText(event.target.value)} onKeyDown={(event) => { if (event.ctrlKey && event.key === 'Enter') { event.preventDefault(); void runTranslation() } }} placeholder="Enter text…" disabled={loading} /></label>
+        <label><span>Translation</span><textarea value={translatedText} readOnly placeholder="The translation will appear here" /></label>
       </section>
       {error && <ErrorMessage message={error} />}
       <div className="actions">
-        <button className="primary" onClick={() => void runTranslation()} disabled={loading || !sourceText.trim()}>{loading ? 'Переводим…' : 'Перевести'}</button>
-        <button onClick={() => void copyTranslation()} disabled={!translatedText}>Копировать перевод</button>
+        <button className="primary" onClick={() => void runTranslation()} disabled={loading || !sourceText.trim()}>{loading ? 'Translating…' : 'Translate'}</button>
+        <button onClick={() => void copyTranslation()} disabled={!translatedText}>Copy translation</button>
         {loading && <LoadingIndicator />}
         <span className="hint">Ctrl+Enter</span>
       </div>

@@ -48,7 +48,7 @@ func TestWaitForReadyTimeout(t *testing.T) {
 	t.Parallel()
 	done := make(chan struct{})
 	err := waitForReady(t.Context(), &http.Client{Timeout: time.Millisecond}, "http://127.0.0.1:1/health", "key", done, func() error { return nil }, 20*time.Millisecond, time.Millisecond)
-	if err == nil || !strings.Contains(err.Error(), "timeout") {
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
 		t.Fatalf("waitForReady() error = %v", err)
 	}
 }

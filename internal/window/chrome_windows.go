@@ -113,7 +113,7 @@ func applyWindowChrome(w webview.WebView, minWidth, minHeight int, onClose func(
 
 	hwnd := uintptr(w.Window())
 	if hwnd == 0 {
-		return errors.New("не удалось применить кастомную рамку: HWND окна пуст")
+		return errors.New("failed to apply custom frame: window HWND is empty")
 	}
 
 	chromeWindows.Store(hwnd, chromeOptions{
@@ -127,7 +127,7 @@ func applyWindowChrome(w webview.WebView, minWidth, minHeight int, onClose func(
 	oldProc, _, _ := chromeGetWindowLongPtr.Call(hwnd, chromeGWLPWndProc)
 	if oldProc == 0 {
 		chromeWindows.Delete(hwnd)
-		return errors.New("не удалось получить обработчик окна для кастомной рамки")
+		return errors.New("failed to get the window handler for the custom frame")
 	}
 	chromeOldProcs.Store(hwnd, oldProc)
 	chromeSetWindowLongPtr.Call(hwnd, chromeGWLPWndProc, chromeWindowProc)

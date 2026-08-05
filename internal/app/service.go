@@ -43,13 +43,13 @@ func NewService(ctx context.Context, translator Translator, detector language.De
 
 func (s *Service) StartTranslate(req translation.TranslateRequest) (string, error) {
 	if !s.manualBusy.CompareAndSwap(false, true) {
-		return "", errors.New("предыдущий перевод ещё выполняется")
+		return "", errors.New("previous translation is still in progress")
 	}
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
 		s.manualBusy.Store(false)
-		return "", errors.New("сервис перевода завершает работу")
+		return "", errors.New("translation service is shutting down")
 	}
 	id := strconv.FormatUint(s.nextID.Add(1), 10)
 	s.jobs[id] = JobStatus{State: "pending"}
@@ -89,7 +89,7 @@ func (s *Service) Job(id string) (JobStatus, error) {
 	defer s.mu.Unlock()
 	status, ok := s.jobs[id]
 	if !ok {
-		return JobStatus{}, fmt.Errorf("задание перевода %q не найдено", id)
+		return JobStatus{}, fmt.Errorf("translation job %q not found", id)
 	}
 	if status.State != "pending" {
 		delete(s.jobs, id)
@@ -102,7 +102,7 @@ func (s *Service) Translate(ctx context.Context, req translation.TranslateReques
 	closed := s.closed
 	s.mu.Unlock()
 	if closed {
-		return translation.TranslateResult{}, errors.New("сервис перевода завершает работу")
+		return translation.TranslateResult{}, errors.New("translation service is shutting down")
 	}
 	result, err := s.translator.Translate(ctx, req)
 	if err != nil {

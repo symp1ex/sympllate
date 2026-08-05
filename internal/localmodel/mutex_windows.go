@@ -29,16 +29,16 @@ func AcquireInstanceLock(executableDir string) (*InstanceLock, error) {
 	sum := sha256.Sum256([]byte(identity))
 	name, err := syscall.UTF16PtrFromString("Local\\SympllatePortable-" + hex.EncodeToString(sum[:16]))
 	if err != nil {
-		return nil, fmt.Errorf("сформировать имя single-instance mutex: %w", err)
+		return nil, fmt.Errorf("format single-instance mutex name: %w", err)
 	}
 	result, _, callErr := createMutexW.Call(0, 0, uintptr(unsafe.Pointer(name)))
 	if result == 0 {
-		return nil, fmt.Errorf("создать single-instance mutex: %w", callErr)
+		return nil, fmt.Errorf("create single-instance mutex: %w", callErr)
 	}
 	handle := syscall.Handle(result)
 	if errors.Is(callErr, errorAlreadyExists) {
 		_ = syscall.CloseHandle(handle)
-		return nil, errors.New("Portable-версия Sympllate уже запущена из этого каталога")
+		return nil, errors.New("the portable version of Sympllate is already running from this directory")
 	}
 	return &InstanceLock{handle: handle}, nil
 }

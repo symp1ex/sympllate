@@ -51,7 +51,7 @@ func TestValidateMainWindowMinimumSize(t *testing.T) {
 		cfg := Default()
 		cfg.UI.MainWindowWidth = size.width
 		cfg.UI.MainWindowHeight = size.height
-		if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "размеры окон") {
+		if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "window dimensions") {
 			t.Fatalf("Validate() for %dx%d error = %v, want window size error", size.width, size.height, err)
 		}
 	}

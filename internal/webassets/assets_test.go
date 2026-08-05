@@ -23,7 +23,7 @@ func TestPopupUsesAutomaticTargetTranslationWithoutSourceText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(page, "Перевести снова") {
+	if strings.Contains(page, "Translate again") {
 		t.Fatal("popup retry button remains in production assets")
 	}
 	if strings.Contains(page, "popup-source") {

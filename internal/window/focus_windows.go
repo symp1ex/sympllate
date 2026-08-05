@@ -61,15 +61,15 @@ func NewOriginTargetManager() *OriginTargetManager {
 func (m *OriginTargetManager) Capture() (app.OriginTarget, error) {
 	hwnd := m.foreground()
 	if hwnd == 0 {
-		return app.OriginTarget{}, errors.New("не удалось определить активное исходное окно")
+		return app.OriginTarget{}, errors.New("failed to determine the active source window")
 	}
 	threadID, processID := m.identity(hwnd)
 	if threadID == 0 || processID == 0 || !m.exists(hwnd) {
-		return app.OriginTarget{}, errors.New("исходное окно больше недоступно")
+		return app.OriginTarget{}, errors.New("source window is no longer available")
 	}
 	focus, ok := m.focus(threadID)
 	if !ok || focus == 0 {
-		return app.OriginTarget{}, errors.New("не удалось определить исходное поле с фокусом ввода")
+		return app.OriginTarget{}, errors.New("failed to determine the source input field")
 	}
 	return app.OriginTarget{Window: hwnd, Focus: focus, ThreadID: threadID, ProcessID: processID}, nil
 }
@@ -91,13 +91,13 @@ func (m *OriginTargetManager) Exists(target app.OriginTarget) bool {
 
 func (m *OriginTargetManager) Activate(ctx context.Context, target app.OriginTarget) error {
 	if !m.Exists(target) {
-		return errors.New("исходное окно или поле ввода закрыто")
+		return errors.New("source window or input field is closed")
 	}
 	if m.isActive(target) {
 		return nil
 	}
 	if !m.activate(target.Window) {
-		return errors.New("Windows отклонила активацию исходного окна")
+		return errors.New("Windows rejected activation of the source window")
 	}
 	deadline := time.NewTimer(m.timeout)
 	defer deadline.Stop()
@@ -111,10 +111,10 @@ func (m *OriginTargetManager) Activate(ctx context.Context, target app.OriginTar
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-deadline.C:
-			return errors.New("истекло время ожидания возврата фокуса в исходное поле")
+			return errors.New("timed out waiting to restore focus to the source field")
 		case <-ticker.C:
 			if !m.Exists(target) {
-				return errors.New("исходное окно или поле ввода закрыто во время активации")
+				return errors.New("source window or input field was closed during activation")
 			}
 		}
 	}

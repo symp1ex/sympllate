@@ -41,7 +41,7 @@ type SelectSetting struct {
 func (s *SelectSetting) UnmarshalJSON(data []byte) error {
 	trimmed := bytes.TrimSpace(data)
 	if len(trimmed) == 0 {
-		return errors.New("пустое значение выпадающего списка")
+		return errors.New("empty select value")
 	}
 	if trimmed[0] == '"' {
 		var active string
@@ -52,7 +52,7 @@ func (s *SelectSetting) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 	if trimmed[0] != '{' {
-		return errors.New("выпадающий список должен быть строкой или объектом с active и list")
+		return errors.New("select setting must be a string or an object with active and list")
 	}
 	type selectSettingAlias SelectSetting
 	next := selectSettingAlias(*s)
@@ -135,7 +135,7 @@ func supportedTargetLanguages() []string {
 func ExecutableDir() (string, error) {
 	executable, err := os.Executable()
 	if err != nil {
-		return "", fmt.Errorf("определить путь приложения: %w", err)
+		return "", fmt.Errorf("determine application path: %w", err)
 	}
 	resolved, err := filepath.EvalSymlinks(executable)
 	if err == nil {
@@ -155,7 +155,7 @@ func ExecutablePath() (string, error) {
 func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return Config{}, fmt.Errorf("прочитать конфигурацию %q: %w", path, err)
+		return Config{}, fmt.Errorf("read configuration %q: %w", path, err)
 	}
 	// Provider was introduced after the first config format. Its absence must
 	// keep selecting Ollama instead of changing existing installations to auto.
@@ -164,10 +164,10 @@ func Load(path string) (Config, error) {
 	decoder := json.NewDecoder(strings.NewReader(string(data)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&cfg); err != nil {
-		return Config{}, fmt.Errorf("повреждён config.json: %w", err)
+		return Config{}, fmt.Errorf("invalid config.json: %w", err)
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return Config{}, errors.New("повреждён config.json: после корневого объекта есть лишние данные")
+		return Config{}, errors.New("invalid config.json: extra data follows the root object")
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -186,11 +186,11 @@ func LoadOrCreate(path string) (Config, bool, error) {
 	cfg = Default()
 	data, marshalErr := json.MarshalIndent(cfg, "", "  ")
 	if marshalErr != nil {
-		return Config{}, false, fmt.Errorf("сформировать конфигурацию: %w", marshalErr)
+		return Config{}, false, fmt.Errorf("marshal configuration: %w", marshalErr)
 	}
 	data = append(data, '\n')
 	if writeErr := os.WriteFile(path, data, 0o600); writeErr != nil {
-		return Config{}, false, fmt.Errorf("создать config.json рядом с приложением: %w", writeErr)
+		return Config{}, false, fmt.Errorf("create config.json next to the application: %w", writeErr)
 	}
 	return cfg, true, nil
 }
@@ -201,11 +201,11 @@ func Save(path string, cfg Config) error {
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		return fmt.Errorf("сформировать конфигурацию: %w", err)
+		return fmt.Errorf("marshal configuration: %w", err)
 	}
 	data = append(data, '\n')
 	if err := os.WriteFile(path, data, 0o600); err != nil {
-		return fmt.Errorf("сохранить config.json: %w", err)
+		return fmt.Errorf("save config.json: %w", err)
 	}
 	return nil
 }
@@ -228,38 +228,38 @@ func (c Config) Validate() error {
 	switch c.Provider.Active {
 	case ProviderAuto, ProviderOllama, ProviderLocal:
 	default:
-		return errors.New("provider должен быть auto, ollama или local")
+		return errors.New("provider must be auto, ollama, or local")
 	}
 	for _, provider := range c.Provider.List {
 		switch provider {
 		case ProviderAuto, ProviderOllama, ProviderLocal:
 		default:
-			return fmt.Errorf("provider.list содержит неизвестное значение %q", provider)
+			return fmt.Errorf("provider.list contains unknown value %q", provider)
 		}
 	}
 	if c.Provider.Active == ProviderAuto || c.Provider.Active == ProviderLocal {
 		if c.LocalModel.StartupTimeoutSeconds <= 0 {
-			return errors.New("localModel.startupTimeoutSeconds должен быть больше нуля")
+			return errors.New("localModel.startupTimeoutSeconds must be greater than zero")
 		}
 		if c.LocalModel.FitTargetMiB <= 0 {
-			return errors.New("localModel.fitTargetMiB должен быть больше нуля")
+			return errors.New("localModel.fitTargetMiB must be greater than zero")
 		}
 	}
 	parsed, err := url.ParseRequestURI(strings.TrimSpace(c.Ollama.BaseURL))
 	if err != nil || parsed.Host == "" || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return errors.New("ollama.baseUrl должен быть корректным HTTP(S) URL")
+		return errors.New("ollama.baseUrl must be a valid HTTP(S) URL")
 	}
 	if strings.TrimSpace(c.Ollama.Model) == "" {
-		return errors.New("ollama.model не может быть пустым")
+		return errors.New("ollama.model cannot be empty")
 	}
 	if c.Ollama.TimeoutSeconds <= 0 || c.Ollama.NumCtx <= 0 || c.Ollama.NumPredict <= 0 {
-		return errors.New("timeoutSeconds, numCtx и numPredict должны быть больше нуля")
+		return errors.New("timeoutSeconds, numCtx, and numPredict must be greater than zero")
 	}
 	if c.Ollama.Temperature < 0 {
-		return errors.New("ollama.temperature не может быть отрицательной")
+		return errors.New("ollama.temperature cannot be negative")
 	}
 	if strings.TrimSpace(c.Hotkeys.ShowTranslation) == "" || strings.TrimSpace(c.Hotkeys.ReplaceSelection) == "" {
-		return errors.New("обе глобальные горячие клавиши обязательны")
+		return errors.New("both global hotkeys are required")
 	}
 	if err := validateLanguageSetting("defaultLanguagePair.first", c.DefaultLanguagePair.First); err != nil {
 		return err
@@ -268,33 +268,33 @@ func (c Config) Validate() error {
 		return err
 	}
 	if c.DefaultLanguagePair.First.Active == c.DefaultLanguagePair.Second.Active {
-		return errors.New("defaultLanguagePair должна содержать два разных языка")
+		return errors.New("defaultLanguagePair must contain two different languages")
 	}
 	if err := validateLanguageSetting("fallbackTargetLanguage", c.FallbackTargetLanguage); err != nil {
 		return err
 	}
 	if c.UI.MainWindowWidth < 476 || c.UI.MainWindowHeight < 561 || c.UI.PopupWidth < 320 || c.UI.PopupHeight < 240 {
-		return errors.New("размеры окон слишком малы")
+		return errors.New("window dimensions are too small")
 	}
 	if c.Limits.MaxInputCharacters <= 0 || c.Limits.ClipboardWaitMilliseconds <= 0 {
-		return errors.New("limits должны быть больше нуля")
+		return errors.New("limits must be greater than zero")
 	}
 	return nil
 }
 
 func validateSelectSetting(name string, setting SelectSetting) error {
 	if strings.TrimSpace(setting.Active) == "" {
-		return fmt.Errorf("%s.active не может быть пустым", name)
+		return fmt.Errorf("%s.active cannot be empty", name)
 	}
 	if len(setting.List) == 0 {
-		return fmt.Errorf("%s.list не может быть пустым", name)
+		return fmt.Errorf("%s.list cannot be empty", name)
 	}
 	for _, option := range setting.List {
 		if option == setting.Active {
 			return nil
 		}
 	}
-	return fmt.Errorf("%s.active должен присутствовать в list", name)
+	return fmt.Errorf("%s.active must be present in list", name)
 }
 
 func validateLanguageSetting(name string, setting SelectSetting) error {
@@ -302,11 +302,11 @@ func validateLanguageSetting(name string, setting SelectSetting) error {
 		return err
 	}
 	if !validLanguageCode(setting.Active) || setting.Active == "auto" {
-		return fmt.Errorf("%s.active должен содержать код поддерживаемого языка", name)
+		return fmt.Errorf("%s.active must contain a supported language code", name)
 	}
 	for _, code := range setting.List {
 		if !validLanguageCode(code) || code == "auto" {
-			return fmt.Errorf("%s.list содержит недопустимый язык %q", name, code)
+			return fmt.Errorf("%s.list contains invalid language %q", name, code)
 		}
 	}
 	return nil

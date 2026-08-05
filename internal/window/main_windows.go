@@ -167,28 +167,28 @@ func (m *MainWindow) run() {
 		},
 	})
 	if w == nil {
-		m.failOpen(errors.New("не удалось создать основное окно WebView2; проверьте наличие Microsoft Edge WebView2 Runtime"))
+		m.failOpen(errors.New("failed to create the main WebView2 window; make sure Microsoft Edge WebView2 Runtime is installed"))
 		return
 	}
 	hwnd := uintptr(w.Window())
 	if hwnd == 0 {
 		m.destroyWebView(w, hwnd)
-		m.failOpen(errors.New("основное окно WebView2 не предоставило HWND"))
+		m.failOpen(errors.New("the main WebView2 window did not provide an HWND"))
 		return
 	}
 	if err := bindCommon(w, "main", m.cfg, m.service, m.clip, m.popup); err != nil {
 		m.destroyWebView(w, hwnd)
-		m.failOpen(fmt.Errorf("настроить основное окно: %w", err))
+		m.failOpen(fmt.Errorf("configure main window: %w", err))
 		return
 	}
 	if err := bindMainSettings(w, m); err != nil {
 		m.destroyWebView(w, hwnd)
-		m.failOpen(fmt.Errorf("настроить bindings окна настроек: %w", err))
+		m.failOpen(fmt.Errorf("configure settings window bindings: %w", err))
 		return
 	}
 	if err := applyWindowChrome(w, 476, 561, m.Hide); err != nil {
 		m.destroyWebView(w, hwnd)
-		m.failOpen(fmt.Errorf("настроить рамку основного окна: %w", err))
+		m.failOpen(fmt.Errorf("configure main window frame: %w", err))
 		return
 	}
 	w.SetHtml(m.html)

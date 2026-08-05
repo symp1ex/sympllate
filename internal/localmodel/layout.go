@@ -21,7 +21,7 @@ type Layout struct {
 func ResolveLayout(executableDir string, cfg config.LocalModelConfig) (Layout, error) {
 	serverPath := filepath.Join(executableDir, "runtime", "llama", "llama-server.exe")
 	if err := requireFile(serverPath); err != nil {
-		return Layout{}, fmt.Errorf("локальный runtime не найден: %w", err)
+		return Layout{}, fmt.Errorf("local runtime not found: %w", err)
 	}
 	modelPath, err := ResolveModel(executableDir, cfg.ModelFile)
 	if err != nil {
@@ -38,10 +38,10 @@ func ResolveModel(executableDir, configuredPath string) (string, error) {
 		}
 		path = filepath.Clean(path)
 		if !strings.EqualFold(filepath.Ext(path), ".gguf") {
-			return "", fmt.Errorf("локальная модель должна иметь расширение .gguf: %q", path)
+			return "", fmt.Errorf("local model must have a .gguf extension: %q", path)
 		}
 		if err := requireFile(path); err != nil {
-			return "", fmt.Errorf("локальная модель недоступна: %w", err)
+			return "", fmt.Errorf("local model is unavailable: %w", err)
 		}
 		return path, nil
 	}
@@ -50,9 +50,9 @@ func ResolveModel(executableDir, configuredPath string) (string, error) {
 	entries, err := os.ReadDir(modelsDir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", fmt.Errorf("в %q не найдена GGUF-модель", modelsDir)
+			return "", fmt.Errorf("no GGUF model found in %q", modelsDir)
 		}
-		return "", fmt.Errorf("прочитать каталог моделей %q: %w", modelsDir, err)
+		return "", fmt.Errorf("read models directory %q: %w", modelsDir, err)
 	}
 	var matches []string
 	for _, entry := range entries {
@@ -67,11 +67,11 @@ func ResolveModel(executableDir, configuredPath string) (string, error) {
 	}
 	switch len(matches) {
 	case 0:
-		return "", fmt.Errorf("в %q не найдена GGUF-модель", modelsDir)
+		return "", fmt.Errorf("no GGUF model found in %q", modelsDir)
 	case 1:
 		return matches[0], nil
 	default:
-		return "", fmt.Errorf("в %q найдено несколько GGUF-моделей; укажите localModel.modelFile", modelsDir)
+		return "", fmt.Errorf("multiple GGUF models found in %q; specify localModel.modelFile", modelsDir)
 	}
 }
 
@@ -92,7 +92,7 @@ func SelectProvider(provider, executableDir string, cfg config.LocalModelConfig)
 		}
 		return config.ProviderLocal, layout, nil
 	default:
-		return "", Layout{}, fmt.Errorf("неподдерживаемый provider %q", provider)
+		return "", Layout{}, fmt.Errorf("unsupported provider %q", provider)
 	}
 }
 
@@ -120,7 +120,7 @@ func requireFile(path string) error {
 		return fmt.Errorf("%q: %w", path, err)
 	}
 	if !info.Mode().IsRegular() {
-		return fmt.Errorf("%q не является файлом", path)
+		return fmt.Errorf("%q is not a file", path)
 	}
 	return nil
 }

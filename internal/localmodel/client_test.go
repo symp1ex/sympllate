@@ -92,7 +92,7 @@ func TestClientTranslateTimeout(t *testing.T) {
 	defer server.Close()
 	client := NewClient(server.URL, "test-key", 10, 0, 100, 10*time.Millisecond)
 	_, err := client.Translate(context.Background(), translation.TranslateRequest{Text: "hello", Source: "en", Target: "ru"})
-	if err == nil || !strings.Contains(err.Error(), "не ответила вовремя") {
+	if err == nil || !strings.Contains(err.Error(), "did not respond in time") {
 		t.Fatalf("Translate() error = %v", err)
 	}
 }

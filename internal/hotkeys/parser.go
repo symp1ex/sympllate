@@ -24,14 +24,14 @@ type Combination struct {
 func Parse(value string) (Combination, error) {
 	parts := strings.Split(value, "+")
 	if len(parts) < 2 {
-		return Combination{}, errors.New("горячая клавиша должна содержать модификатор и клавишу")
+		return Combination{}, errors.New("hotkey must contain a modifier and a key")
 	}
 	var modifiers uint32
 	seen := map[string]bool{}
 	for _, raw := range parts[:len(parts)-1] {
 		part := strings.ToLower(strings.TrimSpace(raw))
 		if seen[part] {
-			return Combination{}, fmt.Errorf("повторяющийся модификатор %q", raw)
+			return Combination{}, fmt.Errorf("duplicate modifier %q", raw)
 		}
 		seen[part] = true
 		switch part {
@@ -44,11 +44,11 @@ func Parse(value string) (Combination, error) {
 		case "win", "windows":
 			modifiers |= ModWin
 		default:
-			return Combination{}, fmt.Errorf("неизвестный модификатор %q", raw)
+			return Combination{}, fmt.Errorf("unknown modifier %q", raw)
 		}
 	}
 	if modifiers == 0 {
-		return Combination{}, errors.New("не указан модификатор")
+		return Combination{}, errors.New("no modifier specified")
 	}
 	keyName := strings.ToUpper(strings.TrimSpace(parts[len(parts)-1]))
 	key, err := parseKey(keyName)
@@ -71,5 +71,5 @@ func parseKey(key string) (uint32, error) {
 	if key, ok := map[string]uint32{"SPACE": 0x20, "ENTER": 0x0D, "TAB": 0x09, "ESCAPE": 0x1B, "ESC": 0x1B}[key]; ok {
 		return key, nil
 	}
-	return 0, fmt.Errorf("неподдерживаемая клавиша %q", key)
+	return 0, fmt.Errorf("unsupported key %q", key)
 }

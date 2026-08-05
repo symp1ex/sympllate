@@ -84,7 +84,7 @@ func run() error {
 			MaxInputCharacters: cfg.Limits.MaxInputCharacters,
 		}, logger.Writer())
 		if err != nil {
-			return fmt.Errorf("запустить local provider: %w", err)
+			return fmt.Errorf("start local provider: %w", err)
 		}
 		translator = localRuntime.Client()
 		logger.Printf("translation provider selected: local model=%s", filepath.Base(localLayout.ModelPath))
@@ -104,11 +104,11 @@ func run() error {
 
 	showCombination, err := hotkeys.Parse(cfg.Hotkeys.ShowTranslation)
 	if err != nil {
-		return fmt.Errorf("неверная hotkeys.showTranslation: %w", err)
+		return fmt.Errorf("invalid hotkeys.showTranslation: %w", err)
 	}
 	replaceCombination, err := hotkeys.Parse(cfg.Hotkeys.ReplaceSelection)
 	if err != nil {
-		return fmt.Errorf("неверная hotkeys.replaceSelection: %w", err)
+		return fmt.Errorf("invalid hotkeys.replaceSelection: %w", err)
 	}
 	html, err := webassets.HTML()
 	if err != nil {
@@ -167,7 +167,7 @@ func run() error {
 	}
 	defer cleanup()
 	if err := systemTray.Start(); err != nil {
-		return fmt.Errorf("запустить system tray: %w", err)
+		return fmt.Errorf("start system tray: %w", err)
 	}
 	logger.Printf("system tray started")
 	restart := false
@@ -188,14 +188,14 @@ func run() error {
 func restartApplication() error {
 	executable, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("определить приложение для перезапуска: %w", err)
+		return fmt.Errorf("determine application to restart: %w", err)
 	}
 	command := exec.Command(executable, os.Args[1:]...)
 	if err := command.Start(); err != nil {
-		return fmt.Errorf("перезапустить приложение: %w", err)
+		return fmt.Errorf("restart application: %w", err)
 	}
 	if err := command.Process.Release(); err != nil {
-		return fmt.Errorf("освободить процесс перезапущенного приложения: %w", err)
+		return fmt.Errorf("release restarted application process: %w", err)
 	}
 	return nil
 }
@@ -209,7 +209,7 @@ func newLogger(directory string) (*log.Logger, func()) {
 }
 
 func showError(err error) {
-	title, _ := syscall.UTF16PtrFromString("Sympllate — ошибка")
+	title, _ := syscall.UTF16PtrFromString("Sympllate — Error")
 	message, _ := syscall.UTF16PtrFromString(err.Error())
 	proc := syscall.NewLazyDLL("user32.dll").NewProc("MessageBoxW")
 	proc.Call(0, uintptr(unsafe.Pointer(message)), uintptr(unsafe.Pointer(title)), 0x10)

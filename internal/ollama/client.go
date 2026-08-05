@@ -33,7 +33,7 @@ type Client struct {
 func New(cfg config.OllamaConfig, maxInputCharacters int) (*Client, error) {
 	base, err := url.Parse(strings.TrimRight(cfg.BaseURL, "/"))
 	if err != nil || base.Host == "" || base.RawQuery != "" || base.Fragment != "" || (base.Scheme != "http" && base.Scheme != "https") {
-		return nil, errors.New("некорректный адрес Ollama")
+		return nil, errors.New("invalid Ollama address")
 	}
 	return &Client{
 		endpoint: base.String() + "/api/generate", model: cfg.Model, keepAlive: cfg.KeepAlive,
@@ -71,27 +71,27 @@ func (c *Client) Translate(ctx context.Context, req TranslateRequest) (Translate
 	}
 	payload, err := json.Marshal(generateRequest{Model: c.model, Prompt: prompt, Stream: false, KeepAlive: c.keepAlive, Options: generateOptions{Temperature: c.temperature, NumCtx: c.numCtx, NumPredict: c.numPredict}})
 	if err != nil {
-		return TranslateResult{}, fmt.Errorf("сформировать запрос Ollama: %w", err)
+		return TranslateResult{}, fmt.Errorf("marshal Ollama request: %w", err)
 	}
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return TranslateResult{}, fmt.Errorf("создать запрос Ollama: %w", err)
+		return TranslateResult{}, fmt.Errorf("create Ollama request: %w", err)
 	}
 	httpRequest.Header.Set("Content-Type", "application/json")
 	response, err := c.httpClient.Do(httpRequest)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return TranslateResult{}, errors.New("Ollama не ответила вовремя")
+			return TranslateResult{}, errors.New("Ollama did not respond in time")
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 			return TranslateResult{}, context.Canceled
 		}
-		return TranslateResult{}, fmt.Errorf("Ollama недоступна по адресу %s: %w", c.endpoint, err)
+		return TranslateResult{}, fmt.Errorf("Ollama is unavailable at %s: %w", c.endpoint, err)
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(response.Body, 4<<20))
 	if err != nil {
-		return TranslateResult{}, fmt.Errorf("прочитать ответ Ollama: %w", err)
+		return TranslateResult{}, fmt.Errorf("read Ollama response: %w", err)
 	}
 	return ParseResponse(response.StatusCode, body)
 }
@@ -104,9 +104,9 @@ func ParseResponse(statusCode int, body []byte) (TranslateResult, error) {
 	var decoded generateResponse
 	if err := json.Unmarshal(body, &decoded); err != nil {
 		if statusCode < 200 || statusCode >= 300 {
-			return TranslateResult{}, fmt.Errorf("Ollama вернула HTTP %d и некорректный ответ", statusCode)
+			return TranslateResult{}, fmt.Errorf("Ollama returned HTTP %d and an invalid response", statusCode)
 		}
-		return TranslateResult{}, fmt.Errorf("Ollama вернула некорректный JSON: %w", err)
+		return TranslateResult{}, fmt.Errorf("Ollama returned invalid JSON: %w", err)
 	}
 	if statusCode < 200 || statusCode >= 300 {
 		message := strings.TrimSpace(decoded.Error)
@@ -116,14 +116,14 @@ func ParseResponse(statusCode int, body []byte) (TranslateResult, error) {
 		if message == "" {
 			message = http.StatusText(statusCode)
 		}
-		return TranslateResult{}, fmt.Errorf("Ollama вернула HTTP %d: %s", statusCode, message)
+		return TranslateResult{}, fmt.Errorf("Ollama returned HTTP %d: %s", statusCode, message)
 	}
 	if decoded.Error != "" {
 		return TranslateResult{}, errors.New(decoded.Error)
 	}
 	result := translation.CleanResult(decoded.Response)
 	if result == "" {
-		return TranslateResult{}, errors.New("Ollama вернула пустой перевод")
+		return TranslateResult{}, errors.New("Ollama returned an empty translation")
 	}
 	return TranslateResult{Text: result}, nil
 }

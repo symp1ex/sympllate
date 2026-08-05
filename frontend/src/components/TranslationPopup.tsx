@@ -35,14 +35,14 @@ export function TranslationPopup({ languages }: { languages: Language[]; config:
   return (
     <main className="popup-shell">
       <section className="language-row popup-languages">
-        <LanguageSelect id="popup-from-language" label="Из" value={state.source || 'auto'} languages={languages} onChange={() => {}} disabled />
-        <LanguageSelect id="popup-target" label="На" value={state.target || 'ru'} languages={languages} onChange={changeTarget} allowAuto={false} />
+        <LanguageSelect id="popup-from-language" label="From" value={state.source || 'auto'} languages={languages} onChange={() => {}} disabled />
+        <LanguageSelect id="popup-target" label="To" value={state.target || 'ru'} languages={languages} onChange={changeTarget} allowAuto={false} />
       </section>
-      <div className="popup-result">{state.loading ? <LoadingIndicator /> : state.translatedText || (!state.error && 'Перевод появится здесь')}</div>
+      <div className="popup-result">{state.loading ? <LoadingIndicator /> : state.translatedText || (!state.error && 'The translation will appear here')}</div>
       {state.error && <ErrorMessage message={state.error} />}
       <div className="actions popup-actions">
-        <button onClick={() => void copyTranslation()} disabled={state.loading || !state.translatedText}>Копировать</button>
-        <button onClick={() => void window.HidePopup()}>Закрыть</button>
+        <button onClick={() => void copyTranslation()} disabled={state.loading || !state.translatedText}>Copy</button>
+        <button onClick={() => void window.HidePopup()}>Close</button>
       </div>
     </main>
   )

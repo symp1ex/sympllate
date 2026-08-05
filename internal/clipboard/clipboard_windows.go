@@ -59,11 +59,11 @@ func New(logger *log.Logger) *Manager { return &Manager{logger: logger} }
 func (m *Manager) CopySelection(ctx context.Context, wait time.Duration) (string, app.ClipboardSnapshot, error) {
 	previous, err := m.snapshot(ctx)
 	if err != nil {
-		return "", app.ClipboardSnapshot{}, fmt.Errorf("сохранить буфер обмена: %w", err)
+		return "", app.ClipboardSnapshot{}, fmt.Errorf("save clipboard: %w", err)
 	}
 	sequence, _, _ := getClipboardSequenceNumber.Call()
 	if err := sendShortcut(vkC); err != nil {
-		return "", previous, fmt.Errorf("эмулировать Ctrl+C: %w", err)
+		return "", previous, fmt.Errorf("simulate Ctrl+C: %w", err)
 	}
 	deadline := time.NewTimer(wait)
 	defer deadline.Stop()
@@ -77,7 +77,7 @@ func (m *Manager) CopySelection(ctx context.Context, wait time.Duration) (string
 			return "", previous, ctx.Err()
 		case <-deadline.C:
 			m.restoreBestEffort(ctx, previous)
-			return "", previous, errors.New("не удалось получить выделенный текст: приложение не поддержало Ctrl+C или текст не выделен")
+			return "", previous, errors.New("failed to get selected text: the application did not handle Ctrl+C or no text is selected")
 		case <-ticker.C:
 			current, _, _ := getClipboardSequenceNumber.Call()
 			if current == sequence {
@@ -96,14 +96,14 @@ func (m *Manager) CopySelection(ctx context.Context, wait time.Duration) (string
 
 func (m *Manager) PasteText(ctx context.Context, text string, previous app.ClipboardSnapshot) error {
 	if strings.TrimSpace(text) == "" {
-		return errors.New("пустой перевод не будет вставлен")
+		return errors.New("an empty translation will not be pasted")
 	}
 	if err := m.write(ctx, text); err != nil {
-		return fmt.Errorf("поместить перевод в буфер обмена: %w", err)
+		return fmt.Errorf("put translation on the clipboard: %w", err)
 	}
 	if err := sendShortcut(vkV); err != nil {
 		m.restoreBestEffort(ctx, previous)
-		return fmt.Errorf("эмулировать Ctrl+V: %w", err)
+		return fmt.Errorf("simulate Ctrl+V: %w", err)
 	}
 	timer := time.NewTimer(180 * time.Millisecond)
 	defer timer.Stop()
@@ -160,7 +160,7 @@ func (m *Manager) read(ctx context.Context) (string, bool, error) {
 	rtlMoveMemory.Call(uintptr(unsafe.Pointer(&values[0])), pointer, maxLength*2)
 	length, _, _ := lstrlenW.Call(uintptr(unsafe.Pointer(&values[0])))
 	if length >= maxLength {
-		return "", false, errors.New("некорректный Unicode-текст в буфере обмена")
+		return "", false, errors.New("invalid Unicode text on the clipboard")
 	}
 	return string(utf16.Decode(values[:int(length)])), true, nil
 }
@@ -212,7 +212,7 @@ func openWithRetry(ctx context.Context) error {
 		case <-timer.C:
 		}
 	}
-	return errors.New("буфер обмена занят другим приложением")
+	return errors.New("clipboard is busy with another application")
 }
 
 type input struct {
@@ -232,7 +232,7 @@ func sendShortcut(key uint16) error {
 	inputs := []input{keyboard(vkControl, 0), keyboard(key, 0), keyboard(key, keyeventfKeyup), keyboard(vkControl, keyeventfKeyup)}
 	result, _, err := sendInput.Call(uintptr(len(inputs)), uintptr(unsafe.Pointer(&inputs[0])), unsafe.Sizeof(inputs[0]))
 	if result != uintptr(len(inputs)) {
-		return fmt.Errorf("SendInput отправил %d из %d событий: %w", result, len(inputs), err)
+		return fmt.Errorf("SendInput sent %d of %d events: %w", result, len(inputs), err)
 	}
 	return nil
 }

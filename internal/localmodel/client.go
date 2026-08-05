@@ -69,11 +69,11 @@ func (c *Client) Translate(ctx context.Context, req translation.TranslateRequest
 		MaxTokens: c.numPredict, Temperature: c.temperature,
 	})
 	if err != nil {
-		return translation.TranslateResult{}, fmt.Errorf("сформировать локальный запрос: %w", err)
+		return translation.TranslateResult{}, fmt.Errorf("marshal local request: %w", err)
 	}
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return translation.TranslateResult{}, fmt.Errorf("создать локальный запрос: %w", err)
+		return translation.TranslateResult{}, fmt.Errorf("create local request: %w", err)
 	}
 	httpRequest.Header.Set("Content-Type", "application/json")
 	httpRequest.Header.Set("Authorization", "Bearer "+c.apiKey)
@@ -83,17 +83,17 @@ func (c *Client) Translate(ctx context.Context, req translation.TranslateRequest
 			return translation.TranslateResult{}, context.Canceled
 		}
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return translation.TranslateResult{}, errors.New("локальная модель не ответила вовремя")
+			return translation.TranslateResult{}, errors.New("the local model did not respond in time")
 		}
-		return translation.TranslateResult{}, fmt.Errorf("локальная модель недоступна: %w", err)
+		return translation.TranslateResult{}, fmt.Errorf("the local model is unavailable: %w", err)
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
 	if err != nil {
-		return translation.TranslateResult{}, fmt.Errorf("прочитать ответ локальной модели: %w", err)
+		return translation.TranslateResult{}, fmt.Errorf("read local model response: %w", err)
 	}
 	if len(body) > maxResponseBytes {
-		return translation.TranslateResult{}, errors.New("ответ локальной модели слишком большой")
+		return translation.TranslateResult{}, errors.New("the local model response is too large")
 	}
 	return ParseChatResponse(response.StatusCode, body)
 }
@@ -102,23 +102,23 @@ func ParseChatResponse(statusCode int, body []byte) (translation.TranslateResult
 	var decoded chatResponse
 	if err := json.Unmarshal(body, &decoded); err != nil {
 		if statusCode < 200 || statusCode >= 300 {
-			return translation.TranslateResult{}, fmt.Errorf("локальная модель вернула HTTP %d и некорректный ответ", statusCode)
+			return translation.TranslateResult{}, fmt.Errorf("the local model returned HTTP %d and an invalid response", statusCode)
 		}
-		return translation.TranslateResult{}, fmt.Errorf("локальная модель вернула некорректный JSON: %w", err)
+		return translation.TranslateResult{}, fmt.Errorf("the local model returned invalid JSON: %w", err)
 	}
 	if statusCode < 200 || statusCode >= 300 {
 		message := strings.TrimSpace(decoded.Error.Message)
 		if message == "" {
 			message = http.StatusText(statusCode)
 		}
-		return translation.TranslateResult{}, fmt.Errorf("локальная модель вернула HTTP %d: %s", statusCode, message)
+		return translation.TranslateResult{}, fmt.Errorf("the local model returned HTTP %d: %s", statusCode, message)
 	}
 	if len(decoded.Choices) == 0 {
-		return translation.TranslateResult{}, errors.New("локальная модель вернула ответ без вариантов перевода")
+		return translation.TranslateResult{}, errors.New("the local model returned no translation choices")
 	}
 	result := translation.CleanResult(decoded.Choices[0].Message.Content)
 	if result == "" {
-		return translation.TranslateResult{}, errors.New("локальная модель вернула пустой перевод")
+		return translation.TranslateResult{}, errors.New("the local model returned an empty translation")
 	}
 	return translation.TranslateResult{Text: result}, nil
 }

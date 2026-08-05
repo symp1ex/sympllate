@@ -38,7 +38,7 @@ export function WindowChrome({ children, mode, onSettings, lockContentOverflow =
       ))}
       <header
         className="custom-titlebar"
-        aria-label="Заголовок окна"
+        aria-label="Window title"
         onPointerDown={(event) => {
           if (event.button === 0) void window.WindowDrag()
         }}
@@ -62,8 +62,8 @@ export function WindowChrome({ children, mode, onSettings, lockContentOverflow =
           <button
             type="button"
             className="custom-titlebar__button"
-            aria-label="Свернуть"
-            title="Свернуть"
+            aria-label="Minimize"
+            title="Minimize"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => void window.WindowMinimize()}
           >
@@ -72,8 +72,8 @@ export function WindowChrome({ children, mode, onSettings, lockContentOverflow =
           <button
             type="button"
             className="custom-titlebar__button custom-titlebar__button--maximize"
-            aria-label="Развернуть или восстановить"
-            title="Развернуть или восстановить"
+            aria-label="Maximize or restore"
+            title="Maximize or restore"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => void window.WindowToggleMaximize()}
           >
@@ -82,8 +82,8 @@ export function WindowChrome({ children, mode, onSettings, lockContentOverflow =
           <button
             type="button"
             className="custom-titlebar__button custom-titlebar__button--close"
-            aria-label="Закрыть"
-            title="Закрыть"
+            aria-label="Close"
+            title="Close"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => void window.WindowClose()}
           >

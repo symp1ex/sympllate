@@ -36,7 +36,7 @@ func bindMainSettings(w webview.WebView, mainWindow *MainWindow) error {
 	}
 	for _, binding := range bindings {
 		if err := w.Bind(binding.name, binding.fn); err != nil {
-			return errors.New("создать binding " + binding.name + ": " + err.Error())
+			return errors.New("create binding " + binding.name + ": " + err.Error())
 		}
 	}
 	return nil
@@ -82,7 +82,7 @@ func bindCommon(w webview.WebView, mode string, cfg config.Config, service *app.
 		{"WindowResize", func(hitTest float64) { resizeWindow(w, uintptr(hitTest)) }},
 		{"CopyText", func(text string) error {
 			if text == "" {
-				return errors.New("нечего копировать")
+				return errors.New("nothing to copy")
 			}
 			return clip.WriteText(text)
 		}},
@@ -93,7 +93,7 @@ func bindCommon(w webview.WebView, mode string, cfg config.Config, service *app.
 		}},
 		{"SetQuickTranslationTarget", func(target string) error {
 			if popup == nil {
-				return errors.New("popup быстрого перевода недоступен")
+				return errors.New("quick translation popup is unavailable")
 			}
 			return popup.ChangeQuickTranslationTarget(target)
 		}},
@@ -106,7 +106,7 @@ func bindCommon(w webview.WebView, mode string, cfg config.Config, service *app.
 	}
 	for _, binding := range bindings {
 		if err := w.Bind(binding.name, binding.fn); err != nil {
-			return errors.New("создать binding " + binding.name + ": " + err.Error())
+			return errors.New("create binding " + binding.name + ": " + err.Error())
 		}
 	}
 	return nil

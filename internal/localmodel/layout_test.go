@@ -32,7 +32,7 @@ func TestResolveModelFindsExactlyOneGGUF(t *testing.T) {
 func TestResolveModelRejectsMissingAndMultiple(t *testing.T) {
 	t.Parallel()
 	base := t.TempDir()
-	if _, err := ResolveModel(base, ""); err == nil || !strings.Contains(err.Error(), "не найдена") {
+	if _, err := ResolveModel(base, ""); err == nil || !strings.Contains(err.Error(), "no GGUF model found") {
 		t.Fatalf("missing model error = %v", err)
 	}
 	models := filepath.Join(base, "models")
@@ -44,7 +44,7 @@ func TestResolveModelRejectsMissingAndMultiple(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := ResolveModel(base, ""); err == nil || !strings.Contains(err.Error(), "несколько") {
+	if _, err := ResolveModel(base, ""); err == nil || !strings.Contains(err.Error(), "multiple GGUF models") {
 		t.Fatalf("multiple models error = %v", err)
 	}
 }

@@ -21,16 +21,16 @@ type TranslateResult struct {
 
 func ValidateRequest(req TranslateRequest, maxInputCharacters int) error {
 	if strings.TrimSpace(req.Text) == "" {
-		return errors.New("текст для перевода пуст")
+		return errors.New("translation text is empty")
 	}
 	if utf8.RuneCountInString(req.Text) > maxInputCharacters {
-		return fmt.Errorf("текст слишком большой: максимум %d символов", maxInputCharacters)
+		return fmt.Errorf("text is too large: maximum %d characters", maxInputCharacters)
 	}
 	if strings.TrimSpace(req.Source) == "" || strings.TrimSpace(req.Target) == "" || req.Target == "auto" {
-		return errors.New("укажите корректные исходный и целевой языки")
+		return errors.New("specify valid source and target languages")
 	}
 	if !validLanguageCode(req.Source) || !validLanguageCode(req.Target) {
-		return errors.New("код языка содержит недопустимые символы")
+		return errors.New("language code contains invalid characters")
 	}
 	return nil
 }
@@ -38,7 +38,7 @@ func ValidateRequest(req TranslateRequest, maxInputCharacters int) error {
 func BuildPrompt(text, source, target string) (string, error) {
 	encoded, err := json.Marshal(text)
 	if err != nil {
-		return "", fmt.Errorf("закодировать исходный текст: %w", err)
+		return "", fmt.Errorf("encode source text: %w", err)
 	}
 	return fmt.Sprintf(`You are a machine translation engine.
 

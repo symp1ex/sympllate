@@ -45,12 +45,12 @@ export async function translate(request: TranslateRequest): Promise<TranslateRes
   for (;;) {
     const status = await window.GetTranslation(id)
     if (status.state === 'done' && status.result) return status.result
-    if (status.state === 'error') throw new Error(status.error ?? 'Не удалось выполнить перевод')
+    if (status.state === 'error') throw new Error(status.error ?? 'Failed to translate')
     await wait(80)
   }
 }
 
 export function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
-  return typeof error === 'string' ? error : 'Неизвестная ошибка'
+  return typeof error === 'string' ? error : 'Unknown error'
 }

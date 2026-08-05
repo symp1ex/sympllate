@@ -67,7 +67,7 @@ func TestOriginTargetActivationTimeoutDoesNotAcceptWrongForeground(t *testing.T)
 		timeout:    10 * time.Millisecond,
 	}
 	err := manager.Activate(context.Background(), target)
-	if err == nil || !strings.Contains(err.Error(), "истекло время") {
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
 		t.Fatalf("Activate() error = %v", err)
 	}
 }

@@ -83,9 +83,9 @@ func (p *Popup) run(ready chan<- error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	defer close(p.done)
-	w := webview.NewWithOptions(webview.WebViewOptions{AutoFocus: true, WindowOptions: webview.WindowOptions{Title: "Быстрый перевод", Width: uint(p.cfg.UI.PopupWidth), Height: uint(p.cfg.UI.PopupHeight), Center: true}})
+	w := webview.NewWithOptions(webview.WebViewOptions{AutoFocus: true, WindowOptions: webview.WindowOptions{Title: "Quick Translation", Width: uint(p.cfg.UI.PopupWidth), Height: uint(p.cfg.UI.PopupHeight), Center: true}})
 	if w == nil {
-		ready <- errors.New("не удалось создать popup WebView2")
+		ready <- errors.New("failed to create popup WebView2")
 		return
 	}
 	p.mu.Lock()
@@ -182,7 +182,7 @@ func (p *Popup) ChangeQuickTranslationTarget(target string) error {
 	handler := p.handler
 	p.mu.RUnlock()
 	if handler == nil {
-		return errors.New("обработчик быстрого перевода не настроен")
+		return errors.New("quick translation handler is not configured")
 	}
 	return handler.ChangeQuickTranslationTarget(target)
 }

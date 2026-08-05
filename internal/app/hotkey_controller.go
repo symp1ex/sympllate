@@ -170,7 +170,7 @@ func (c *HotkeyController) ShowTranslation() {
 
 func (c *HotkeyController) ReplaceSelection() {
 	if !c.replaceBusy.CompareAndSwap(false, true) {
-		c.failReplace(errors.New("замена по горячей клавише уже выполняется"))
+		c.failReplace(errors.New("hotkey replacement is already in progress"))
 		return
 	}
 	defer c.replaceBusy.Store(false)
@@ -187,20 +187,20 @@ func (c *HotkeyController) ReplaceSelection() {
 
 func (c *HotkeyController) ChangeQuickTranslationTarget(target string) error {
 	if !supportedTarget(target) {
-		return fmt.Errorf("неподдерживаемый целевой язык %q", target)
+		return fmt.Errorf("unsupported target language %q", target)
 	}
 	c.mu.Lock()
 	session := c.session
 	if c.closed || session == nil {
 		c.mu.Unlock()
-		return errors.New("активная сессия быстрого перевода отсутствует")
+		return errors.New("no active quick translation session")
 	}
 	if session.replacing {
 		c.mu.Unlock()
-		return errors.New("замена выделения уже выполняется")
+		return errors.New("selection replacement is already in progress")
 	}
 	if !c.targets.Exists(session.origin) {
-		err := errors.New("исходное окно больше недоступно; сессия быстрого перевода завершена")
+		err := errors.New("source window is no longer available; the quick translation session has ended")
 		c.invalidateSessionLocked()
 		c.mu.Unlock()
 		c.logger.Printf("quick translation target change failed: %v", err)
@@ -307,7 +307,7 @@ func (c *HotkeyController) runTranslation(request translationRequest) {
 		started := time.Now()
 		result, err := c.translator.Translate(request.ctx, request.request)
 		if err == nil && strings.TrimSpace(result.Text) == "" {
-			err = errors.New("получен пустой перевод")
+			err = errors.New("received an empty translation")
 		}
 
 		c.mu.Lock()
@@ -357,7 +357,7 @@ func (c *HotkeyController) prepareLinkedReplacement() (*linkedReplacement, bool)
 		return nil, false
 	}
 	if !c.targets.Exists(session.origin) {
-		err := errors.New("исходное окно больше недоступно; сессия быстрого перевода завершена")
+		err := errors.New("source window is no longer available; the quick translation session has ended")
 		session.err = err.Error()
 		state := c.popupStateLocked(session)
 		c.invalidateSessionLocked()
@@ -370,15 +370,15 @@ func (c *HotkeyController) prepareLinkedReplacement() (*linkedReplacement, bool)
 	var err error
 	switch {
 	case session.replacing:
-		err = errors.New("замена выделения уже выполняется")
+		err = errors.New("selection replacement is already in progress")
 	case session.loading:
-		err = errors.New("перевод для выбранного языка ещё выполняется")
+		err = errors.New("translation for the selected language is still in progress")
 	case session.translationError != "":
-		err = fmt.Errorf("последний перевод завершился ошибкой: %s", session.translationError)
+		err = fmt.Errorf("the last translation failed: %s", session.translationError)
 	case strings.TrimSpace(session.translatedText) == "":
-		err = errors.New("готовый перевод для замены отсутствует")
+		err = errors.New("no completed translation is available for replacement")
 	case session.translationTarget != session.target:
-		err = errors.New("готовый перевод относится к ранее выбранному языку")
+		err = errors.New("the completed translation is for a previously selected language")
 	}
 	if err != nil {
 		session.err = err.Error()
@@ -403,12 +403,12 @@ func (c *HotkeyController) prepareLinkedReplacement() (*linkedReplacement, bool)
 
 func (c *HotkeyController) replaceFromSession(replacement linkedReplacement) {
 	if !c.targets.Exists(replacement.origin) {
-		c.failLinkedReplacement(replacement.sessionID, errors.New("исходное окно больше недоступно; текст не заменён"), true)
+		c.failLinkedReplacement(replacement.sessionID, errors.New("source window is no longer available; text was not replaced"), true)
 		return
 	}
 	started := time.Now()
 	if err := c.targets.Activate(c.ctx, replacement.origin); err != nil {
-		c.failLinkedReplacement(replacement.sessionID, fmt.Errorf("не удалось вернуть фокус в исходное поле: %w", err), false)
+		c.failLinkedReplacement(replacement.sessionID, fmt.Errorf("failed to restore focus to the source field: %w", err), false)
 		return
 	}
 	if !c.linkedReplacementIsCurrent(replacement.sessionID) {
@@ -467,7 +467,7 @@ func (c *HotkeyController) replaceDirectly() {
 		return
 	}
 	if strings.TrimSpace(result.Text) == "" {
-		c.failReplace(errors.New("получен пустой перевод; исходный текст не изменён"))
+		c.failReplace(errors.New("received an empty translation; the source text was not changed"))
 		return
 	}
 	if err := c.selection.PasteText(c.ctx, result.Text, previous); err != nil {

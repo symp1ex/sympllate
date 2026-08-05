@@ -55,7 +55,7 @@ func Start(ctx context.Context, cfg RuntimeConfig, output io.Writer) (*Runtime, 
 
 func startWith(ctx context.Context, cfg RuntimeConfig, output io.Writer, starter processStarter) (*Runtime, error) {
 	if cfg.StartupTimeout <= 0 || cfg.RequestTimeout <= 0 || cfg.NumCtx <= 0 || cfg.NumPredict <= 0 || cfg.FitTargetMiB <= 0 || cfg.MaxInputCharacters <= 0 {
-		return nil, errors.New("некорректная конфигурация локальной модели")
+		return nil, errors.New("invalid local model configuration")
 	}
 	port, err := freeLoopbackPort()
 	if err != nil {
@@ -68,7 +68,7 @@ func startWith(ctx context.Context, cfg RuntimeConfig, output io.Writer, starter
 	args := BuildArguments(cfg.Layout, port, apiKey, cfg.NumCtx, cfg.FitTargetMiB)
 	process, err := starter(cfg.Layout.ServerPath, args, cfg.Layout.RuntimeDir, output)
 	if err != nil {
-		return nil, fmt.Errorf("запустить llama-server: %w", err)
+		return nil, fmt.Errorf("start llama-server: %w", err)
 	}
 	runtime := newRuntime(process)
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
@@ -77,9 +77,9 @@ func startWith(ctx context.Context, cfg RuntimeConfig, output io.Writer, starter
 	if err != nil {
 		closeErr := runtime.Close()
 		if closeErr != nil {
-			return nil, fmt.Errorf("llama-server не готов: %w (ошибка остановки: %v)", err, closeErr)
+			return nil, fmt.Errorf("llama-server is not ready: %w (shutdown error: %v)", err, closeErr)
 		}
-		return nil, fmt.Errorf("llama-server не готов: %w", err)
+		return nil, fmt.Errorf("llama-server is not ready: %w", err)
 	}
 	runtime.client = NewClient(baseURL, apiKey, cfg.NumPredict, cfg.Temperature, cfg.MaxInputCharacters, cfg.RequestTimeout)
 	return runtime, nil
@@ -108,7 +108,7 @@ func (r *Runtime) Close() error {
 				r.closeErr = stopErr
 			}
 		case <-time.After(10 * time.Second):
-			r.closeErr = errors.New("llama-server не завершился после остановки")
+			r.closeErr = errors.New("llama-server did not exit after shutdown")
 		}
 	})
 	return r.closeErr
@@ -129,7 +129,7 @@ func waitForReady(ctx context.Context, client *http.Client, healthURL, apiKey st
 	for {
 		request, err := http.NewRequestWithContext(startupContext, http.MethodGet, healthURL, nil)
 		if err != nil {
-			return fmt.Errorf("создать health-запрос: %w", err)
+			return fmt.Errorf("create health request: %w", err)
 		}
 		request.Header.Set("Authorization", "Bearer "+apiKey)
 		response, requestErr := client.Do(request)
@@ -144,14 +144,14 @@ func waitForReady(ctx context.Context, client *http.Client, healthURL, apiKey st
 		select {
 		case <-startupContext.Done():
 			if errors.Is(startupContext.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
-				return fmt.Errorf("превышен timeout запуска %s", timeout)
+				return fmt.Errorf("startup timed out after %s", timeout)
 			}
 			return startupContext.Err()
 		case <-processDone:
 			if err := processError(); err != nil {
-				return fmt.Errorf("процесс завершился до готовности: %w", err)
+				return fmt.Errorf("process exited before becoming ready: %w", err)
 			}
-			return errors.New("процесс завершился до готовности")
+			return errors.New("process exited before becoming ready")
 		case <-ticker.C:
 		}
 	}
@@ -160,11 +160,11 @@ func waitForReady(ctx context.Context, client *http.Client, healthURL, apiKey st
 func freeLoopbackPort() (int, error) {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
-		return 0, fmt.Errorf("выбрать loopback-порт: %w", err)
+		return 0, fmt.Errorf("select loopback port: %w", err)
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
 	if err := listener.Close(); err != nil {
-		return 0, fmt.Errorf("освободить loopback-порт: %w", err)
+		return 0, fmt.Errorf("release loopback port: %w", err)
 	}
 	return port, nil
 }
@@ -172,7 +172,7 @@ func freeLoopbackPort() (int, error) {
 func randomAPIKey() (string, error) {
 	value := make([]byte, 32)
 	if _, err := rand.Read(value); err != nil {
-		return "", fmt.Errorf("создать API key локального сервера: %w", err)
+		return "", fmt.Errorf("create local server API key: %w", err)
 	}
 	return hex.EncodeToString(value), nil
 }
@@ -264,7 +264,7 @@ type jobObjectExtendedLimitInformationStruct struct {
 func createKillOnCloseJob(processID int) (syscall.Handle, error) {
 	jobResult, _, callErr := createJobObjectW.Call(0, 0)
 	if jobResult == 0 {
-		return 0, fmt.Errorf("создать Windows Job Object: %w", callErr)
+		return 0, fmt.Errorf("create Windows Job Object: %w", callErr)
 	}
 	job := syscall.Handle(jobResult)
 	info := jobObjectExtendedLimitInformationStruct{}
@@ -277,18 +277,18 @@ func createKillOnCloseJob(processID int) (syscall.Handle, error) {
 	)
 	if result == 0 {
 		_ = syscall.CloseHandle(job)
-		return 0, fmt.Errorf("настроить Windows Job Object: %w", callErr)
+		return 0, fmt.Errorf("configure Windows Job Object: %w", callErr)
 	}
 	process, err := syscall.OpenProcess(processSetQuota|processTerminate, false, uint32(processID))
 	if err != nil {
 		_ = syscall.CloseHandle(job)
-		return 0, fmt.Errorf("открыть llama-server для Job Object: %w", err)
+		return 0, fmt.Errorf("open llama-server for the Job Object: %w", err)
 	}
 	defer syscall.CloseHandle(process)
 	result, _, callErr = assignProcessToJobObject.Call(uintptr(job), uintptr(process))
 	if result == 0 {
 		_ = syscall.CloseHandle(job)
-		return 0, fmt.Errorf("добавить llama-server в Windows Job Object: %w", callErr)
+		return 0, fmt.Errorf("add llama-server to the Windows Job Object: %w", callErr)
 	}
 	return job, nil
 }

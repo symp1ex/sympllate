@@ -104,12 +104,12 @@ func (m *Manager) run(ready chan<- error) {
 	m.threadID = threadID
 	m.mu.Unlock()
 	if err := register(showID, m.show); err != nil {
-		ready <- fmt.Errorf("зарегистрировать %s: %w", m.show.Display, err)
+		ready <- fmt.Errorf("register %s: %w", m.show.Display, err)
 		return
 	}
 	defer unregisterHotKey.Call(0, showID)
 	if err := register(replaceID, m.replace); err != nil {
-		ready <- fmt.Errorf("зарегистрировать %s: %w", m.replace.Display, err)
+		ready <- fmt.Errorf("register %s: %w", m.replace.Display, err)
 		return
 	}
 	defer unregisterHotKey.Call(0, replaceID)
@@ -215,7 +215,7 @@ func asyncKeyDown(key uint32) bool {
 func register(id uintptr, combination Combination) error {
 	result, _, err := registerHotKey.Call(0, id, uintptr(combination.Modifiers), uintptr(combination.VirtualKey))
 	if result == 0 {
-		return fmt.Errorf("комбинация уже занята или недоступна: %w", err)
+		return fmt.Errorf("hotkey is already registered or unavailable: %w", err)
 	}
 	return nil
 }

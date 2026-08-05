@@ -11,11 +11,11 @@ type Language struct {
 }
 
 var supported = []Language{
-	{Code: "auto", Name: "Автоопределение"}, {Code: "ru", Name: "Русский"}, {Code: "en", Name: "Английский"},
-	{Code: "de", Name: "Немецкий"}, {Code: "fr", Name: "Французский"}, {Code: "es", Name: "Испанский"},
-	{Code: "uk", Name: "Украинский"}, {Code: "pl", Name: "Польский"}, {Code: "it", Name: "Итальянский"},
-	{Code: "pt", Name: "Португальский"}, {Code: "tr", Name: "Турецкий"}, {Code: "zh", Name: "Китайский"},
-	{Code: "ja", Name: "Японский"}, {Code: "ko", Name: "Корейский"}, {Code: "ar", Name: "Арабский"},
+	{Code: "auto", Name: "Auto-detect"}, {Code: "ru", Name: "Russian"}, {Code: "en", Name: "English"},
+	{Code: "de", Name: "German"}, {Code: "fr", Name: "French"}, {Code: "es", Name: "Spanish"},
+	{Code: "uk", Name: "Ukrainian"}, {Code: "pl", Name: "Polish"}, {Code: "it", Name: "Italian"},
+	{Code: "pt", Name: "Portuguese"}, {Code: "tr", Name: "Turkish"}, {Code: "zh", Name: "Chinese"},
+	{Code: "ja", Name: "Japanese"}, {Code: "ko", Name: "Korean"}, {Code: "ar", Name: "Arabic"},
 }
 
 func Supported() []Language { return append([]Language(nil), supported...) }
