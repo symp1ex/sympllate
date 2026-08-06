@@ -13,6 +13,22 @@ export interface JobStatus { state: 'pending' | 'done' | 'error'; result?: Trans
 export interface ImageTranslateRequest { dataBase64: string; mediaType: string; source: string; target: string }
 export interface ImageTranslateResult { text: string; detectedLanguage?: string }
 export interface ImageJobStatus { state: 'pending' | 'done' | 'error'; result?: ImageTranslateResult; error?: string }
+export type BatchSelectionKind = 'files' | 'directory'
+export interface BatchSelection { id: string; kind: BatchSelectionKind; displayName: string; fileCount: number }
+export interface StartImageBatchRequest { selectionId: string; source: string; target: string; debug: boolean }
+export type ImageBatchState = 'pending' | 'preparing' | 'processing' | 'completed' | 'completed_with_errors' | 'cancelled' | 'failed'
+export interface ImageBatchStatus {
+  id: string
+  state: ImageBatchState
+  total: number
+  processed: number
+  translated: number
+  noText: number
+  failed: number
+  currentFile?: string
+  outputDirectory?: string
+  error?: string
+}
 export interface PopupState {
   source: string
   target: string
@@ -34,9 +50,15 @@ declare global {
     GetTranslation(id: string): Promise<JobStatus>
     TranslateImage(request: ImageTranslateRequest): Promise<string>
     GetImageTranslation(id: string): Promise<ImageJobStatus>
+    SelectBatchImageFiles(): Promise<BatchSelection>
+    SelectBatchImageDirectory(): Promise<BatchSelection>
+    StartImageBatch(request: StartImageBatchRequest): Promise<string>
+    GetImageBatchStatus(id: string): Promise<ImageBatchStatus>
+    CancelImageBatch(id: string): Promise<void>
     GetConfig(): Promise<ClientConfig>
     GetSupportedLanguages(): Promise<Language[]>
-    GetWindowMode(): Promise<'main' | 'popup'>
+    GetWindowMode(): Promise<'main' | 'popup' | 'batch'>
+    OpenImageBatchWindow(): Promise<void>
     GetInitialView(): Promise<'main' | 'settings'>
     GetSettingsConfig(): Promise<JsonSettingObject>
     SaveSettingsConfig(config: JsonSettingObject): Promise<void>
@@ -77,6 +99,28 @@ export async function translateImage(request: ImageTranslateRequest): Promise<Im
     }
     if (status.state === 'error') throw new Error(status.error ?? 'Failed to translate image')
     await wait(80)
+  }
+}
+
+export function selectBatchImageFiles(): Promise<BatchSelection> { return window.SelectBatchImageFiles() }
+export function selectBatchImageDirectory(): Promise<BatchSelection> { return window.SelectBatchImageDirectory() }
+export function startImageBatch(request: StartImageBatchRequest): Promise<string> { return window.StartImageBatch(request) }
+export function cancelImageBatch(id: string): Promise<void> { return window.CancelImageBatch(id) }
+export function openImageBatchWindow(): Promise<void> { return window.OpenImageBatchWindow() }
+
+export async function pollImageBatch(
+  id: string,
+  onStatus: (status: ImageBatchStatus) => void,
+  signal: AbortSignal,
+  intervalMilliseconds = 350,
+): Promise<ImageBatchStatus> {
+  for (;;) {
+    if (signal.aborted) throw new Error('Image batch polling cancelled')
+    const status = await window.GetImageBatchStatus(id)
+    if (signal.aborted) throw new Error('Image batch polling cancelled')
+    onStatus(status)
+    if (status.state === 'completed' || status.state === 'completed_with_errors' || status.state === 'cancelled' || status.state === 'failed') return status
+    await wait(intervalMilliseconds)
   }
 }
 

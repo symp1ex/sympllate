@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sympllate/translator/internal/config"
@@ -28,6 +29,7 @@ type Client struct {
 	temperature        float64
 	maxInputCharacters int
 	httpClient         *http.Client
+	requestMu          sync.Mutex
 }
 
 func New(cfg config.OllamaConfig, maxInputCharacters int) (*Client, error) {
@@ -70,7 +72,24 @@ func (c *Client) Translate(ctx context.Context, req TranslateRequest) (Translate
 	if err != nil {
 		return TranslateResult{}, err
 	}
-	return c.generate(ctx, generateRequest{Model: c.model, Prompt: prompt, Stream: false, KeepAlive: c.keepAlive, Options: c.options()}, false)
+	text, err := c.Complete(ctx, prompt)
+	if err != nil {
+		return TranslateResult{}, err
+	}
+	return TranslateResult{Text: translation.CleanResult(text)}, nil
+}
+
+// Complete runs one raw TranslateGemma prompt. generate serializes all model
+// traffic, including Ollama vision calls.
+func (c *Client) Complete(ctx context.Context, prompt string) (string, error) {
+	if strings.TrimSpace(prompt) == "" {
+		return "", errors.New("model prompt is empty")
+	}
+	result, err := c.generate(ctx, generateRequest{Model: c.model, Prompt: prompt, Stream: false, KeepAlive: c.keepAlive, Options: c.options()}, false)
+	if err != nil {
+		return "", err
+	}
+	return result.Text, nil
 }
 
 func (c *Client) TranslateImage(ctx context.Context, req translation.ImageTranslateRequest) (translation.ImageTranslateResult, error) {
@@ -106,6 +125,8 @@ func (c *Client) options() generateOptions {
 }
 
 func (c *Client) generate(ctx context.Context, request generateRequest, allowEmpty bool) (TranslateResult, error) {
+	c.requestMu.Lock()
+	defer c.requestMu.Unlock()
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return TranslateResult{}, fmt.Errorf("marshal Ollama request: %w", err)

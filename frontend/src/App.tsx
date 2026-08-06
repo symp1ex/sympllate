@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import type { ClientConfig, Language } from './api'
 import { errorMessage } from './api'
 import { ErrorMessage } from './components/ErrorMessage'
+import { ImageBatchWindow } from './components/ImageBatchWindow'
 import { LoadingIndicator } from './components/LoadingIndicator'
 import { SettingsPanel } from './components/SettingsPanel'
 import { TranslationPopup } from './components/TranslationPopup'
 import { TranslatorPanel } from './components/TranslatorPanel'
 import { WindowChrome } from './components/WindowChrome'
 
-type WindowMode = 'main' | 'popup'
+type WindowMode = 'main' | 'popup' | 'batch'
 type MainView = 'main' | 'settings'
 type ReadyState = { config: ClientConfig; languages: Language[] }
 
@@ -50,7 +51,9 @@ export default function App() {
     : ready
       ? mode === 'popup'
         ? <TranslationPopup languages={ready.languages} config={ready.config} />
-        : view === 'settings'
+        : mode === 'batch'
+          ? <ImageBatchWindow languages={ready.languages} config={ready.config} />
+          : view === 'settings'
           ? <SettingsPanel onBack={() => setView('main')} />
           : <TranslatorPanel config={ready.config} languages={ready.languages} />
       : <main className="centered"><LoadingIndicator /></main>

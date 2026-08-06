@@ -4,7 +4,7 @@ import type { ApplicationInfo, CheckApplicationUpdateResult } from '../api'
 
 interface Props {
   children: ReactNode
-  mode: 'main' | 'popup'
+  mode: 'main' | 'popup' | 'batch'
   onSettings?: () => void
   lockContentOverflow?: boolean
 }

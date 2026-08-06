@@ -34,6 +34,14 @@ func New(executableDir string, timeout time.Duration) *Engine {
 		timeout = DefaultTimeout
 	}
 	tesseractDir := filepath.Join(executableDir, "bin", "tesseract")
+	// Keep the phase-one nested layout, while also accepting the documented
+	// portable layout where tesseract.exe and tessdata live directly in bin.
+	if err := requireRegularFile(filepath.Join(tesseractDir, "tesseract.exe")); err != nil {
+		directDirectory := filepath.Join(executableDir, "bin")
+		if directErr := requireRegularFile(filepath.Join(directDirectory, "tesseract.exe")); directErr == nil {
+			tesseractDir = directDirectory
+		}
+	}
 	return &Engine{
 		executablePath: filepath.Join(tesseractDir, "tesseract.exe"),
 		tessdataDir:    filepath.Join(tesseractDir, "tessdata"),
@@ -62,7 +70,37 @@ func (e *Engine) Capability() translation.ImageCapability {
 	return translation.ImageCapability{Supported: true}
 }
 
+func (e *Engine) ValidateSource(source string) error {
+	capability := e.Capability()
+	if !capability.Supported {
+		return errors.New(capability.Reason)
+	}
+	_, err := e.languagesForSource(source)
+	return err
+}
+
 func (e *Engine) Recognize(ctx context.Context, image translation.ValidatedImage, source string) (string, error) {
+	output, err := e.recognize(ctx, image, source, maxOutputBytes, nil)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(output), nil
+}
+
+func (e *Engine) RecognizeStructured(ctx context.Context, image translation.ValidatedImage, source string) (OCRPage, error) {
+	output, err := e.recognize(ctx, image, source, maxStructuredOutputBytes, []string{"--psm", "3", "tsv"})
+	if err != nil {
+		return OCRPage{}, err
+	}
+	page, err := ParseTSV(strings.NewReader(output), image.Width, image.Height, DefaultFilterConfig())
+	if err != nil {
+		return OCRPage{}, fmt.Errorf("parse Tesseract TSV: %w", err)
+	}
+	page.Image = OCRImageInfo{Width: image.Width, Height: image.Height, MediaType: image.MediaType}
+	return page, nil
+}
+
+func (e *Engine) recognize(ctx context.Context, image translation.ValidatedImage, source string, outputLimit int, extraArgs []string) (string, error) {
 	capability := e.Capability()
 	if !capability.Supported {
 		return "", errors.New(capability.Reason)
@@ -87,9 +125,10 @@ func (e *Engine) Recognize(ctx context.Context, image translation.ValidatedImage
 
 	ocrContext, cancel := context.WithTimeout(ctx, e.timeout)
 	defer cancel()
-	stdout := &cappedBuffer{limit: maxOutputBytes}
+	stdout := &cappedBuffer{limit: outputLimit}
 	stderr := &cappedBuffer{limit: maxStderrBytes}
 	args := []string{inputPath, "stdout", "-l", strings.Join(languages, "+"), "--tessdata-dir", e.tessdataDir}
+	args = append(args, extraArgs...)
 	err = e.run(ocrContext, e.executablePath, args, stdout, stderr)
 	if err != nil {
 		if errors.Is(ocrContext.Err(), context.Canceled) && errors.Is(ctx.Err(), context.Canceled) {
@@ -105,9 +144,9 @@ func (e *Engine) Recognize(ctx context.Context, image translation.ValidatedImage
 		return "", fmt.Errorf("start Tesseract OCR (verify tesseract.exe and its DLLs): %w", err)
 	}
 	if stdout.exceeded {
-		return "", fmt.Errorf("Tesseract OCR output is too large: maximum %d bytes", maxOutputBytes)
+		return "", fmt.Errorf("Tesseract OCR output is too large: maximum %d bytes", outputLimit)
 	}
-	return strings.TrimSpace(stdout.String()), nil
+	return stdout.String(), nil
 }
 
 func (e *Engine) languagesForSource(source string) ([]string, error) {

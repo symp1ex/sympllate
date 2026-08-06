@@ -55,7 +55,7 @@ type ClientLanguagePair struct {
 	Second string `json:"second"`
 }
 
-func bindCommon(w webview.WebView, mode string, cfg config.Config, service *app.Service, clip *clipboard.Manager, popup *Popup) error {
+func bindCommon(w webview.WebView, mode string, cfg config.Config, service *app.Service, clip *clipboard.Manager, popup *Popup, closeOverride func()) error {
 	bindings := []struct {
 		name string
 		fn   any
@@ -78,6 +78,10 @@ func bindCommon(w webview.WebView, mode string, cfg config.Config, service *app.
 		{"WindowMinimize", func() { minimizeWindow(w) }},
 		{"WindowToggleMaximize", func() bool { return toggleWindowMaximized(w) }},
 		{"WindowClose", func() {
+			if closeOverride != nil {
+				closeOverride()
+				return
+			}
 			if mode == "popup" && popup != nil {
 				popup.Hide()
 				return

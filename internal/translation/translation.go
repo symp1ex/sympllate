@@ -88,3 +88,8 @@ func validateLanguagePair(source, target string) error {
 	}
 	return nil
 }
+
+// ValidateLanguagePair exposes the same language validation to batch workflows.
+func ValidateLanguagePair(source, target string) error {
+	return validateLanguagePair(source, target)
+}

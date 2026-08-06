@@ -64,16 +64,28 @@ func ValidateImageRequest(req ImageTranslateRequest) (ValidatedImage, error) {
 	if len(data) > MaxImageBytes {
 		return ValidatedImage{}, fmt.Errorf("image is too large: maximum %d bytes", MaxImageBytes)
 	}
+	return ValidateImageData(data, req.MediaType)
+}
+
+// ValidateImageData validates image bytes without requiring a Base64 frontend
+// payload. Batch processing uses it so selected file paths and contents stay in Go.
+func ValidateImageData(data []byte, mediaType string) (ValidatedImage, error) {
+	if len(data) == 0 {
+		return ValidatedImage{}, errors.New("image data is empty")
+	}
+	if len(data) > MaxImageBytes {
+		return ValidatedImage{}, fmt.Errorf("image is too large: maximum %d bytes", MaxImageBytes)
+	}
 	detectedType, err := detectImageType(data)
 	if err != nil {
 		return ValidatedImage{}, err
 	}
-	providedType := normalizeImageMediaType(req.MediaType)
+	providedType := normalizeImageMediaType(mediaType)
 	if providedType == "" {
 		return ValidatedImage{}, errors.New("image media type must be image/png or image/jpeg")
 	}
 	if providedType != detectedType {
-		return ValidatedImage{}, fmt.Errorf("image media type %q does not match its file signature (%s)", req.MediaType, detectedType)
+		return ValidatedImage{}, fmt.Errorf("image media type %q does not match its file signature (%s)", mediaType, detectedType)
 	}
 
 	var width, height int

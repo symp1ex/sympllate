@@ -18,10 +18,13 @@ import (
 	"github.com/sympllate/translator/internal/clipboard"
 	"github.com/sympllate/translator/internal/config"
 	"github.com/sympllate/translator/internal/hotkeys"
+	"github.com/sympllate/translator/internal/imagebatch"
 	"github.com/sympllate/translator/internal/language"
 	"github.com/sympllate/translator/internal/localmodel"
 	"github.com/sympllate/translator/internal/logger"
+	"github.com/sympllate/translator/internal/ocr"
 	"github.com/sympllate/translator/internal/ollama"
+	"github.com/sympllate/translator/internal/translation"
 	"github.com/sympllate/translator/internal/tray"
 	"github.com/sympllate/translator/internal/updater"
 	"github.com/sympllate/translator/internal/webassets"
@@ -29,7 +32,7 @@ import (
 )
 
 var errRestartRequested = errors.New("application restart requested")
-var version = "0.3.0.1"
+var version = "0.3.4.0"
 
 func main() {
 	if err := run(); errors.Is(err, errRestartRequested) {
@@ -121,9 +124,22 @@ func run() error {
 	}
 	detector := language.SimpleDetector{}
 	service := app.NewService(ctx, translator, detector, applicationLogger)
+	completer, ok := translator.(translation.RawCompleter)
+	if !ok {
+		return errors.New("the selected provider does not support structured translation")
+	}
+	batchService, err := imagebatch.NewService(ctx, filepath.Dir(configPath), ocr.New(filepath.Dir(configPath), ocr.DefaultTimeout), completer, cfg.Limits.MaxInputCharacters, applicationLogger)
+	if err != nil {
+		return fmt.Errorf("configure image batch service: %w", err)
+	}
 	clip := clipboard.New(applicationLogger)
 	popup := window.NewPopup(cfg, html, service, clip)
 	if err := popup.Start(); err != nil {
+		return err
+	}
+	batchWindow := window.NewImageBatchWindow(cfg, html, service, batchService, clip, popup)
+	if err := batchWindow.Start(); err != nil {
+		popup.Close()
 		return err
 	}
 	targets := window.NewOriginTargetManager()
@@ -132,6 +148,7 @@ func run() error {
 	hotkeyManager := hotkeys.NewManager(showCombination, replaceCombination, controller.ShowTranslation, controller.ReplaceSelection)
 	if err := hotkeyManager.Start(); err != nil {
 		controller.Close()
+		batchWindow.Close()
 		popup.Close()
 		return err
 	}
@@ -144,18 +161,21 @@ func run() error {
 		default:
 		}
 	}
-	mainWindow := window.NewMainWindow(cfg, configPath, version, html, service, clip, popup, applicationLogger, showError, requestRestart)
+	mainWindow := window.NewMainWindow(cfg, configPath, version, html, service, batchWindow, clip, popup, applicationLogger, showError, requestRestart)
 	systemTray := tray.New(mainWindow.Open, mainWindow.OpenSettings, applicationLogger)
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
 			service.Close()
+			batchService.Close()
 			systemTray.Close()
 			hotkeyManager.Close()
 			mainWindow.Shutdown()
+			batchWindow.Close()
 			cancel()
 			controller.Close()
 			service.Wait()
+			batchService.Wait()
 			popup.Close()
 			if localRuntime != nil {
 				if err := localRuntime.Close(); err != nil {

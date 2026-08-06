@@ -32,16 +32,17 @@ const (
 )
 
 type MainWindow struct {
-	cfg       config.Config
-	cfgPath   string
-	version   string
-	html      string
-	service   *app.Service
-	clip      *clipboard.Manager
-	popup     *Popup
-	logger    logger.PrintLogger
-	onError   func(error)
-	onRestart func()
+	cfg         config.Config
+	cfgPath     string
+	version     string
+	html        string
+	service     *app.Service
+	batchWindow *ImageBatchWindow
+	clip        *clipboard.Manager
+	popup       *Popup
+	logger      logger.PrintLogger
+	onError     func(error)
+	onRestart   func()
 
 	mu    sync.Mutex
 	state mainWindowState
@@ -54,20 +55,21 @@ type MainWindow struct {
 	updateCheckRunning bool
 }
 
-func NewMainWindow(cfg config.Config, cfgPath, version, html string, service *app.Service, clip *clipboard.Manager, popup *Popup, logger logger.PrintLogger, onError func(error), onRestart func()) *MainWindow {
+func NewMainWindow(cfg config.Config, cfgPath, version, html string, service *app.Service, batchWindow *ImageBatchWindow, clip *clipboard.Manager, popup *Popup, logger logger.PrintLogger, onError func(error), onRestart func()) *MainWindow {
 	return &MainWindow{
-		cfg:       cfg,
-		cfgPath:   cfgPath,
-		version:   version,
-		html:      html,
-		service:   service,
-		clip:      clip,
-		popup:     popup,
-		logger:    logger,
-		onError:   onError,
-		onRestart: onRestart,
-		state:     mainWindowIdle,
-		view:      mainWindowViewMain,
+		cfg:         cfg,
+		cfgPath:     cfgPath,
+		version:     version,
+		html:        html,
+		service:     service,
+		batchWindow: batchWindow,
+		clip:        clip,
+		popup:       popup,
+		logger:      logger,
+		onError:     onError,
+		onRestart:   onRestart,
+		state:       mainWindowIdle,
+		view:        mainWindowViewMain,
 	}
 }
 
@@ -186,7 +188,7 @@ func (m *MainWindow) run() {
 		logger.Sympllate.Warnf("main window taskbar icon was not set: %v", err)
 	}
 	defer icons.destroy()
-	if err := bindCommon(w, "main", m.cfg, m.service, m.clip, m.popup); err != nil {
+	if err := bindCommon(w, "main", m.cfg, m.service, m.clip, m.popup, nil); err != nil {
 		m.destroyWebView(w, hwnd)
 		m.failOpen(fmt.Errorf("configure main window: %w", err))
 		return
@@ -194,6 +196,11 @@ func (m *MainWindow) run() {
 	if err := bindMainSettings(w, m); err != nil {
 		m.destroyWebView(w, hwnd)
 		m.failOpen(fmt.Errorf("configure settings window bindings: %w", err))
+		return
+	}
+	if err := bindImageBatchLauncher(w, m.batchWindow); err != nil {
+		m.destroyWebView(w, hwnd)
+		m.failOpen(fmt.Errorf("configure image batch launcher: %w", err))
 		return
 	}
 	if err := bindApplicationUpdater(w, m); err != nil {

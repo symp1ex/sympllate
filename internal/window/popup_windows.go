@@ -106,7 +106,7 @@ func (p *Popup) run(ready chan<- error) {
 		w.Destroy()
 		icons.destroy()
 	}()
-	if err := bindCommon(w, "popup", p.cfg, p.service, p.clip, p); err != nil {
+	if err := bindCommon(w, "popup", p.cfg, p.service, p.clip, p, nil); err != nil {
 		ready <- err
 		return
 	}

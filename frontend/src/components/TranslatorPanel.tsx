@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ClientConfig, Language } from '../api'
-import { errorMessage, translate, translateImage } from '../api'
+import { errorMessage, openImageBatchWindow, translate, translateImage } from '../api'
 import {
   findClipboardImage,
   formatBytes,
@@ -115,6 +115,12 @@ export function TranslatorPanel({ config, languages }: Props) {
     catch (caught) { setError(errorMessage(caught)) }
   }
 
+  const openBatchWindow = async () => {
+    setError('')
+    try { await openImageBatchWindow() }
+    catch (caught) { setError(errorMessage(caught)) }
+  }
+
   const handlePaste = (event: React.ClipboardEvent<HTMLElement>) => {
     const imageItem = findClipboardImage(event.clipboardData.items)
     if (!imageItem) return
@@ -201,6 +207,12 @@ export function TranslatorPanel({ config, languages }: Props) {
       <div className="actions">
         <button className="primary" onClick={() => void runTranslation()} disabled={busy || !canTranslate}>{loading ? 'Translating…' : imageLoading ? 'Reading image…' : 'Translate'}</button>
         <button onClick={() => void copyTranslation()} disabled={!translatedText}>Copy translation</button>
+        <button className="batch-window-launcher" type="button" onClick={() => void openBatchWindow()} aria-label="Open batch image translation" title="Batch image translation">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 2.75h8.2L19 7.55v13.7H6z" />
+            <path d="M14 2.75v5h5M9 12h7M9 16h7" />
+          </svg>
+        </button>
         {busy && <LoadingIndicator />}
         <span className="hint">Ctrl+V image · Drag-and-Drop · Ctrl+Enter</span>
       </div>

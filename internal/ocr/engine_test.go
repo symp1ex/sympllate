@@ -56,6 +56,31 @@ func TestEngineAutoUsesInstalledLanguages(t *testing.T) {
 	}
 }
 
+func TestEngineRecognizeStructuredUsesTSVAndPSM(t *testing.T) {
+	t.Parallel()
+	engine := newTestEngine(t, "eng")
+	engine.run = func(_ context.Context, _ string, args []string, stdout, _ io.Writer) error {
+		wantSuffix := []string{"--psm", "3", "tsv"}
+		if len(args) != 9 {
+			t.Fatalf("args=%q", args)
+		}
+		for index, value := range wantSuffix {
+			if args[len(args)-3+index] != value {
+				t.Fatalf("args=%q", args)
+			}
+		}
+		_, _ = io.WriteString(stdout, tsvHeader+tsvWord(1, 1, 1, 1, 1, "90", "text"))
+		return nil
+	}
+	image := testImage()
+	image.Width = 100
+	image.Height = 100
+	page, err := engine.RecognizeStructured(context.Background(), image, "en")
+	if err != nil || len(page.Paragraphs) != 1 {
+		t.Fatalf("page=%+v err=%v", page, err)
+	}
+}
+
 func TestEngineReportsMissingBinaryAndLanguageData(t *testing.T) {
 	t.Parallel()
 	base := t.TempDir()
@@ -85,6 +110,25 @@ func TestEngineReportsMissingRequestedLanguage(t *testing.T) {
 	engine := newTestEngine(t, "eng")
 	if _, err := engine.Recognize(context.Background(), testImage(), "ru"); err == nil || !strings.Contains(err.Error(), "rus.traineddata") {
 		t.Fatalf("Recognize() error = %v", err)
+	}
+}
+
+func TestEngineSupportsTesseractDirectlyInBin(t *testing.T) {
+	t.Parallel()
+	base := t.TempDir()
+	bin := filepath.Join(base, "bin")
+	if err := os.MkdirAll(filepath.Join(bin, "tessdata"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "tesseract.exe"), []byte("test"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "tessdata", "eng.traineddata"), []byte("test"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	engine := New(base, time.Second)
+	if engine.executablePath != filepath.Join(bin, "tesseract.exe") || !engine.Capability().Supported {
+		t.Fatalf("engine=%+v capability=%+v", engine, engine.Capability())
 	}
 }
 
