@@ -26,13 +26,7 @@ func ValidateRequest(req TranslateRequest, maxInputCharacters int) error {
 	if utf8.RuneCountInString(req.Text) > maxInputCharacters {
 		return fmt.Errorf("text is too large: maximum %d characters", maxInputCharacters)
 	}
-	if strings.TrimSpace(req.Source) == "" || strings.TrimSpace(req.Target) == "" || req.Target == "auto" {
-		return errors.New("specify valid source and target languages")
-	}
-	if !validLanguageCode(req.Source) || !validLanguageCode(req.Target) {
-		return errors.New("language code contains invalid characters")
-	}
-	return nil
+	return validateLanguagePair(req.Source, req.Target)
 }
 
 func BuildPrompt(text, source, target string) (string, error) {
@@ -83,4 +77,14 @@ func validLanguageCode(value string) bool {
 		}
 	}
 	return true
+}
+
+func validateLanguagePair(source, target string) error {
+	if strings.TrimSpace(source) == "" || strings.TrimSpace(target) == "" || target == "auto" {
+		return errors.New("specify valid source and target languages")
+	}
+	if !validLanguageCode(source) || !validLanguageCode(target) {
+		return errors.New("language code contains invalid characters")
+	}
+	return nil
 }

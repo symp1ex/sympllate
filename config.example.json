@@ -14,7 +14,7 @@
   },
   "ollama": {
     "baseUrl": "http://127.0.0.1:11434",
-    "model": "translator-gemma",
+    "model": "translategemma:latest",
     "timeoutSeconds": 120,
     "keepAlive": "10m",
     "numCtx": 2048,

@@ -24,6 +24,12 @@ type Client struct {
 	temperature        float64
 	maxInputCharacters int
 	httpClient         *http.Client
+	imageTextExtractor ImageTextExtractor
+}
+
+type ImageTextExtractor interface {
+	Capability() translation.ImageCapability
+	Recognize(ctx context.Context, image translation.ValidatedImage, source string) (string, error)
 }
 
 func NewClient(baseURL, apiKey string, numPredict int, temperature float64, maxInputCharacters int, timeout time.Duration) *Client {
@@ -97,6 +103,44 @@ func (c *Client) Translate(ctx context.Context, req translation.TranslateRequest
 	}
 	return ParseChatResponse(response.StatusCode, body)
 }
+
+func NewClientWithImageTextExtractor(baseURL, apiKey string, numPredict int, temperature float64, maxInputCharacters int, timeout time.Duration, extractor ImageTextExtractor) *Client {
+	client := NewClient(baseURL, apiKey, numPredict, temperature, maxInputCharacters, timeout)
+	client.imageTextExtractor = extractor
+	return client
+}
+
+func (c *Client) TranslateImage(ctx context.Context, req translation.ImageTranslateRequest) (translation.ImageTranslateResult, error) {
+	validated, err := translation.ValidateImageRequest(req)
+	if err != nil {
+		return translation.ImageTranslateResult{}, err
+	}
+	capability := c.ImageCapability()
+	if !capability.Supported {
+		return translation.ImageTranslateResult{}, errors.New(capability.Reason)
+	}
+	text, err := c.imageTextExtractor.Recognize(ctx, validated, req.Source)
+	if err != nil {
+		return translation.ImageTranslateResult{}, err
+	}
+	if strings.TrimSpace(text) == "" {
+		return translation.ImageTranslateResult{}, nil
+	}
+	result, err := c.Translate(ctx, translation.TranslateRequest{Text: text, Source: req.Source, Target: req.Target})
+	if err != nil {
+		return translation.ImageTranslateResult{}, err
+	}
+	return translation.ImageTranslateResult{Text: result.Text, DetectedLanguage: result.DetectedLanguage}, nil
+}
+
+func (c *Client) ImageCapability() translation.ImageCapability {
+	if c.imageTextExtractor == nil {
+		return translation.ImageCapability{Supported: false, Reason: "local image translation requires Tesseract OCR in the application bin directory"}
+	}
+	return c.imageTextExtractor.Capability()
+}
+
+func (c *Client) ProviderName() string { return "local" }
 
 func ParseChatResponse(statusCode int, body []byte) (translation.TranslateResult, error) {
 	var decoded chatResponse

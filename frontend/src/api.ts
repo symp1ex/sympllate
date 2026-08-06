@@ -1,9 +1,18 @@
 export interface Language { code: string; name: string }
 export interface LanguagePair { first: string; second: string }
-export interface ClientConfig { defaultLanguagePair: LanguagePair; fallbackTargetLanguage: string; maxInputCharacters: number }
+export interface ClientConfig {
+  defaultLanguagePair: LanguagePair
+  fallbackTargetLanguage: string
+  maxInputCharacters: number
+  maxImageBytes: number
+  maxImageBase64Characters: number
+}
 export interface TranslateRequest { text: string; source: string; target: string }
 export interface TranslateResult { text: string; detectedLanguage?: string }
 export interface JobStatus { state: 'pending' | 'done' | 'error'; result?: TranslateResult; error?: string }
+export interface ImageTranslateRequest { dataBase64: string; mediaType: string; source: string; target: string }
+export interface ImageTranslateResult { text: string; detectedLanguage?: string }
+export interface ImageJobStatus { state: 'pending' | 'done' | 'error'; result?: ImageTranslateResult; error?: string }
 export interface PopupState {
   source: string
   target: string
@@ -23,6 +32,8 @@ declare global {
   interface Window {
     Translate(request: TranslateRequest): Promise<string>
     GetTranslation(id: string): Promise<JobStatus>
+    TranslateImage(request: ImageTranslateRequest): Promise<string>
+    GetImageTranslation(id: string): Promise<ImageJobStatus>
     GetConfig(): Promise<ClientConfig>
     GetSupportedLanguages(): Promise<Language[]>
     GetWindowMode(): Promise<'main' | 'popup'>
@@ -52,6 +63,19 @@ export async function translate(request: TranslateRequest): Promise<TranslateRes
     const status = await window.GetTranslation(id)
     if (status.state === 'done' && status.result) return status.result
     if (status.state === 'error') throw new Error(status.error ?? 'Failed to translate')
+    await wait(80)
+  }
+}
+
+export async function translateImage(request: ImageTranslateRequest): Promise<ImageTranslateResult> {
+  const id = await window.TranslateImage(request)
+  for (;;) {
+    const status = await window.GetImageTranslation(id)
+    if (status.state === 'done') {
+      if (status.result) return status.result
+      throw new Error('Image translation completed without a result')
+    }
+    if (status.state === 'error') throw new Error(status.error ?? 'Failed to translate image')
     await wait(80)
   }
 }

@@ -1,9 +1,13 @@
 package localmodel
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -94,5 +98,77 @@ func TestClientTranslateTimeout(t *testing.T) {
 	_, err := client.Translate(context.Background(), translation.TranslateRequest{Text: "hello", Source: "en", Target: "ru"})
 	if err == nil || !strings.Contains(err.Error(), "did not respond in time") {
 		t.Fatalf("Translate() error = %v", err)
+	}
+}
+
+func TestClientReportsUnsupportedImageInput(t *testing.T) {
+	t.Parallel()
+	client := NewClient("http://127.0.0.1:1", "test-key", 10, 0, 100, time.Second)
+	capability := client.ImageCapability()
+	if capability.Supported || !strings.Contains(capability.Reason, "Tesseract OCR") {
+		t.Fatalf("ImageCapability() = %+v", capability)
+	}
+	_, err := client.TranslateImage(context.Background(), localImageRequest(t))
+	if err == nil || !strings.Contains(err.Error(), "Tesseract OCR") {
+		t.Fatalf("TranslateImage() error = %v", err)
+	}
+}
+
+func TestClientTranslateImageSendsOnlyOCRTextToLocalServer(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request chatRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+			return
+		}
+		content := request.Messages[0].Content
+		if !strings.Contains(content, `"recognized source"`) {
+			t.Errorf("OCR text missing from prompt: %s", content)
+		}
+		if strings.Contains(content, "iVBOR") || strings.Contains(content, "data:image") {
+			t.Errorf("image data leaked to local server request: %s", content)
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"translated"}}]}`))
+	}))
+	defer server.Close()
+	extractor := fakeImageTextExtractor{text: "recognized source"}
+	client := NewClientWithImageTextExtractor(server.URL, "test-key", 100, 0, 1000, time.Second, extractor)
+	result, err := client.TranslateImage(context.Background(), localImageRequest(t))
+	if err != nil || result.Text != "translated" {
+		t.Fatalf("TranslateImage() = %+v, %v", result, err)
+	}
+}
+
+func TestClientTranslateImageAllowsEmptyOCRResult(t *testing.T) {
+	t.Parallel()
+	client := NewClientWithImageTextExtractor("http://127.0.0.1:1", "test-key", 100, 0, 1000, time.Second, fakeImageTextExtractor{})
+	result, err := client.TranslateImage(context.Background(), localImageRequest(t))
+	if err != nil || result.Text != "" {
+		t.Fatalf("TranslateImage() = %+v, %v", result, err)
+	}
+}
+
+type fakeImageTextExtractor struct {
+	text string
+	err  error
+}
+
+func (fakeImageTextExtractor) Capability() translation.ImageCapability {
+	return translation.ImageCapability{Supported: true}
+}
+
+func (f fakeImageTextExtractor) Recognize(context.Context, translation.ValidatedImage, string) (string, error) {
+	return f.text, f.err
+}
+
+func localImageRequest(t *testing.T) translation.ImageTranslateRequest {
+	t.Helper()
+	var buffer bytes.Buffer
+	if err := png.Encode(&buffer, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	return translation.ImageTranslateRequest{
+		DataBase64: base64.StdEncoding.EncodeToString(buffer.Bytes()), MediaType: "image/png", Source: "en", Target: "ru",
 	}
 }

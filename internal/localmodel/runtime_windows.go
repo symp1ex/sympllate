@@ -17,10 +17,13 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/sympllate/translator/internal/ocr"
 )
 
 type RuntimeConfig struct {
 	Layout             Layout
+	ExecutableDir      string
 	StartupTimeout     time.Duration
 	RequestTimeout     time.Duration
 	NumCtx             int
@@ -81,7 +84,13 @@ func startWith(ctx context.Context, cfg RuntimeConfig, output io.Writer, starter
 		}
 		return nil, fmt.Errorf("llama-server is not ready: %w", err)
 	}
-	runtime.client = NewClient(baseURL, apiKey, cfg.NumPredict, cfg.Temperature, cfg.MaxInputCharacters, cfg.RequestTimeout)
+	var extractor ImageTextExtractor
+	if cfg.ExecutableDir != "" {
+		extractor = ocr.New(cfg.ExecutableDir, ocr.DefaultTimeout)
+	}
+	runtime.client = NewClientWithImageTextExtractor(
+		baseURL, apiKey, cfg.NumPredict, cfg.Temperature, cfg.MaxInputCharacters, cfg.RequestTimeout, extractor,
+	)
 	return runtime, nil
 }
 

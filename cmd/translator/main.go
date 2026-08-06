@@ -29,7 +29,7 @@ import (
 )
 
 var errRestartRequested = errors.New("application restart requested")
-var version = "0.2.3.4"
+var version = "0.3.0.1"
 
 func main() {
 	if err := run(); errors.Is(err, errRestartRequested) {
@@ -79,6 +79,7 @@ func run() error {
 		defer instanceLock.Close()
 		localRuntime, err = localmodel.Start(ctx, localmodel.RuntimeConfig{
 			Layout:             localLayout,
+			ExecutableDir:      filepath.Dir(configPath),
 			StartupTimeout:     time.Duration(cfg.LocalModel.StartupTimeoutSeconds) * time.Second,
 			RequestTimeout:     time.Duration(cfg.Ollama.TimeoutSeconds) * time.Second,
 			NumCtx:             cfg.Ollama.NumCtx,

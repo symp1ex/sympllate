@@ -45,6 +45,7 @@ func New(cfg config.OllamaConfig, maxInputCharacters int) (*Client, error) {
 type generateRequest struct {
 	Model     string          `json:"model"`
 	Prompt    string          `json:"prompt"`
+	Images    []string        `json:"images,omitempty"`
 	Stream    bool            `json:"stream"`
 	KeepAlive string          `json:"keep_alive,omitempty"`
 	Options   generateOptions `json:"options"`
@@ -69,7 +70,43 @@ func (c *Client) Translate(ctx context.Context, req TranslateRequest) (Translate
 	if err != nil {
 		return TranslateResult{}, err
 	}
-	payload, err := json.Marshal(generateRequest{Model: c.model, Prompt: prompt, Stream: false, KeepAlive: c.keepAlive, Options: generateOptions{Temperature: c.temperature, NumCtx: c.numCtx, NumPredict: c.numPredict}})
+	return c.generate(ctx, generateRequest{Model: c.model, Prompt: prompt, Stream: false, KeepAlive: c.keepAlive, Options: c.options()}, false)
+}
+
+func (c *Client) TranslateImage(ctx context.Context, req translation.ImageTranslateRequest) (translation.ImageTranslateResult, error) {
+	validated, err := translation.ValidateImageRequest(req)
+	if err != nil {
+		return translation.ImageTranslateResult{}, err
+	}
+	prompt, err := translation.BuildImagePrompt(req.Source, req.Target)
+	if err != nil {
+		return translation.ImageTranslateResult{}, err
+	}
+	result, err := c.generate(ctx, generateRequest{
+		Model: c.model, Prompt: prompt, Images: []string{validated.DataBase64}, Stream: false,
+		KeepAlive: c.keepAlive, Options: c.options(),
+	}, true)
+	if err != nil {
+		if isUnsupportedVisionError(err) {
+			return translation.ImageTranslateResult{}, fmt.Errorf("the configured Ollama model %q does not support image input: %w", c.model, err)
+		}
+		return translation.ImageTranslateResult{}, err
+	}
+	return translation.ImageTranslateResult{Text: result.Text}, nil
+}
+
+func (c *Client) ImageCapability() translation.ImageCapability {
+	return translation.ImageCapability{Supported: true}
+}
+
+func (c *Client) ProviderName() string { return "ollama" }
+
+func (c *Client) options() generateOptions {
+	return generateOptions{Temperature: c.temperature, NumCtx: c.numCtx, NumPredict: c.numPredict}
+}
+
+func (c *Client) generate(ctx context.Context, request generateRequest, allowEmpty bool) (TranslateResult, error) {
+	payload, err := json.Marshal(request)
 	if err != nil {
 		return TranslateResult{}, fmt.Errorf("marshal Ollama request: %w", err)
 	}
@@ -93,7 +130,7 @@ func (c *Client) Translate(ctx context.Context, req TranslateRequest) (Translate
 	if err != nil {
 		return TranslateResult{}, fmt.Errorf("read Ollama response: %w", err)
 	}
-	return ParseResponse(response.StatusCode, body)
+	return parseResponse(response.StatusCode, body, allowEmpty)
 }
 
 func BuildPrompt(text, source, target string) (string, error) {
@@ -101,6 +138,18 @@ func BuildPrompt(text, source, target string) (string, error) {
 }
 
 func ParseResponse(statusCode int, body []byte) (TranslateResult, error) {
+	return parseResponse(statusCode, body, false)
+}
+
+func ParseImageResponse(statusCode int, body []byte) (translation.ImageTranslateResult, error) {
+	result, err := parseResponse(statusCode, body, true)
+	if err != nil {
+		return translation.ImageTranslateResult{}, err
+	}
+	return translation.ImageTranslateResult{Text: result.Text}, nil
+}
+
+func parseResponse(statusCode int, body []byte, allowEmpty bool) (TranslateResult, error) {
 	var decoded generateResponse
 	if err := json.Unmarshal(body, &decoded); err != nil {
 		if statusCode < 200 || statusCode >= 300 {
@@ -122,8 +171,15 @@ func ParseResponse(statusCode int, body []byte) (TranslateResult, error) {
 		return TranslateResult{}, errors.New(decoded.Error)
 	}
 	result := translation.CleanResult(decoded.Response)
-	if result == "" {
+	if result == "" && !allowEmpty {
 		return TranslateResult{}, errors.New("Ollama returned an empty translation")
 	}
 	return TranslateResult{Text: result}, nil
+}
+
+func isUnsupportedVisionError(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "does not support image") ||
+		strings.Contains(message, "image input is not supported") ||
+		strings.Contains(message, "does not support images")
 }

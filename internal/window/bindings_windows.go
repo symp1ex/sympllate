@@ -43,9 +43,11 @@ func bindMainSettings(w webview.WebView, mainWindow *MainWindow) error {
 }
 
 type ClientConfig struct {
-	DefaultLanguagePair    ClientLanguagePair `json:"defaultLanguagePair"`
-	FallbackTargetLanguage string             `json:"fallbackTargetLanguage"`
-	MaxInputCharacters     int                `json:"maxInputCharacters"`
+	DefaultLanguagePair      ClientLanguagePair `json:"defaultLanguagePair"`
+	FallbackTargetLanguage   string             `json:"fallbackTargetLanguage"`
+	MaxInputCharacters       int                `json:"maxInputCharacters"`
+	MaxImageBytes            int                `json:"maxImageBytes"`
+	MaxImageBase64Characters int                `json:"maxImageBase64Characters"`
 }
 
 type ClientLanguagePair struct {
@@ -60,11 +62,15 @@ func bindCommon(w webview.WebView, mode string, cfg config.Config, service *app.
 	}{
 		{"Translate", func(req translation.TranslateRequest) (string, error) { return service.StartTranslate(req) }},
 		{"GetTranslation", func(id string) (app.JobStatus, error) { return service.Job(id) }},
+		{"TranslateImage", func(req translation.ImageTranslateRequest) (string, error) { return service.StartImageTranslate(req) }},
+		{"GetImageTranslation", func(id string) (app.ImageJobStatus, error) { return service.ImageJob(id) }},
 		{"GetConfig", func() ClientConfig {
 			return ClientConfig{
 				ClientLanguagePair{cfg.DefaultLanguagePair.First.Active, cfg.DefaultLanguagePair.Second.Active},
 				cfg.FallbackTargetLanguage.Active,
 				cfg.Limits.MaxInputCharacters,
+				translation.MaxImageBytes,
+				translation.MaxImageBase64Characters,
 			}
 		}},
 		{"GetSupportedLanguages", func() []language.Language { return language.Supported() }},
