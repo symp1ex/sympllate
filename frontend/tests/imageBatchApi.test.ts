@@ -5,8 +5,8 @@ import type { ImageBatchStatus } from '../src/api.ts'
 
 test('batch polling reports progress and stops at completion', async () => {
   const statuses: ImageBatchStatus[] = [
-    { id: 'batch-1', state: 'processing', total: 2, processed: 1, translated: 1, noText: 0, failed: 0, currentFile: 'page-1.png' },
-    { id: 'batch-1', state: 'completed', total: 2, processed: 2, translated: 2, noText: 0, failed: 0 },
+    { id: 'batch-1', state: 'processing', total: 2, processed: 1, translated: 1, rendered: 1, partial: 0, warnings: 0, noText: 0, failed: 0, currentFile: 'page-1.png' },
+    { id: 'batch-1', state: 'completed', total: 2, processed: 2, translated: 2, rendered: 2, partial: 0, warnings: 0, noText: 0, failed: 0 },
   ]
   let index = 0
   Object.defineProperty(globalThis, 'window', { configurable: true, value: { setTimeout: globalThis.setTimeout, GetImageBatchStatus: async () => statuses[index++]! } })
@@ -19,7 +19,7 @@ test('batch polling reports progress and stops at completion', async () => {
 
 test('batch polling does not update after cancellation', async () => {
   const controller = new AbortController()
-  Object.defineProperty(globalThis, 'window', { configurable: true, value: { setTimeout: globalThis.setTimeout, GetImageBatchStatus: async () => ({ id: 'batch-1', state: 'processing', total: 1, processed: 0, translated: 0, noText: 0, failed: 0 }) } })
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { setTimeout: globalThis.setTimeout, GetImageBatchStatus: async () => ({ id: 'batch-1', state: 'processing', total: 1, processed: 0, translated: 0, rendered: 0, partial: 0, warnings: 0, noText: 0, failed: 0 }) } })
   controller.abort()
   await assert.rejects(pollImageBatch('batch-1', () => assert.fail('unexpected update'), controller.signal, 0), /cancelled/)
 })

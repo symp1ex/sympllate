@@ -15,7 +15,7 @@ import (
 
 const DefaultSelectionTTL = 30 * time.Minute
 
-var supportedExtensions = map[string]struct{}{".png": {}, ".jpg": {}, ".jpeg": {}}
+var supportedExtensions = map[string]struct{}{".png": {}, ".jpg": {}, ".jpeg": {}, ".webp": {}, ".tif": {}, ".tiff": {}, ".bmp": {}}
 
 type storedBatchSelection struct {
 	BatchSelection
@@ -40,7 +40,7 @@ func NewSelectionStore(ttl time.Duration) *SelectionStore {
 func (s *SelectionStore) CreateFiles(paths []string) (BatchSelection, error) {
 	files := supportedPaths(paths)
 	if len(files) == 0 {
-		return BatchSelection{}, errors.New("no supported PNG or JPEG images were selected")
+		return BatchSelection{}, errors.New("no supported images were selected")
 	}
 	sort.SliceStable(files, func(i, j int) bool { return naturalLess(strings.ToLower(files[i]), strings.ToLower(files[j])) })
 	displayName := "Selected images"
@@ -75,7 +75,7 @@ func (s *SelectionStore) CreateDirectory(directory string) (BatchSelection, erro
 		return naturalLess(strings.ToLower(filepath.Base(files[i])), strings.ToLower(filepath.Base(files[j])))
 	})
 	if len(files) == 0 {
-		return BatchSelection{}, errors.New("the selected directory contains no supported PNG or JPEG images")
+		return BatchSelection{}, errors.New("the selected directory contains no supported images")
 	}
 	return s.store(SelectionDirectory, filepath.Base(clean), files)
 }

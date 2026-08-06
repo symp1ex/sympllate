@@ -2,6 +2,7 @@ package imagebatch
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 type outputLayout struct {
 	Root         string
 	Images       string
+	Translated   string
 	OCR          string
 	Translations string
 	Debug        string
@@ -43,10 +45,10 @@ func createOutputLayout(executableDir string, now time.Time, debug bool) (output
 		}
 	}
 	layout := outputLayout{
-		Root: root, Images: filepath.Join(root, "images"), OCR: filepath.Join(root, "ocr"),
+		Root: root, Images: filepath.Join(root, "images"), Translated: filepath.Join(root, "translated"), OCR: filepath.Join(root, "ocr"),
 		Translations: filepath.Join(root, "translations"), Debug: filepath.Join(root, "debug"),
 	}
-	for _, directory := range []string{layout.Images, layout.OCR, layout.Translations} {
+	for _, directory := range []string{layout.Images, layout.Translated, layout.OCR, layout.Translations} {
 		if err := os.Mkdir(directory, 0o755); err != nil {
 			return outputLayout{}, fmt.Errorf("create output structure: %w", safePathError(err))
 		}
@@ -119,6 +121,10 @@ func atomicWriteJSON(path string, value any) error {
 }
 
 func atomicWriteBytes(path string, data []byte) error {
+	return atomicWriteBytesContext(context.Background(), path, data)
+}
+
+func atomicWriteBytesContext(ctx context.Context, path string, data []byte) error {
 	temporary, err := os.CreateTemp(filepath.Dir(path), ".sympllate-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temporary file: %w", safePathError(err))
@@ -130,7 +136,7 @@ func atomicWriteBytes(path string, data []byte) error {
 			_ = os.Remove(temporaryPath)
 		}
 	}()
-	if _, err := io.Copy(temporary, bytes.NewReader(data)); err != nil {
+	if _, err := io.Copy(temporary, &contextReader{ctx: ctx, reader: bytes.NewReader(data)}); err != nil {
 		_ = temporary.Close()
 		return fmt.Errorf("write file: %w", safePathError(err))
 	}
@@ -146,6 +152,18 @@ func atomicWriteBytes(path string, data []byte) error {
 	}
 	keep = true
 	return nil
+}
+
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r *contextReader) Read(buffer []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(buffer)
 }
 
 func relativeOutputPath(directory, path string) string {

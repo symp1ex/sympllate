@@ -44,7 +44,7 @@ func TestSelectionStoreCreatesNaturallySortedDirectorySelection(t *testing.T) {
 	for _, path := range stored.Files {
 		got = append(got, filepath.Base(path))
 	}
-	if !reflect.DeepEqual(got, []string{"page-1.jpg", "page-2.png", "page-10.png"}) {
+	if !reflect.DeepEqual(got, []string{"ignored.webp", "page-1.jpg", "page-2.png", "page-10.png"}) {
 		t.Fatalf("files=%v", got)
 	}
 }

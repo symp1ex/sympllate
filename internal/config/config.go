@@ -25,6 +25,7 @@ type Config struct {
 	Limits                 LimitsConfig     `json:"limits"`
 	Updater                UpdaterConfig    `json:"updater"`
 	Logs                   LogsConfig       `json:"logs"`
+	ImageBatch             ImageBatchConfig `json:"imageBatch"`
 }
 
 var Cfg = Default()
@@ -122,6 +123,16 @@ type LogsConfig struct {
 	StoreDays int           `json:"store_days"`
 }
 
+type ImageBatchConfig struct {
+	CleanupPaddingX       int     `json:"cleanupPaddingX"`
+	CleanupPaddingY       int     `json:"cleanupPaddingY"`
+	BackgroundSampleWidth int     `json:"backgroundSampleWidth"`
+	MinimumFontSize       float64 `json:"minimumFontSize"`
+	MaximumFontSize       float64 `json:"maximumFontSize"`
+	LineSpacing           float64 `json:"lineSpacing"`
+	JPEGQuality           int     `json:"jpegQuality"`
+}
+
 func Default() Config {
 	languages := supportedTargetLanguages()
 	return Config{
@@ -135,6 +146,7 @@ func Default() Config {
 		Limits:                 LimitsConfig{MaxInputCharacters: 12000, ClipboardWaitMilliseconds: 800},
 		Updater:                UpdaterConfig{Enabled: true},
 		Logs:                   LogsConfig{LogLevel: newSelectSetting(LogLevelWarning, []string{LogLevelDebug, LogLevelInfo, LogLevelWarning, LogLevelError}), StoreDays: 2},
+		ImageBatch:             ImageBatchConfig{CleanupPaddingX: 4, CleanupPaddingY: 3, BackgroundSampleWidth: 4, MinimumFontSize: 10, MaximumFontSize: 48, LineSpacing: 1.15, JPEGQuality: 92},
 	}
 }
 
@@ -315,6 +327,21 @@ func (c Config) Validate() error {
 	}
 	if c.Logs.StoreDays <= 0 {
 		return errors.New("logs.store_days must be greater than zero")
+	}
+	if c.ImageBatch.CleanupPaddingX < 0 || c.ImageBatch.CleanupPaddingY < 0 {
+		return errors.New("imageBatch cleanup padding cannot be negative")
+	}
+	if c.ImageBatch.BackgroundSampleWidth <= 0 {
+		return errors.New("imageBatch.backgroundSampleWidth must be greater than zero")
+	}
+	if c.ImageBatch.MinimumFontSize <= 0 || c.ImageBatch.MaximumFontSize < c.ImageBatch.MinimumFontSize {
+		return errors.New("imageBatch font size range is invalid")
+	}
+	if c.ImageBatch.LineSpacing < 1 || c.ImageBatch.LineSpacing > 3 {
+		return errors.New("imageBatch.lineSpacing must be between 1 and 3")
+	}
+	if c.ImageBatch.JPEGQuality < 1 || c.ImageBatch.JPEGQuality > 100 {
+		return errors.New("imageBatch.jpegQuality must be between 1 and 100")
 	}
 	logLevel := normalizedLogLevelSetting(c.Logs.LogLevel)
 	if !validLogLevel(logLevel.Active) {

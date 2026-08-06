@@ -132,7 +132,7 @@ func selectBatchImageFiles(owner uintptr) ([]string, bool, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	buffer := make([]uint16, 65536)
-	filter := utf16.Encode([]rune("Images (*.png;*.jpg;*.jpeg)\x00*.png;*.jpg;*.jpeg\x00"))
+	filter := utf16.Encode([]rune("Images (*.png;*.jpg;*.jpeg;*.webp;*.tif;*.tiff;*.bmp)\x00*.png;*.jpg;*.jpeg;*.webp;*.tif;*.tiff;*.bmp\x00"))
 	filter = append(filter, 0)
 	title, _ := syscall.UTF16PtrFromString("Select images")
 	dialog := openFileName{

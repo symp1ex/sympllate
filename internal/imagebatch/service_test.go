@@ -18,6 +18,7 @@ import (
 
 	"github.com/sympllate/translator/internal/ocr"
 	"github.com/sympllate/translator/internal/translation"
+	"golang.org/x/image/font/gofont/goregular"
 )
 
 type fakeBatchOCR struct {
@@ -63,6 +64,20 @@ type fakeBatchCompleter struct {
 	block bool
 }
 
+type sequenceBatchCompleter struct {
+	mu        sync.Mutex
+	responses []string
+	calls     int
+}
+
+func (f *sequenceBatchCompleter) Complete(context.Context, string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	response := f.responses[min(f.calls, len(f.responses)-1)]
+	f.calls++
+	return response, nil
+}
+
 func (f *fakeBatchCompleter) callCount() int { f.mu.Lock(); defer f.mu.Unlock(); return f.calls }
 
 func (f *fakeBatchCompleter) Complete(ctx context.Context, _ string) (string, error) {
@@ -97,14 +112,14 @@ func TestBatchLifecycleSuccessWritesDocumentsAndDebug(t *testing.T) {
 	if status.State != "completed" || status.Processed != 1 || status.Translated != 1 || opened != status.OutputDirectory {
 		t.Fatalf("status=%+v opened=%q", status, opened)
 	}
-	for _, relative := range []string{"images/page.png", "ocr/page.ocr.json", "translations/page.translation.json", "debug/page.ocr.png", "job.json", "errors.json"} {
+	for _, relative := range []string{"images/page.png", "translated/page.png", "ocr/page.ocr.json", "translations/page.translation.json", "debug/page.ocr.png", "debug/page.cleaned.png", "debug/page.layout.png", "debug/page.render.json", "job.json", "errors.json"} {
 		if _, err := os.Stat(filepath.Join(status.OutputDirectory, filepath.FromSlash(relative))); err != nil {
 			t.Errorf("missing %s: %v", relative, err)
 		}
 	}
 	var document TranslationDocument
 	readJSON(t, filepath.Join(status.OutputDirectory, "translations", "page.translation.json"), &document)
-	if document.Status != "translated" || len(document.Blocks) != 1 || document.Blocks[0].Box.Width != 10 {
+	if document.Status != "translated" || len(document.Blocks) != 1 || document.Blocks[0].Box.Width != 120 {
 		t.Fatalf("translation=%+v", document)
 	}
 	var report JobReport
@@ -130,6 +145,52 @@ func TestBatchNoTextSkipsModel(t *testing.T) {
 	readJSON(t, filepath.Join(status.OutputDirectory, "translations", "blank.translation.json"), &document)
 	if document.Status != "no_text" || len(document.Blocks) != 0 {
 		t.Fatalf("document=%+v", document)
+	}
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := os.ReadFile(filepath.Join(status.OutputDirectory, "translated", "blank.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(original, output) {
+		t.Fatal("no-text output was re-encoded")
+	}
+}
+
+func TestBatchProtocolFailureFallsBackPerBlockAndRendersPartial(t *testing.T) {
+	directory := t.TempDir()
+	path := writeBatchImage(t, directory, "partial.png")
+	page := translatedOCRPage()
+	second := page.Paragraphs[0]
+	second.ID, second.Text, second.Box.X = "p1-b2-par1", "Second", 150
+	second.Lines[0].ID, second.Lines[0].Text, second.Lines[0].Box.X = "p1-b2-par1-l1", "Second", 150
+	page.Paragraphs = append(page.Paragraphs, second)
+	completer := &sequenceBatchCompleter{responses: []string{
+		`not json`, `still not json`,
+		`{"blocks":[{"id":"p1-b1-par1","text":"Перевод"}]}`,
+		`not json`, `still not json`,
+	}}
+	service := newBatchTestService(t, directory, &fakeBatchOCR{pages: []ocr.OCRPage{page}}, completer)
+	selection, _ := service.SelectFiles([]string{path})
+	id, err := service.Start(StartImageBatchRequest{SelectionID: selection.ID, Source: "en", Target: "ru"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := waitBatch(t, service, id)
+	if status.State != "completed" || status.Partial != 1 || status.Rendered != 1 || status.Failed != 0 {
+		t.Fatalf("status=%+v", status)
+	}
+	var report JobReport
+	readJSON(t, filepath.Join(status.OutputDirectory, "job.json"), &report)
+	if len(report.Files) != 1 || report.Files[0].Status != "partial" || report.Files[0].RenderedBlocks != 1 || len(report.Files[0].SkippedBlocks) != 1 {
+		t.Fatalf("report=%+v", report)
+	}
+	var document TranslationDocument
+	readJSON(t, filepath.Join(status.OutputDirectory, "translations", "partial.translation.json"), &document)
+	if document.Status != "partial" || document.Blocks[1].Status != "failed" || document.Blocks[1].TranslatedText != "" {
+		t.Fatalf("translation=%+v", document)
 	}
 }
 
@@ -252,7 +313,8 @@ func TestBatchPreflightAndExplorerFailure(t *testing.T) {
 
 func newBatchTestService(t *testing.T, executableDir string, recognizer StructuredOCR, completer translation.RawCompleter) *Service {
 	t.Helper()
-	service, err := NewService(context.Background(), executableDir, recognizer, completer, 12_000, log.New(io.Discard, "", 0))
+	writeTestFont(t, executableDir)
+	service, err := NewService(context.Background(), executableDir, recognizer, completer, 12_000, DefaultRenderConfig(), log.New(io.Discard, "", 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +341,7 @@ func waitBatch(t *testing.T, service *Service, id string) ImageBatchStatus {
 
 func writeBatchImage(t *testing.T, directory, name string) string {
 	t.Helper()
-	value := image.NewRGBA(image.Rect(0, 0, 20, 20))
+	value := image.NewRGBA(image.Rect(0, 0, 200, 100))
 	value.Set(1, 1, color.RGBA{R: 255, A: 255})
 	var buffer bytes.Buffer
 	if err := png.Encode(&buffer, value); err != nil {
@@ -293,10 +355,10 @@ func writeBatchImage(t *testing.T, directory, name string) string {
 }
 
 func translatedOCRPage() ocr.OCRPage {
-	word := ocr.OCRWord{ID: "p1-b1-par1-l1-w1", Text: "Source", Confidence: 90, Box: ocr.OCRBox{X: 1, Y: 1, Width: 10, Height: 8}, Accepted: true, Page: 1, Block: 1, Paragraph: 1, Line: 1, Word: 1}
+	word := ocr.OCRWord{ID: "p1-b1-par1-l1-w1", Text: "Source", Confidence: 90, Box: ocr.OCRBox{X: 10, Y: 10, Width: 120, Height: 30}, Accepted: true, Page: 1, Block: 1, Paragraph: 1, Line: 1, Word: 1}
 	line := ocr.OCRLine{ID: "p1-b1-par1-l1", Text: "Source", Confidence: 90, Box: word.Box, Words: []ocr.OCRWord{word}, Page: 1, Block: 1, Paragraph: 1, Line: 1}
 	paragraph := ocr.OCRParagraph{ID: "p1-b1-par1", Text: "Source", Confidence: 90, Box: word.Box, Lines: []ocr.OCRLine{line}, Page: 1, Block: 1, Paragraph: 1}
-	return ocr.OCRPage{SchemaVersion: 1, Words: []ocr.OCRWord{word}, Paragraphs: []ocr.OCRParagraph{paragraph}}
+	return ocr.OCRPage{SchemaVersion: 1, Image: ocr.OCRImageInfo{Width: 200, Height: 100, MediaType: "image/png"}, Words: []ocr.OCRWord{word}, Paragraphs: []ocr.OCRParagraph{paragraph}}
 }
 
 func readJSON(t *testing.T, path string, target any) {
@@ -306,6 +368,17 @@ func readJSON(t *testing.T, path string, target any) {
 		t.Fatal(err)
 	}
 	if err := json.Unmarshal(data, target); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeTestFont(t *testing.T, executableDir string) {
+	t.Helper()
+	directory := filepath.Join(executableDir, "bin", "fonts")
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "regular.ttf"), goregular.TTF, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

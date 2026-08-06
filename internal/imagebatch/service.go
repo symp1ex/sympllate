@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -32,6 +30,8 @@ type Service struct {
 	logger        logger.PrintLogger
 	now           func() time.Time
 	openDirectory func(string) error
+	renderer      *Renderer
+	ffmpeg        *ffmpegAdapter
 
 	mu       sync.Mutex
 	closed   bool
@@ -54,7 +54,7 @@ type batchJob struct {
 	errors    []BatchFileError
 }
 
-func NewService(ctx context.Context, executableDir string, recognizer StructuredOCR, completer translation.RawCompleter, maxInputCharacters int, log logger.PrintLogger) (*Service, error) {
+func NewService(ctx context.Context, executableDir string, recognizer StructuredOCR, completer translation.RawCompleter, maxInputCharacters int, renderConfig RenderConfig, log logger.PrintLogger) (*Service, error) {
 	structuredTranslator, err := translation.NewStructuredTranslator(completer, maxInputCharacters)
 	if err != nil {
 		return nil, err
@@ -62,10 +62,15 @@ func NewService(ctx context.Context, executableDir string, recognizer Structured
 	if recognizer == nil || executableDir == "" {
 		return nil, errors.New("invalid image batch service configuration")
 	}
+	renderer, err := NewRenderer(executableDir, renderConfig)
+	if err != nil {
+		return nil, err
+	}
 	return &Service{
 		ctx: ctx, executableDir: executableDir, ocr: recognizer, translator: structuredTranslator,
 		selections: NewSelectionStore(DefaultSelectionTTL), logger: log, now: time.Now,
 		openDirectory: openExplorer, jobs: make(map[string]*batchJob),
+		renderer: renderer, ffmpeg: newFFmpegAdapter(executableDir),
 	}, nil
 }
 
@@ -192,7 +197,7 @@ func (s *Service) Close() {
 	s.mu.Unlock()
 }
 
-func (s *Service) Wait() { s.wg.Wait() }
+func (s *Service) Wait() { s.wg.Wait(); s.renderer.Close() }
 
 func (s *Service) run(ctx context.Context, job *batchJob) {
 	s.setState(job, "preparing", "")
@@ -236,20 +241,26 @@ func (s *Service) run(ctx context.Context, job *batchJob) {
 
 func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sourcePath, outputName string) (JobFileReport, error, bool) {
 	started := s.now()
-	report := JobFileReport{SourceID: fmt.Sprintf("selection-file-%06d", index+1), SourceFile: filepath.Base(sourcePath), OutputName: outputName, Status: "processing"}
+	report := JobFileReport{SourceID: fmt.Sprintf("selection-file-%06d", index+1), SourceFile: filepath.Base(sourcePath), OutputName: outputName, Status: "processing", DurationsMillis: make(map[string]int64)}
 	finish := func(status, stage string) JobFileReport {
 		report.Status = status
 		report.ErrorStage = stage
 		report.DurationMillis = s.now().Sub(started).Milliseconds()
 		return report
 	}
-	image, err := readValidatedImage(sourcePath)
+	s.updateStage(job, "prepare_render")
+	prepareStarted := s.now()
+	prepared, err := prepareSource(ctx, sourcePath, s.ffmpeg)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return finish("cancelled", "prepare_render"), nil, true
+		}
 		s.fileFailed(job, report.SourceFile, "validate", err)
 		return finish("failed", "validate"), nil, false
 	}
+	report.DurationsMillis["prepare"] = s.now().Sub(prepareStarted).Milliseconds()
 	imagePath := filepath.Join(job.layout.Images, outputName)
-	if err := atomicWriteBytes(imagePath, image.Data); err != nil {
+	if err := atomicWriteBytesContext(ctx, imagePath, prepared.Original); err != nil {
 		s.fileFailed(job, report.SourceFile, "copy", err)
 		return finish("failed", "copy"), nil, false
 	}
@@ -258,8 +269,11 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 	translationPath := filepath.Join(job.layout.Translations, stem+".translation.json")
 	report.OCRPath = relativeOutputPath(job.layout.Root, ocrPath)
 	report.TranslationPath = relativeOutputPath(job.layout.Root, translationPath)
+	finalPath := filepath.Join(job.layout.Translated, outputName)
+	report.OutputFile = relativeOutputPath(job.layout.Root, finalPath)
+	s.updateStage(job, "ocr")
 	ocrStarted := s.now()
-	page, err := s.ocr.RecognizeStructured(ctx, image, job.request.Source)
+	page, err := s.ocr.RecognizeStructured(ctx, prepared.Validated, job.request.Source)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 			return finish("cancelled", "ocr"), nil, true
@@ -284,8 +298,16 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 			s.fileFailed(job, report.SourceFile, "write_output", err)
 			return finish("failed", "write_output"), nil, false
 		}
+		if err := ctx.Err(); err != nil {
+			return finish("cancelled", "encode_output"), nil, true
+		}
+		s.updateStage(job, "encode_output")
+		if err := atomicWriteBytesContext(ctx, finalPath, prepared.Original); err != nil {
+			s.fileFailed(job, report.SourceFile, "encode_output", err)
+			return finish("failed", "encode_output"), nil, false
+		}
 		s.increment(job, "no_text")
-		s.renderDebug(ctx, job, &report, image.Data, page)
+		s.renderDebug(ctx, job, &report, prepared.Validated.Data, page)
 		return finish("no_text", ""), nil, false
 	}
 	blocks := make([]translation.TranslationBlock, 0, len(page.Paragraphs))
@@ -297,7 +319,13 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 		blocks = append(blocks, translation.TranslationBlock{ID: paragraph.ID, Text: paragraph.Text, Lines: lines})
 	}
 	translationStarted := s.now()
+	s.updateStage(job, "translate")
 	translated, chunks, err := s.translator.Translate(ctx, job.request.Source, job.request.Target, blocks)
+	failedTranslationIDs := make(map[string]struct{})
+	var protocolErr *translation.ProtocolError
+	if errors.As(err, &protocolErr) {
+		translated, chunks, failedTranslationIDs, err = s.translateBlocksIndividually(ctx, job.request.Source, job.request.Target, blocks)
+	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 			_ = s.writeFailedTranslation(translationPath, outputName, job.request, "cancelled", "")
@@ -325,10 +353,18 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 	for _, block := range translated {
 		translatedByID[block.ID] = block
 	}
-	document := TranslationDocument{SchemaVersion: SchemaVersion, SourceFile: outputName, Source: job.request.Source, Target: job.request.Target, Status: "translated", Blocks: make([]TranslatedBlock, 0, len(page.Paragraphs))}
+	documentStatus := "translated"
+	if len(failedTranslationIDs) > 0 {
+		documentStatus = "partial"
+	}
+	document := TranslationDocument{SchemaVersion: SchemaVersion, SourceFile: outputName, Source: job.request.Source, Target: job.request.Target, Status: documentStatus, Blocks: make([]TranslatedBlock, 0, len(page.Paragraphs))}
 	for _, paragraph := range page.Paragraphs {
-		translatedBlock := translatedByID[paragraph.ID]
-		outputBlock := TranslatedBlock{ID: paragraph.ID, SourceText: paragraph.Text, TranslatedText: translatedBlock.Text, Confidence: paragraph.Confidence, Box: paragraph.Box}
+		translatedBlock, translatedOK := translatedByID[paragraph.ID]
+		blockStatus := "translated"
+		if !translatedOK || strings.TrimSpace(translatedBlock.Text) == "" {
+			blockStatus = "failed"
+		}
+		outputBlock := TranslatedBlock{ID: paragraph.ID, SourceText: paragraph.Text, TranslatedText: translatedBlock.Text, Confidence: paragraph.Confidence, Box: paragraph.Box, Status: blockStatus}
 		for _, part := range translatedBlock.Parts {
 			outputBlock.Parts = append(outputBlock.Parts, TranslatedPart{ID: part.ID, SourceText: part.SourceText, TranslatedText: part.TranslatedText})
 		}
@@ -338,10 +374,116 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 		s.fileFailed(job, report.SourceFile, "write_output", err)
 		return finish("failed", "write_output"), nil, false
 	}
-	s.increment(job, "translated")
 	s.logf("image batch translation completed: id=%s name=%s blocks=%d chunks=%d duration=%s", job.status.ID, report.SourceFile, len(document.Blocks), chunks, s.now().Sub(translationStarted))
-	s.renderDebug(ctx, job, &report, image.Data, page)
-	return finish("translated", ""), nil, false
+	report.TotalBlocks = len(page.Paragraphs)
+	s.updateStage(job, "layout_text")
+	layoutStarted := s.now()
+	renderDocument, err := s.renderer.Prepare(ctx, prepared.Image, page, document)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return finish("cancelled", "layout_text"), nil, true
+		}
+		stage := "layout_text"
+		if strings.Contains(err.Error(), "шрифт") {
+			stage = "load_font"
+		}
+		s.fileFailed(job, report.SourceFile, stage, err)
+		return finish("failed", stage), systemRenderError(stage, err), false
+	}
+	report.DurationsMillis["layout"] = s.now().Sub(layoutStarted).Milliseconds()
+	report.RenderedBlocks = len(renderDocument.Blocks)
+	report.SkippedBlocks = renderDocument.SkippedBlocks
+	report.Warnings = renderDocument.Warnings
+	s.logf("image layout completed: job=%s name=%s renderable=%d skipped=%d warnings=%d duration=%s", job.status.ID, report.SourceFile, len(renderDocument.Blocks), len(renderDocument.SkippedBlocks), len(renderDocument.Warnings), s.now().Sub(layoutStarted))
+
+	if len(renderDocument.Blocks) == 0 {
+		s.updateStage(job, "encode_output")
+		if err := atomicWriteBytesContext(ctx, finalPath, prepared.Original); err != nil {
+			s.fileFailed(job, report.SourceFile, "encode_output", err)
+			return finish("failed", "encode_output"), nil, false
+		}
+		s.incrementRendered(job, "partial", len(renderDocument.Warnings))
+		s.renderDebugArtifacts(ctx, job, &report, prepared.Image, prepared.Image, renderDocument)
+		return finish("partial", ""), nil, false
+	}
+
+	s.updateStage(job, "clean_background")
+	cleanupStarted := s.now()
+	cleaned, err := s.renderer.Clean(ctx, prepared.Image, renderDocument)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return finish("cancelled", "clean_background"), nil, true
+		}
+		s.fileFailed(job, report.SourceFile, "clean_background", err)
+		return finish("failed", "clean_background"), nil, false
+	}
+	report.DurationsMillis["cleanup"] = s.now().Sub(cleanupStarted).Milliseconds()
+	nonUniform := 0
+	for _, warning := range renderDocument.Warnings {
+		if warning.Code == "non_uniform_background" {
+			nonUniform++
+		}
+	}
+	s.logf("image cleanup completed: job=%s name=%s regions=%d non_uniform=%d duration=%s", job.status.ID, report.SourceFile, len(renderDocument.Blocks), nonUniform, s.now().Sub(cleanupStarted))
+	cleanedDebug := cloneNRGBA(cleaned)
+	s.updateStage(job, "render_text")
+	renderStarted := s.now()
+	if err := s.renderer.Draw(ctx, cleaned, renderDocument); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return finish("cancelled", "render_text"), nil, true
+		}
+		s.fileFailed(job, report.SourceFile, "render_text", err)
+		return finish("failed", "render_text"), nil, false
+	}
+	report.DurationsMillis["render"] = s.now().Sub(renderStarted).Milliseconds()
+	s.updateStage(job, "encode_output")
+	encodeStarted := s.now()
+	if err := encodeRendered(ctx, cleaned, finalPath, prepared.Extension, s.renderer.config.JPEGQuality, s.ffmpeg); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return finish("cancelled", "encode_output"), nil, true
+		}
+		s.fileFailed(job, report.SourceFile, "encode_output", err)
+		return finish("failed", "encode_output"), nil, false
+	}
+	report.DurationsMillis["encode"] = s.now().Sub(encodeStarted).Milliseconds()
+	s.updateStage(job, "verify_output")
+	if err := ctx.Err(); err != nil {
+		return finish("cancelled", "verify_output"), nil, true
+	}
+	status := "translated"
+	if len(renderDocument.SkippedBlocks) > 0 {
+		status = "partial"
+	} else if len(renderDocument.Warnings) > 0 {
+		status = "translated_with_warnings"
+	}
+	s.incrementRendered(job, status, len(renderDocument.Warnings))
+	s.logf("image render completed: job=%s name=%s format=%s rendered_blocks=%d duration=%s", job.status.ID, report.SourceFile, prepared.Extension, len(renderDocument.Blocks), s.now().Sub(renderStarted))
+	s.renderDebug(ctx, job, &report, prepared.Validated.Data, page)
+	s.renderDebugArtifacts(ctx, job, &report, cleanedDebug, cleaned, renderDocument)
+	return finish(status, ""), nil, false
+}
+
+func (s *Service) translateBlocksIndividually(ctx context.Context, source, target string, blocks []translation.TranslationBlock) ([]translation.TranslatedTextBlock, int, map[string]struct{}, error) {
+	translated := make([]translation.TranslatedTextBlock, 0, len(blocks))
+	failed := make(map[string]struct{})
+	totalChunks := 0
+	for _, block := range blocks {
+		if err := ctx.Err(); err != nil {
+			return nil, totalChunks, failed, err
+		}
+		result, chunks, err := s.translator.Translate(ctx, source, target, []translation.TranslationBlock{block})
+		totalChunks += chunks
+		if err == nil {
+			translated = append(translated, result...)
+			continue
+		}
+		var completionErr *translation.CompletionError
+		if errors.As(err, &completionErr) || errors.Is(err, context.Canceled) {
+			return nil, totalChunks, failed, err
+		}
+		failed[block.ID] = struct{}{}
+	}
+	return translated, totalChunks, failed, nil
 }
 
 func (s *Service) renderDebug(ctx context.Context, job *batchJob, report *JobFileReport, data []byte, page ocr.OCRPage) {
@@ -358,26 +500,6 @@ func (s *Service) renderDebug(ctx context.Context, job *batchJob, report *JobFil
 		return
 	}
 	report.DebugPath = relativeOutputPath(job.layout.Root, debugPath)
-}
-
-func readValidatedImage(path string) (translation.ValidatedImage, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return translation.ValidatedImage{}, fmt.Errorf("open image: %w", safePathError(err))
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, translation.MaxImageBytes+1))
-	if err != nil {
-		return translation.ValidatedImage{}, fmt.Errorf("read image: %w", safePathError(err))
-	}
-	mediaType := ""
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".png":
-		mediaType = "image/png"
-	case ".jpg", ".jpeg":
-		mediaType = "image/jpeg"
-	}
-	return translation.ValidateImageData(data, mediaType)
 }
 
 func (s *Service) writeFailedTranslation(path, sourceFile string, request StartImageBatchRequest, status, message string) error {
@@ -412,15 +534,33 @@ func (s *Service) increment(job *batchJob, kind string) {
 	job.status.Processed++
 }
 
+func (s *Service) incrementRendered(job *batchJob, status string, warnings int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job.status.Rendered++
+	job.status.Warnings += warnings
+	if status == "partial" {
+		job.status.Partial++
+	} else {
+		job.status.Translated++
+	}
+	job.status.Processed++
+}
+
 func (s *Service) syncSummary(job *batchJob) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	job.report.Summary = JobSummary{Total: job.status.Total, Processed: job.status.Processed, Translated: job.status.Translated, NoText: job.status.NoText, Failed: job.status.Failed}
+	job.report.Summary = JobSummary{Total: job.status.Total, Processed: job.status.Processed, Translated: job.status.Translated, Rendered: job.status.Rendered, Partial: job.status.Partial, Warnings: job.status.Warnings, NoText: job.status.NoText, Failed: job.status.Failed}
 }
 
 func (s *Service) updateCurrent(job *batchJob, file string) {
 	s.mu.Lock()
 	job.status.CurrentFile = file
+	s.mu.Unlock()
+}
+func (s *Service) updateStage(job *batchJob, stage string) {
+	s.mu.Lock()
+	job.status.CurrentStage = stage
 	s.mu.Unlock()
 }
 func (s *Service) setState(job *batchJob, state, message string) {
@@ -456,6 +596,7 @@ func (s *Service) finish(job *batchJob, state string, failure error) {
 	s.mu.Lock()
 	job.status.State = state
 	job.status.CurrentFile = ""
+	job.status.CurrentStage = ""
 	if failure != nil {
 		job.status.Error = safeMessage(failure)
 	}
@@ -464,7 +605,7 @@ func (s *Service) finish(job *batchJob, state string, failure error) {
 	status := job.status
 	s.mu.Unlock()
 	job.cancel()
-	s.logf("image batch completed: id=%s state=%s total=%d translated=%d no_text=%d failed=%d duration=%s", status.ID, status.State, status.Total, status.Translated, status.NoText, status.Failed, completed.Sub(job.report.StartedAt))
+	s.logf("image batch completed: id=%s state=%s total=%d translated=%d rendered=%d partial=%d warnings=%d no_text=%d failed=%d duration=%s", status.ID, status.State, status.Total, status.Translated, status.Rendered, status.Partial, status.Warnings, status.NoText, status.Failed, completed.Sub(job.report.StartedAt))
 	if state == "completed" || state == "completed_with_errors" {
 		if err := s.openDirectory(job.layout.Root); err != nil {
 			s.logf("image batch output directory could not be opened: id=%s error=%v", status.ID, err)
@@ -491,4 +632,11 @@ func (s *Service) logf(format string, values ...any) {
 	if s.logger != nil {
 		s.logger.Printf(format, values...)
 	}
+}
+
+func systemRenderError(stage string, err error) error {
+	if stage == "load_font" {
+		return err
+	}
+	return nil
 }

@@ -11,3 +11,4 @@ AGENTS.md
 .idea/
 _resources/
 *.txt
+!assets/fonts/GO-FONT-LICENSE.txt

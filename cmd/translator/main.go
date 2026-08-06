@@ -128,7 +128,15 @@ func run() error {
 	if !ok {
 		return errors.New("the selected provider does not support structured translation")
 	}
-	batchService, err := imagebatch.NewService(ctx, filepath.Dir(configPath), ocr.New(filepath.Dir(configPath), ocr.DefaultTimeout), completer, cfg.Limits.MaxInputCharacters, applicationLogger)
+	renderConfig := imagebatch.DefaultRenderConfig()
+	renderConfig.CleanupPaddingX = cfg.ImageBatch.CleanupPaddingX
+	renderConfig.CleanupPaddingY = cfg.ImageBatch.CleanupPaddingY
+	renderConfig.BackgroundSampleWidth = cfg.ImageBatch.BackgroundSampleWidth
+	renderConfig.MinimumFontSize = cfg.ImageBatch.MinimumFontSize
+	renderConfig.MaximumFontSize = cfg.ImageBatch.MaximumFontSize
+	renderConfig.LineSpacing = cfg.ImageBatch.LineSpacing
+	renderConfig.JPEGQuality = cfg.ImageBatch.JPEGQuality
+	batchService, err := imagebatch.NewService(ctx, filepath.Dir(configPath), ocr.New(filepath.Dir(configPath), ocr.DefaultTimeout), completer, cfg.Limits.MaxInputCharacters, renderConfig, applicationLogger)
 	if err != nil {
 		return fmt.Errorf("configure image batch service: %w", err)
 	}

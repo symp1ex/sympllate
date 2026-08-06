@@ -35,9 +35,13 @@ type ImageBatchStatus struct {
 	Total           int    `json:"total"`
 	Processed       int    `json:"processed"`
 	Translated      int    `json:"translated"`
+	Rendered        int    `json:"rendered"`
+	Partial         int    `json:"partial"`
+	Warnings        int    `json:"warnings"`
 	NoText          int    `json:"noText"`
 	Failed          int    `json:"failed"`
 	CurrentFile     string `json:"currentFile,omitempty"`
+	CurrentStage    string `json:"currentStage,omitempty"`
 	OutputDirectory string `json:"outputDirectory,omitempty"`
 	Error           string `json:"error,omitempty"`
 }
@@ -58,6 +62,7 @@ type TranslatedBlock struct {
 	TranslatedText string           `json:"translatedText"`
 	Confidence     float64          `json:"confidence"`
 	Box            ocr.OCRBox       `json:"box"`
+	Status         string           `json:"status"`
 	Parts          []TranslatedPart `json:"parts,omitempty"`
 }
 
@@ -103,18 +108,27 @@ type JobSummary struct {
 	Total      int `json:"total"`
 	Processed  int `json:"processed"`
 	Translated int `json:"translated"`
+	Rendered   int `json:"rendered"`
+	Partial    int `json:"partial"`
+	Warnings   int `json:"warnings"`
 	NoText     int `json:"noText"`
 	Failed     int `json:"failed"`
 }
 
 type JobFileReport struct {
-	SourceID        string `json:"sourceId"`
-	SourceFile      string `json:"sourceFile"`
-	OutputName      string `json:"outputName,omitempty"`
-	Status          string `json:"status"`
-	OCRPath         string `json:"ocrPath,omitempty"`
-	TranslationPath string `json:"translationPath,omitempty"`
-	DebugPath       string `json:"debugPath,omitempty"`
-	DurationMillis  int64  `json:"durationMillis"`
-	ErrorStage      string `json:"errorStage,omitempty"`
+	SourceID        string               `json:"sourceId"`
+	SourceFile      string               `json:"sourceFile"`
+	OutputName      string               `json:"outputName,omitempty"`
+	Status          string               `json:"status"`
+	OCRPath         string               `json:"ocrPath,omitempty"`
+	TranslationPath string               `json:"translationPath,omitempty"`
+	OutputFile      string               `json:"outputFile,omitempty"`
+	DebugPath       string               `json:"debugPath,omitempty"`
+	TotalBlocks     int                  `json:"totalBlocks"`
+	RenderedBlocks  int                  `json:"renderedBlocks"`
+	SkippedBlocks   []SkippedRenderBlock `json:"skippedBlocks,omitempty"`
+	Warnings        []RenderWarning      `json:"warnings,omitempty"`
+	DurationsMillis map[string]int64     `json:"durationsMs,omitempty"`
+	DurationMillis  int64                `json:"durationMillis"`
+	ErrorStage      string               `json:"errorStage,omitempty"`
 }

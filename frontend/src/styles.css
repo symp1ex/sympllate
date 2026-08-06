@@ -288,7 +288,7 @@ textarea[readonly] { background: rgba(12, 18, 27, 0.56); }
 .batch-language-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) auto; align-items: end; gap: 12px; margin-top: 12px; }
 .batch-language-row button { min-height: 36px; }
 .batch-status { display: grid; gap: 8px; margin-top: 13px; color: var(--text-muted); font-size: 12px; }
-.batch-status > div:first-child, .batch-counts { display: flex; justify-content: space-between; gap: 16px; }
+.batch-status > div:first-child, .batch-counts { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; }
 .batch-status progress { width: 100%; accent-color: var(--accent); }
 .batch-current, .batch-output { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hint { margin-left: auto; color: #7d9298; font-size: 12px; }

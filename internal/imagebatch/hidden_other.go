@@ -2,6 +2,10 @@
 
 package imagebatch
 
-import "os"
+import (
+	"os"
+	"os/exec"
+)
 
 func fileIsHidden(os.FileInfo) bool { return false }
+func configureProcess(*exec.Cmd)    {}

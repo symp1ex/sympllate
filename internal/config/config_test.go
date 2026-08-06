@@ -58,6 +58,32 @@ func TestDefaultEnablesUpdaterAndConfiguresLogs(t *testing.T) {
 	if strings.Join(cfg.Logs.LogLevel.List, ",") != strings.Join(wantLevels, ",") {
 		t.Fatalf("default log levels = %v, want %v", cfg.Logs.LogLevel.List, wantLevels)
 	}
+	if cfg.ImageBatch.CleanupPaddingX != 4 || cfg.ImageBatch.MinimumFontSize != 10 || cfg.ImageBatch.MaximumFontSize != 48 || cfg.ImageBatch.JPEGQuality != 92 {
+		t.Fatalf("default image batch config = %+v", cfg.ImageBatch)
+	}
+}
+
+func TestValidateImageBatchSettings(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		change func(*Config)
+	}{
+		{"negative padding", func(cfg *Config) { cfg.ImageBatch.CleanupPaddingX = -1 }},
+		{"sample width", func(cfg *Config) { cfg.ImageBatch.BackgroundSampleWidth = 0 }},
+		{"font range", func(cfg *Config) { cfg.ImageBatch.MinimumFontSize = 20; cfg.ImageBatch.MaximumFontSize = 10 }},
+		{"line spacing", func(cfg *Config) { cfg.ImageBatch.LineSpacing = 0.5 }},
+		{"jpeg quality", func(cfg *Config) { cfg.ImageBatch.JPEGQuality = 101 }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := Default()
+			test.change(&cfg)
+			if err := cfg.Validate(); err == nil {
+				t.Fatalf("config=%+v", cfg.ImageBatch)
+			}
+		})
+	}
 }
 
 func TestLoadLegacyLogLevelPopulatesSelectOptions(t *testing.T) {

@@ -73,6 +73,13 @@ function Build-Translator([string]$OutputDirectory) {
     if ($LASTEXITCODE -ne 0) {
         throw "Go build завершился с кодом $LASTEXITCODE"
     }
+    $fontDirectory = Join-Path $OutputDirectory 'bin\fonts'
+    New-Item -ItemType Directory -Path $fontDirectory -Force | Out-Null
+    go run .\cmd\fontasset -output (Join-Path $fontDirectory 'regular.ttf')
+    if ($LASTEXITCODE -ne 0) {
+        throw "Подготовка шрифта завершилась с кодом $LASTEXITCODE"
+    }
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'assets\fonts\GO-FONT-LICENSE.txt') -Destination (Join-Path $fontDirectory 'LICENSE.txt')
 }
 
 function Build-Lite {

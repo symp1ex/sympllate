@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { BatchSelection, ImageBatchStatus, Language } from '../api'
 import { cancelImageBatch, errorMessage, pollImageBatch, selectBatchImageDirectory, selectBatchImageFiles, startImageBatch } from '../api'
-import { imageBatchProgress, imageBatchStateLabel } from '../imageBatchState'
+import { imageBatchProgress, imageBatchStageLabel, imageBatchStateLabel } from '../imageBatchState'
 import { ErrorMessage } from './ErrorMessage'
 import { LanguageSelect } from './LanguageSelect'
 
@@ -68,7 +68,7 @@ export function ImageBatchPanel({ languages, defaultTarget, disabled, onBusyChan
     try {
       const id = await startImageBatch({ selectionId: selection.id, source, target, debug })
       if (!mounted.current) return
-      setStatus({ id, state: 'pending', total: selection.fileCount, processed: 0, translated: 0, noText: 0, failed: 0 })
+      setStatus({ id, state: 'pending', total: selection.fileCount, processed: 0, translated: 0, rendered: 0, partial: 0, warnings: 0, noText: 0, failed: 0 })
       setJobID(id)
       onBusyChange(true)
     } catch (caught) {
@@ -106,8 +106,8 @@ export function ImageBatchPanel({ languages, defaultTarget, disabled, onBusyChan
       {status && <div className="batch-status" role="status">
         <div><strong>{imageBatchStateLabel(status.state)}</strong><span>{status.processed} of {status.total}</span></div>
         <progress max={100} value={progress}>{progress}%</progress>
-        {status.currentFile && <div className="batch-current" title={status.currentFile}>Current file: {status.currentFile}</div>}
-        <div className="batch-counts"><span>Translated: {status.translated}</span><span>No text: {status.noText}</span><span>Errors: {status.failed}</span></div>
+        {status.currentFile && <div className="batch-current" title={status.currentFile}>Current file: {status.currentFile}{status.currentStage ? ` · ${imageBatchStageLabel(status.currentStage)}` : ''}</div>}
+        <div className="batch-counts"><span>Translated: {status.translated}</span><span>Rendered: {status.rendered}</span><span>Partial: {status.partial}</span><span>No text: {status.noText}</span><span>Warnings: {status.warnings}</span><span>Errors: {status.failed}</span></div>
         {status.outputDirectory && (status.state === 'completed' || status.state === 'completed_with_errors') && <div className="batch-output" title={status.outputDirectory}>Opened: {status.outputDirectory}</div>}
         {status.error && <ErrorMessage message={status.error} />}
       </div>}
