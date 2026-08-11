@@ -1,6 +1,6 @@
 //go:build windows
 
-package ocr
+package ffmpeg
 
 import (
 	"os/exec"

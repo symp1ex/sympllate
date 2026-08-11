@@ -49,10 +49,19 @@ func TestBuildStructuredPromptContainsJSONProtocol(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"Return valid JSON only", "Preserve every block ID exactly", `"sourceLanguage":"auto"`, `"id":"p1-b1-par1"`} {
+	for _, required := range []string{"Return valid JSON only", "Preserve every block ID exactly", "exactly once", "Preserve backslashes", `"sourceLanguage":"auto"`, `"id":"p1-b1-par1"`} {
 		if !strings.Contains(prompt, required) {
 			t.Errorf("prompt missing %q", required)
 		}
+	}
+}
+
+func TestValidateStructuredResponseNormalizesImageText(t *testing.T) {
+	expected := []promptBlock{{ID: "a", Text: "source"}}
+	response := `{"blocks":[{"id":"a","text":"one\\r\\n\\r\\ntwo C:\\\\react folder\\nsys"}]}`
+	result, err := ValidateStructuredResponse(response, expected, 4096)
+	if err != nil || result["a"] != "one\n\ntwo C:\\\\react folder\\nsys" {
+		t.Fatalf("result=%q err=%v", result["a"], err)
 	}
 }
 

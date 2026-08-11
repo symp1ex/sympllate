@@ -105,7 +105,7 @@ func TestBuildImagePrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"visible in the image", "Return only the translated text", "Do not describe the image", "source language is auto"} {
+	for _, required := range []string{"visible in the image", "Return only the translated text", "real line breaks", "meaningful backslashes", "Do not describe the image", "source language is auto"} {
 		if !strings.Contains(prompt, required) {
 			t.Errorf("prompt missing %q: %s", required, prompt)
 		}

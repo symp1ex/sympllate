@@ -11,31 +11,20 @@ import (
 	"image/png"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/sympllate/translator/internal/ffmpeg"
 	"github.com/sympllate/translator/internal/translation"
 )
 
 const (
-	defaultFFmpegTimeout = 60 * time.Second
-	maximumFFmpegStderr  = 64 << 10
+	defaultFFmpegTimeout = ffmpeg.DefaultTimeout
 )
 
-type processRunner interface {
-	Run(ctx context.Context, executable string, args []string, stdout, stderr io.Writer) error
-}
-
-type execRunner struct{}
-
-func (execRunner) Run(ctx context.Context, executable string, args []string, stdout, stderr io.Writer) error {
-	command := exec.CommandContext(ctx, executable, args...)
-	command.Stdout, command.Stderr = stdout, stderr
-	configureProcess(command)
-	return command.Run()
-}
+type processRunner = ffmpeg.Runner
+type execRunner = ffmpeg.ExecRunner
 
 type ffmpegAdapter struct {
 	executable string
@@ -123,6 +112,9 @@ func (a *ffmpegAdapter) Normalize(ctx context.Context, input string) ([]byte, er
 	if err := a.run(ctx, []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-noautorotate", "-i", input, "-frames:v", "1", output}); err != nil {
 		return nil, fmt.Errorf("normalize image with FFmpeg: %w", err)
 	}
+	if err := ffmpeg.VerifyPNG(output); err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(output)
 	if err != nil {
 		return nil, errors.New("FFmpeg did not create a normalized image")
@@ -172,49 +164,11 @@ func (a *ffmpegAdapter) Encode(ctx context.Context, sourcePNG, destination strin
 }
 
 func (a *ffmpegAdapter) run(ctx context.Context, args []string) error {
-	processContext, cancel := context.WithTimeout(ctx, a.timeout)
-	defer cancel()
-	stderr := &limitedBuffer{limit: maximumFFmpegStderr}
-	err := a.runner.Run(processContext, a.executable, args, io.Discard, stderr)
-	if errors.Is(ctx.Err(), context.Canceled) {
-		return context.Canceled
-	}
-	if errors.Is(processContext.Err(), context.DeadlineExceeded) {
-		return fmt.Errorf("FFmpeg timed out after %s", a.timeout)
-	}
-	if err != nil {
-		message := strings.TrimSpace(stderr.String())
-		if len(message) > 512 {
-			message = message[:512]
-		}
-		if message != "" {
-			return fmt.Errorf("FFmpeg failed: %w: %s", err, message)
-		}
-		return fmt.Errorf("FFmpeg failed: %w", err)
-	}
-	return nil
+	return ffmpeg.Run(ctx, a.executable, args, a.timeout, a.runner)
 }
-
-type limitedBuffer struct {
-	data  []byte
-	limit int
-}
-
-func (b *limitedBuffer) Write(value []byte) (int, error) {
-	remaining := b.limit - len(b.data)
-	if remaining > 0 {
-		b.data = append(b.data, value[:min(len(value), remaining)]...)
-	}
-	return len(value), nil
-}
-func (b *limitedBuffer) String() string { return string(b.data) }
 
 func requireTool(path, name string) error {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return fmt.Errorf("%s executable was not found at %q", name, path)
-	}
-	return nil
+	return ffmpeg.RequireExecutable(path, name)
 }
 
 func encodeRendered(ctx context.Context, source *image.NRGBA, destination, extension string, jpegQuality int, adapter *ffmpegAdapter) error {

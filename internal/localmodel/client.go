@@ -151,7 +151,7 @@ func (c *Client) TranslateImage(ctx context.Context, req translation.ImageTransl
 	if err != nil {
 		return translation.ImageTranslateResult{}, err
 	}
-	return translation.ImageTranslateResult{Text: result.Text, DetectedLanguage: result.DetectedLanguage}, nil
+	return translation.ImageTranslateResult{Text: translation.NormalizeImageTranslation(result.Text), DetectedLanguage: result.DetectedLanguage}, nil
 }
 
 func (c *Client) ImageCapability() translation.ImageCapability {

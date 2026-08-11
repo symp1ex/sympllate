@@ -70,6 +70,28 @@ func TestParseImageResponseAllowsNoText(t *testing.T) {
 	}
 }
 
+func TestImageResponsePathsNormalizeVisibleCRLF(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"response":"one\\r\\n\\r\\ntwo C:\\\\react folder\\nsys"}`)
+	parsed, err := ParseImageResponse(http.StatusOK, body)
+	if err != nil || parsed.Text != "one\n\ntwo C:\\\\react folder\\nsys" {
+		t.Fatalf("ParseImageResponse() = %q, %v", parsed.Text, err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }))
+	defer server.Close()
+	cfg := config.Default().Ollama
+	cfg.BaseURL = server.URL
+	client, err := New(cfg, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.TranslateImage(context.Background(), validImageRequest(testPNG(t)))
+	if err != nil || result.Text != parsed.Text {
+		t.Fatalf("TranslateImage() = %q, %v; want %q", result.Text, err, parsed.Text)
+	}
+}
+
 func TestTranslateImageReportsUnsupportedModel(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

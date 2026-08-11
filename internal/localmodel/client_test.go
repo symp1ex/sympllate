@@ -140,6 +140,19 @@ func TestClientTranslateImageSendsOnlyOCRTextToLocalServer(t *testing.T) {
 	}
 }
 
+func TestClientTranslateImageNormalizesImageResultOnly(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"one\\r\\ntwo C:\\\\react folder\\nsys"}}]}`))
+	}))
+	defer server.Close()
+	client := NewClientWithImageTextExtractor(server.URL, "test-key", 100, 0, 1000, time.Second, fakeImageTextExtractor{text: "source"})
+	result, err := client.TranslateImage(context.Background(), localImageRequest(t))
+	if err != nil || result.Text != "one\ntwo C:\\\\react folder\\nsys" {
+		t.Fatalf("TranslateImage() = %q, %v", result.Text, err)
+	}
+}
+
 func TestClientTranslateImageAllowsEmptyOCRResult(t *testing.T) {
 	t.Parallel()
 	client := NewClientWithImageTextExtractor("http://127.0.0.1:1", "test-key", 100, 0, 1000, time.Second, fakeImageTextExtractor{})

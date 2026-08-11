@@ -111,7 +111,7 @@ func (c *Client) TranslateImage(ctx context.Context, req translation.ImageTransl
 		}
 		return translation.ImageTranslateResult{}, err
 	}
-	return translation.ImageTranslateResult{Text: result.Text}, nil
+	return translation.ImageTranslateResult{Text: translation.NormalizeImageTranslation(result.Text)}, nil
 }
 
 func (c *Client) ImageCapability() translation.ImageCapability {
@@ -167,7 +167,7 @@ func ParseImageResponse(statusCode int, body []byte) (translation.ImageTranslate
 	if err != nil {
 		return translation.ImageTranslateResult{}, err
 	}
-	return translation.ImageTranslateResult{Text: result.Text}, nil
+	return translation.ImageTranslateResult{Text: translation.NormalizeImageTranslation(result.Text)}, nil
 }
 
 func parseResponse(statusCode int, body []byte, allowEmpty bool) (TranslateResult, error) {
