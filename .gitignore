@@ -10,5 +10,7 @@ rules/
 AGENTS.md
 .idea/
 _resources/
+_ffmpeg_build/
+*.exe
 *.txt
 !assets/fonts/GO-FONT-LICENSE.txt
