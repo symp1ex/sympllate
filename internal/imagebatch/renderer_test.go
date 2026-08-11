@@ -56,6 +56,12 @@ func TestPrepareSkipsUntranslatedBlockAndDrawsCyrillic(t *testing.T) {
 	if len(document.Blocks) != 1 || len(document.SkippedBlocks) != 1 || document.SkippedBlocks[0].ID != "two" {
 		t.Fatalf("document=%+v", document)
 	}
+	preparedBlock := document.Blocks[0]
+	if preparedBlock.PreferredFontSize <= 0 || preparedBlock.FontSize > preparedBlock.PreferredFontSize ||
+		preparedBlock.MinimumFontSize > preparedBlock.PreferredFontSize || preparedBlock.MaximumFontSize < preparedBlock.PreferredFontSize ||
+		len(preparedBlock.LineLayouts) != len(preparedBlock.Lines) {
+		t.Fatalf("prepared layout=%+v", preparedBlock)
+	}
 	cleaned, document, _, err := renderer.Clean(context.Background(), source, document)
 	if err != nil {
 		t.Fatal(err)

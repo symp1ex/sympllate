@@ -13,12 +13,22 @@ type RenderConfig struct {
 	HorizontalTextPadding int
 	VerticalTextPadding   int
 	JPEGQuality           int
+	Layout                LayoutConfig
+}
+
+// LayoutConfig groups the document-layout tolerances that are intentionally
+// not exposed as user-facing settings. MinimumFontSize and MaximumFontSize
+// remain the hard compatibility limits.
+type LayoutConfig struct {
+	MaximumUpscaleRatio  float64
+	PreferredShrinkRatio float64
 }
 
 func DefaultRenderConfig() RenderConfig {
 	return RenderConfig{
 		MinimumFontSize: 10, MaximumFontSize: 48, LineSpacing: 1.15,
 		HorizontalTextPadding: 2, VerticalTextPadding: 2, JPEGQuality: 92,
+		Layout: LayoutConfig{MaximumUpscaleRatio: 1.05, PreferredShrinkRatio: 0.70},
 	}
 }
 
@@ -28,6 +38,9 @@ func (c RenderConfig) validate() error {
 	}
 	if c.MinimumFontSize <= 0 || c.MaximumFontSize < c.MinimumFontSize || c.LineSpacing < 1 || c.JPEGQuality < 1 || c.JPEGQuality > 100 {
 		return errInvalidRenderConfig("font or encoding limits are invalid")
+	}
+	if c.Layout.MaximumUpscaleRatio < 1 || c.Layout.PreferredShrinkRatio <= 0 || c.Layout.PreferredShrinkRatio > 1 {
+		return errInvalidRenderConfig("layout font-size ratios are invalid")
 	}
 	return nil
 }
@@ -73,22 +86,44 @@ type RenderDocument struct {
 }
 
 type RenderBlock struct {
-	ID             string      `json:"id"`
-	SourceText     string      `json:"sourceText"`
-	TranslatedText string      `json:"translatedText"`
-	SourceBox      ocr.OCRBox  `json:"sourceBox"`
-	CleanupBox     ocr.OCRBox  `json:"cleanupBox"`
-	TextBox        ocr.OCRBox  `json:"textBox"`
-	Background     RenderColor `json:"background"`
-	Foreground     RenderColor `json:"foreground"`
-	CleanupMode    CleanupMode `json:"cleanupMode"`
-	FontSize       float64     `json:"fontSize"`
-	LineSpacing    float64     `json:"lineSpacing"`
-	Lines          []string    `json:"lines"`
-	Alignment      string      `json:"alignment"`
-	VerticalAlign  string      `json:"verticalAlign"`
-	Status         string      `json:"status"`
-	Warning        string      `json:"warning,omitempty"`
+	ID                string             `json:"id"`
+	SourceText        string             `json:"sourceText"`
+	TranslatedText    string             `json:"translatedText"`
+	SourceBox         ocr.OCRBox         `json:"sourceBox"`
+	CleanupBox        ocr.OCRBox         `json:"cleanupBox"`
+	TextBox           ocr.OCRBox         `json:"textBox"`
+	Background        RenderColor        `json:"background"`
+	Foreground        RenderColor        `json:"foreground"`
+	CleanupMode       CleanupMode        `json:"cleanupMode"`
+	FontSize          float64            `json:"fontSize"`
+	PreferredFontSize float64            `json:"preferredFontSize"`
+	MinimumFontSize   float64            `json:"minimumFontSize"`
+	MaximumFontSize   float64            `json:"maximumFontSize"`
+	LineSpacing       float64            `json:"lineSpacing"`
+	Lines             []string           `json:"lines"`
+	LineLayouts       []RenderLineLayout `json:"lineLayouts"`
+	SourceLineCount   int                `json:"sourceLineCount"`
+	LineHeight        int                `json:"lineHeight"`
+	LineStep          int                `json:"lineStep"`
+	Ascent            int                `json:"ascent"`
+	TextWidth         int                `json:"textWidth"`
+	TextHeight        int                `json:"textHeight"`
+	Alignment         string             `json:"alignment"`
+	VerticalAlign     string             `json:"verticalAlign"`
+	BoxExpanded       bool               `json:"boxExpanded"`
+	FontReduced       bool               `json:"fontReduced"`
+	EmergencyShrink   bool               `json:"emergencyShrink"`
+	LayoutScore       float64            `json:"layoutScore"`
+	FallbackReason    string             `json:"fallbackReason,omitempty"`
+	Status            string             `json:"status"`
+	Warning           string             `json:"warning,omitempty"`
+}
+
+type RenderLineLayout struct {
+	Text      string `json:"text"`
+	X         int    `json:"x"`
+	BaselineY int    `json:"baselineY"`
+	Width     int    `json:"width"`
 }
 
 type CleanupMode string
@@ -121,21 +156,34 @@ type CleanupPadding struct {
 }
 
 type TextFitRequest struct {
-	Text          string
-	Width         int
-	Height        int
-	MinFontSize   float64
-	MaxFontSize   float64
-	LineSpacing   float64
-	HorizontalPad int
-	VerticalPad   int
+	Text              string
+	Width             int
+	Height            int
+	MinFontSize       float64
+	MaxFontSize       float64
+	PreferredFontSize float64
+	LineSpacing       float64
+	HorizontalPad     int
+	VerticalPad       int
 }
 
 type TextFitResult struct {
-	FontSize   float64
-	Lines      []string
-	TextWidth  int
-	TextHeight int
-	Fits       bool
-	Overflow   bool
+	FontSize          float64
+	PreferredFontSize float64
+	MinimumFontSize   float64
+	Lines             []string
+	LineWidths        []int
+	TextWidth         int
+	TextHeight        int
+	LineHeight        int
+	LineStep          int
+	Ascent            int
+	Descent           int
+	Fits              bool
+	Overflow          bool
+	BoxExpanded       bool
+	FontReduced       bool
+	EmergencyShrink   bool
+	Score             float64
+	FallbackReason    string
 }

@@ -22,6 +22,13 @@ type Renderer struct {
 }
 
 func NewRenderer(executableDir string, config RenderConfig, inpainter inpaint.Engine) (*Renderer, error) {
+	defaults := DefaultRenderConfig().Layout
+	if config.Layout.MaximumUpscaleRatio == 0 {
+		config.Layout.MaximumUpscaleRatio = defaults.MaximumUpscaleRatio
+	}
+	if config.Layout.PreferredShrinkRatio == 0 {
+		config.Layout.PreferredShrinkRatio = defaults.PreferredShrinkRatio
+	}
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
@@ -112,7 +119,11 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 			return RenderDocument{}, err
 		}
 		alignment, verticalAlignment := chooseAlignment(paragraph, block.TranslatedText)
-		textBox, fit, err := r.fitBlock(ctx, block.TranslatedText, cleanup, sourceBoxes, index, activeTextBoxes, width, height)
+		preferredFontSize, err := EstimateSourceFontSize(ctx, r.fonts, paragraph, transform, r.config.MinimumFontSize, r.config.MaximumFontSize)
+		if err != nil {
+			return RenderDocument{}, fmt.Errorf("estimate source font size for block %s: %w", paragraph.ID, err)
+		}
+		textBox, fit, err := r.fitBlock(ctx, block.TranslatedText, preferredFontSize, sourceLineCount(paragraph), sourceBoxes[index], sourceBoxes, index, activeTextBoxes, width, height)
 		if err != nil {
 			return RenderDocument{}, fmt.Errorf("layout block %s: %w", paragraph.ID, err)
 		}
@@ -129,13 +140,26 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 			warnings = append(warnings, "minimum_font_size")
 			document.Warnings = append(document.Warnings, RenderWarning{Code: "minimum_font_size", BlockID: paragraph.ID})
 		}
+		if fit.EmergencyShrink {
+			warnings = append(warnings, "font_size_below_preferred_range")
+			document.Warnings = append(document.Warnings, RenderWarning{Code: "font_size_below_preferred_range", BlockID: paragraph.ID})
+		}
+		lineLayouts := positionTextLines(fit, textBox, alignment, verticalAlignment, r.config.HorizontalTextPadding, r.config.VerticalTextPadding)
 		document.Blocks = append(document.Blocks, RenderBlock{
 			ID: paragraph.ID, SourceText: paragraph.Text, TranslatedText: block.TranslatedText,
 			SourceBox: sourceBoxes[index], CleanupBox: cleanup, TextBox: textBox,
 			Background: newRenderColor(background.Color), Foreground: newRenderColor(foreground),
 			CleanupMode: cleanupModeFor(background),
-			FontSize:    fit.FontSize, LineSpacing: r.config.LineSpacing, Lines: fit.Lines,
-			Alignment: alignment, VerticalAlign: verticalAlignment, Status: "renderable", Warning: strings.Join(warnings, ","),
+			FontSize:    fit.FontSize, PreferredFontSize: preferredFontSize,
+			MinimumFontSize: math.Max(r.config.MinimumFontSize, preferredFontSize*r.config.Layout.PreferredShrinkRatio),
+			MaximumFontSize: math.Min(r.config.MaximumFontSize, preferredFontSize*r.config.Layout.MaximumUpscaleRatio),
+			LineSpacing:     r.config.LineSpacing, Lines: fit.Lines, LineLayouts: lineLayouts,
+			SourceLineCount: sourceLineCount(paragraph), LineHeight: fit.LineHeight, LineStep: fit.LineStep, Ascent: fit.Ascent,
+			TextWidth: fit.TextWidth, TextHeight: fit.TextHeight,
+			Alignment: alignment, VerticalAlign: verticalAlignment,
+			BoxExpanded: fit.BoxExpanded, FontReduced: fit.FontReduced, EmergencyShrink: fit.EmergencyShrink,
+			LayoutScore: fit.Score, FallbackReason: fit.FallbackReason,
+			Status: "renderable", Warning: strings.Join(warnings, ","),
 		})
 		activeTextBoxes = append(activeTextBoxes, textBox)
 	}
@@ -161,32 +185,146 @@ func (r *Renderer) supportsText(value string) (bool, error) {
 	return true, nil
 }
 
-func (r *Renderer) fitBlock(ctx context.Context, text string, base ocr.OCRBox, occupied []ocr.OCRBox, own int, active []ocr.OCRBox, width, height int) (ocr.OCRBox, TextFitResult, error) {
+type layoutCandidate struct {
+	box      ocr.OCRBox
+	expanded bool
+}
+
+func (r *Renderer) fitBlock(ctx context.Context, text string, preferredFontSize float64, sourceLines int, base ocr.OCRBox, occupied []ocr.OCRBox, own int, active []ocr.OCRBox, width, height int) (ocr.OCRBox, TextFitResult, error) {
 	if intersectsAny(base, active) {
 		return base, TextFitResult{}, nil
 	}
-	candidates := []ocr.OCRBox{base}
+	candidates := []layoutCandidate{{box: base}}
 	down := ClampBox(ocr.OCRBox{X: base.X, Y: base.Y, Width: base.Width, Height: min(height-base.Y, base.Height+max(24, base.Height))}, width, height)
 	wideBy := min(max(16, base.Width/3), width/8)
 	wide := ClampBox(ocr.OCRBox{X: base.X - wideBy, Y: base.Y, Width: base.Width + wideBy*2, Height: down.Height}, width, height)
 	for _, candidate := range []ocr.OCRBox{down, wide} {
 		if candidate != base && !intersectsOther(candidate, occupied, own) && !intersectsAny(candidate, active) {
-			candidates = append(candidates, candidate)
+			candidates = append(candidates, layoutCandidate{box: candidate, expanded: true})
 		}
 	}
-	maxSize := min(r.config.MaximumFontSize, math.Max(r.config.MinimumFontSize, float64(base.Height)*1.2))
-	var last TextFitResult
+	preferredFontSize = math.Max(r.config.MinimumFontSize, math.Min(r.config.MaximumFontSize, preferredFontSize))
+	maximumFontSize := math.Min(r.config.MaximumFontSize, preferredFontSize*r.config.Layout.MaximumUpscaleRatio)
+	preferredRequest := r.textFitRequest(text, preferredFontSize, maximumFontSize, preferredFontSize)
 	for _, candidate := range candidates {
-		fit, err := FitText(ctx, r.fonts, TextFitRequest{Text: text, Width: candidate.Width, Height: candidate.Height, MinFontSize: r.config.MinimumFontSize, MaxFontSize: maxSize, LineSpacing: r.config.LineSpacing, HorizontalPad: r.config.HorizontalTextPadding, VerticalPad: r.config.VerticalTextPadding})
+		preferredRequest.Width, preferredRequest.Height = candidate.box.Width, candidate.box.Height
+		fit, err := FitText(ctx, r.fonts, preferredRequest)
 		if err != nil {
 			return ocr.OCRBox{}, TextFitResult{}, err
 		}
-		last = fit
 		if fit.Fits {
-			return candidate, fit, nil
+			decorateLayoutResult(&fit, preferredFontSize, sourceLines, base, candidate, false)
+			return candidate.box, fit, nil
 		}
 	}
-	return base, last, nil
+	normalMinimum := math.Max(r.config.MinimumFontSize, preferredFontSize*r.config.Layout.PreferredShrinkRatio)
+	box, fit, err := r.bestCandidateFit(ctx, text, preferredFontSize, maximumFontSize, normalMinimum, sourceLines, base, candidates, false)
+	if err != nil || fit.Fits {
+		return box, fit, err
+	}
+	if normalMinimum > r.config.MinimumFontSize {
+		box, fit, err = r.bestCandidateFit(ctx, text, preferredFontSize, maximumFontSize, r.config.MinimumFontSize, sourceLines, base, candidates, true)
+		if err != nil || fit.Fits {
+			return box, fit, err
+		}
+	}
+	return base, fit, nil
+}
+
+func (r *Renderer) textFitRequest(text string, minimum, maximum, preferred float64) TextFitRequest {
+	return TextFitRequest{
+		Text: text, MinFontSize: minimum, MaxFontSize: maximum, PreferredFontSize: preferred,
+		LineSpacing: r.config.LineSpacing, HorizontalPad: r.config.HorizontalTextPadding, VerticalPad: r.config.VerticalTextPadding,
+	}
+}
+
+func (r *Renderer) bestCandidateFit(ctx context.Context, text string, preferred, maximum, minimum float64, sourceLines int, base ocr.OCRBox, candidates []layoutCandidate, emergency bool) (ocr.OCRBox, TextFitResult, error) {
+	request := r.textFitRequest(text, minimum, maximum, preferred)
+	bestBox := base
+	var best TextFitResult
+	for _, candidate := range candidates {
+		request.Width, request.Height = candidate.box.Width, candidate.box.Height
+		fit, err := FitText(ctx, r.fonts, request)
+		if err != nil {
+			return ocr.OCRBox{}, TextFitResult{}, err
+		}
+		decorateLayoutResult(&fit, preferred, sourceLines, base, candidate, emergency)
+		if !fit.Fits {
+			if best.FontSize == 0 {
+				best = fit
+			}
+			continue
+		}
+		if !best.Fits || fit.Score < best.Score {
+			bestBox, best = candidate.box, fit
+		}
+	}
+	return bestBox, best, nil
+}
+
+func decorateLayoutResult(result *TextFitResult, preferred float64, sourceLines int, base ocr.OCRBox, candidate layoutCandidate, emergency bool) {
+	result.PreferredFontSize = preferred
+	result.BoxExpanded = candidate.expanded
+	result.FontReduced = result.FontSize+fontSizeStep/2 < preferred
+	result.EmergencyShrink = emergency && result.FontReduced
+	result.Score = scoreLayout(*result, preferred, sourceLines, base, candidate.box, emergency)
+	switch {
+	case result.EmergencyShrink && result.BoxExpanded:
+		result.FallbackReason = "bbox_expanded_and_emergency_font_reduction"
+	case result.EmergencyShrink:
+		result.FallbackReason = "emergency_font_reduction"
+	case result.FontReduced && result.BoxExpanded:
+		result.FallbackReason = "bbox_expanded_and_font_reduced"
+	case result.FontReduced:
+		result.FallbackReason = "font_reduced"
+	case result.BoxExpanded:
+		result.FallbackReason = "bbox_expanded"
+	default:
+		result.FallbackReason = ""
+	}
+}
+
+func scoreLayout(result TextFitResult, preferred float64, sourceLines int, base, candidate ocr.OCRBox, emergency bool) float64 {
+	shrink := math.Max(0, preferred-result.FontSize) / math.Max(preferred, 1)
+	expansion := 0.0
+	baseArea, candidateArea := base.Width*base.Height, candidate.Width*candidate.Height
+	if baseArea > 0 && candidateArea > baseArea {
+		expansion = float64(candidateArea-baseArea) / float64(baseArea)
+	}
+	lineDifference := math.Abs(float64(len(result.Lines) - max(1, sourceLines)))
+	score := shrink*100 + expansion*3 + lineDifference*0.5
+	if emergency {
+		score += 25
+	}
+	return math.Round(score*1000) / 1000
+}
+
+func sourceLineCount(paragraph ocr.OCRParagraph) int {
+	if len(paragraph.Lines) > 0 {
+		return len(paragraph.Lines)
+	}
+	return max(1, len(nonEmptyTextLines(paragraph.Text)))
+}
+
+func positionTextLines(fit TextFitResult, box ocr.OCRBox, alignment, verticalAlignment string, horizontalPadding, verticalPadding int) []RenderLineLayout {
+	y := box.Y + verticalPadding + fit.Ascent
+	if verticalAlignment == "middle" {
+		y = box.Y + (box.Height-fit.TextHeight)/2 + fit.Ascent
+	}
+	result := make([]RenderLineLayout, 0, len(fit.Lines))
+	for index, line := range fit.Lines {
+		lineWidth := 0
+		if index < len(fit.LineWidths) {
+			lineWidth = fit.LineWidths[index]
+		}
+		x := box.X + horizontalPadding
+		if alignment == "center" {
+			x = box.X + (box.Width-lineWidth)/2
+		}
+		result = append(result, RenderLineLayout{Text: line, X: x, BaselineY: y, Width: lineWidth})
+		y += fit.LineStep
+	}
+	return result
 }
 
 func chooseAlignment(paragraph ocr.OCRParagraph, translatedText string) (string, string) {
@@ -223,26 +361,31 @@ func (r *Renderer) Draw(ctx context.Context, target *image.NRGBA, document Rende
 		if err != nil {
 			return err
 		}
-		metrics := face.Metrics()
-		lineHeight := max(1, metrics.Height.Ceil())
-		lineStep := int(math.Ceil(float64(lineHeight) * block.LineSpacing))
-		totalHeight := lineHeight + lineStep*max(0, len(block.Lines)-1)
-		y := block.TextBox.Y + r.config.VerticalTextPadding + metrics.Ascent.Ceil()
-		if block.VerticalAlign == "middle" {
-			y = block.TextBox.Y + (block.TextBox.Height-totalHeight)/2 + metrics.Ascent.Ceil()
+		lineLayouts := block.LineLayouts
+		if len(lineLayouts) == 0 && len(block.Lines) > 0 {
+			metrics := face.Metrics()
+			lineHeight := max(1, (metrics.Ascent + metrics.Descent).Ceil())
+			lineStep := max(lineHeight, int(math.Ceil(float64(metrics.Height.Ceil())*block.LineSpacing)))
+			lineWidths := make([]int, len(block.Lines))
+			textWidth := 0
+			for index, line := range block.Lines {
+				lineWidths[index] = measure(face, line)
+				textWidth = max(textWidth, lineWidths[index])
+			}
+			fit := TextFitResult{
+				Lines: block.Lines, LineWidths: lineWidths, TextWidth: textWidth,
+				TextHeight: lineHeight + lineStep*max(0, len(block.Lines)-1),
+				LineHeight: lineHeight, LineStep: lineStep, Ascent: metrics.Ascent.Ceil(),
+			}
+			lineLayouts = positionTextLines(fit, block.TextBox, block.Alignment, block.VerticalAlign, r.config.HorizontalTextPadding, r.config.VerticalTextPadding)
 		}
 		drawer := font.Drawer{Dst: target, Src: image.NewUniform(block.Foreground.NRGBA()), Face: face}
-		for _, line := range block.Lines {
+		for _, line := range lineLayouts {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			x := block.TextBox.X + r.config.HorizontalTextPadding
-			if block.Alignment == "center" {
-				x = block.TextBox.X + (block.TextBox.Width-measure(face, line))/2
-			}
-			drawer.Dot = fixed.P(x, y)
-			drawer.DrawString(line)
-			y += lineStep
+			drawer.Dot = fixed.P(line.X, line.BaselineY)
+			drawer.DrawString(line.Text)
 		}
 	}
 	return nil

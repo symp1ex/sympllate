@@ -3,6 +3,7 @@ package imagebatch
 import (
 	"context"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -52,7 +53,15 @@ func writeLayoutDebug(ctx context.Context, rendered *image.NRGBA, document Rende
 		drawNRGBABox(canvas, block.SourceBox, color.NRGBA{R: 255, G: 48, B: 48, A: 255}, 1)
 		drawNRGBABox(canvas, block.CleanupBox, color.NRGBA{R: 255, G: 190, B: 32, A: 255}, 2)
 		drawNRGBABox(canvas, block.TextBox, color.NRGBA{R: 32, G: 128, B: 255, A: 255}, 1)
-		drawNRGBALabel(canvas, block.TextBox.X+2, block.TextBox.Y+2, block.ID, color.NRGBA{R: 32, G: 128, B: 255, A: 255})
+		flags := ""
+		if block.BoxExpanded {
+			flags += "-E"
+		}
+		if block.FontReduced {
+			flags += "-R"
+		}
+		label := fmt.Sprintf("%s-P%.0f-F%.0f-L%d%s", block.ID, block.PreferredFontSize, block.FontSize, len(block.Lines), flags)
+		drawNRGBALabel(canvas, block.TextBox.X+2, block.TextBox.Y+2, label, color.NRGBA{R: 32, G: 128, B: 255, A: 255})
 	}
 	return atomicEncodeGoImage(ctx, canvas, path, ".png", jpegQuality)
 }
