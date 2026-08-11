@@ -53,6 +53,7 @@ type cleanupMaskConfig struct {
 	SuspiciousCleanupAreaRatio  float64 // Diagnostic threshold; does not expand or approve cleanup.
 	MaxCleanupAreaRatio         float64 // Hard cap; exceeding it disables dilation or rejects cleanup.
 	WordMaxCleanupAreaRatio     float64 // Word-local cap measured against the padded search region.
+	WordMaxHoleAreaHeightRatio  float64 // Largest enclosed word-mask hole relative to squared text height.
 }
 
 var defaultCleanupMaskConfig = cleanupMaskConfig{
@@ -61,7 +62,8 @@ var defaultCleanupMaskConfig = cleanupMaskConfig{
 	GraphicsBackgroundDelta: 0.04, ProtectedPadding: 1,
 	LineAspectRatio: 6, HorizontalLengthHeightRatio: 2.5, VerticalLengthHeightRatio: 0.8,
 	MaxComponentHeightRatio: 1.35, MaxComponentAreaHeightRatio: 2,
-	SuspiciousCleanupAreaRatio: 0.30, MaxCleanupAreaRatio: 0.45, WordMaxCleanupAreaRatio: 0.65,
+	SuspiciousCleanupAreaRatio: 0.30, MaxCleanupAreaRatio: 0.45,
+	WordMaxCleanupAreaRatio: 0.72, WordMaxHoleAreaHeightRatio: 0.45,
 }
 
 var (
@@ -446,12 +448,18 @@ func buildSafeTextMask(ctx context.Context, source *image.NRGBA, block RenderBlo
 		mergeMask(grown, strictCore)
 		mergeMask(grown, fringe)
 		mask := dilateMaskConstrained(grown, cleanupDilationRadius(region, config), allowed, localProtected)
+		if region.Level == "word" {
+			mask = fillEnclosedWordMaskHoles(mask, allowed, localProtected, textHeight, config.WordMaxHoleAreaHeightRatio)
+		}
 		areaLimit := cleanupAreaLimit(region, config)
 		searchArea := max(1, searchBounds.Dx()*searchBounds.Dy())
 		finalPixels := countMask(mask)
 		if float64(finalPixels)/float64(searchArea) > areaLimit {
 			result.conservativeFallback = true
 			mask = subtractMask(grown, localProtected)
+			if region.Level == "word" {
+				mask = fillEnclosedWordMaskHoles(mask, allowed, localProtected, textHeight, config.WordMaxHoleAreaHeightRatio)
+			}
 			finalPixels = countMask(mask)
 		}
 		if finalPixels > 0 && float64(finalPixels)/float64(searchArea) > areaLimit {
@@ -546,6 +554,44 @@ func cleanupAreaLimit(region CleanupRegion, config cleanupMaskConfig) float64 {
 	default:
 		return config.MaxCleanupAreaRatio
 	}
+}
+
+func fillEnclosedWordMaskHoles(mask, allowed, protected *image.Gray, textHeight int, maximumAreaHeightRatio float64) *image.Gray {
+	result := image.NewGray(mask.Bounds())
+	copy(result.Pix, mask.Pix)
+	open := image.NewGray(mask.Bounds())
+	for y := mask.Bounds().Min.Y; y < mask.Bounds().Max.Y; y++ {
+		for x := mask.Bounds().Min.X; x < mask.Bounds().Max.X; x++ {
+			if allowed.GrayAt(x, y).Y != 0 && mask.GrayAt(x, y).Y == 0 && protected.GrayAt(x, y).Y == 0 {
+				open.SetGray(x, y, color.Gray{Y: 255})
+			}
+		}
+	}
+	protectedMargin := dilateMask(protected, 1)
+	maximumArea := max(1, int(math.Ceil(float64(textHeight*textHeight)*maximumAreaHeightRatio)))
+	for _, component := range connectedComponents(open) {
+		if component.bounds.Min.X == mask.Bounds().Min.X || component.bounds.Min.Y == mask.Bounds().Min.Y ||
+			component.bounds.Max.X == mask.Bounds().Max.X || component.bounds.Max.Y == mask.Bounds().Max.Y {
+			continue
+		}
+		if len(component.pixels) > maximumArea || component.bounds.Dx() > textHeight || component.bounds.Dy() > textHeight {
+			continue
+		}
+		if componentTouchesMask(component, protectedMargin) {
+			continue
+		}
+		setComponent(result, component)
+	}
+	return result
+}
+
+func componentTouchesMask(component maskComponent, mask *image.Gray) bool {
+	for _, point := range component.pixels {
+		if mask.GrayAt(point.X, point.Y).Y != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func recoverTextFringe(ctx context.Context, source *image.NRGBA, strictCore, allowed, protected *image.Gray, foreground, background color.NRGBA, maxDistance int, backgroundDelta float64) (*image.Gray, error) {

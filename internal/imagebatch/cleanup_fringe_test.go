@@ -192,6 +192,57 @@ func TestCleanupCompletenessMetric(t *testing.T) {
 	assertFalsePositivesOutsideHaloAtMost(t, built.mask, groundTruth, 2, 2)
 }
 
+func TestWordCleanupFillsEnclosedGlyphInteriorWithoutTouchingNeighbor(t *testing.T) {
+	background := color.NRGBA{R: 255, G: 255, B: 255, A: 255}
+	foreground := color.NRGBA{A: 255}
+	source := solidNRGBA(84, 54, background)
+	coreBounds := image.Rect(28, 13, 48, 41)
+	core := image.NewGray(source.Bounds())
+	for y := coreBounds.Min.Y; y < coreBounds.Max.Y; y++ {
+		for x := coreBounds.Min.X; x < coreBounds.Max.X; x++ {
+			if x < coreBounds.Min.X+2 || x >= coreBounds.Max.X-2 || y < coreBounds.Min.Y+2 || y >= coreBounds.Max.Y-2 {
+				core.SetGray(x, y, color.Gray{Y: 255})
+			}
+		}
+	}
+	groundTruth := dilateMask(core, 2)
+	paintMask(source, groundTruth, color.NRGBA{R: 226, G: 226, B: 226, A: 255})
+	paintMask(source, dilateMask(core, 1), color.NRGBA{R: 165, G: 165, B: 165, A: 255})
+	paintMask(source, core, foreground)
+	borderX := nonZeroBounds(groundTruth).Max.X + 1
+	for y := 2; y < 52; y++ {
+		source.SetNRGBA(borderX, y, foreground)
+	}
+
+	built := buildFixtureMask(t, source, ocrBoxFromRectangle(nonZeroBounds(groundTruth)), "word", foreground, background)
+	center := image.Pt((coreBounds.Min.X+coreBounds.Max.X)/2, (coreBounds.Min.Y+coreBounds.Max.Y)/2)
+	if built.mask.GrayAt(center.X, center.Y).Y == 0 {
+		t.Fatalf("enclosed area under glyph was not selected at %v", center)
+	}
+	cleaned := cloneNRGBA(source)
+	if err := solidCleanup(context.Background(), cleaned, built.mask, background); err != nil {
+		t.Fatal(err)
+	}
+	for y := coreBounds.Min.Y; y < coreBounds.Max.Y; y++ {
+		for x := coreBounds.Min.X; x < coreBounds.Max.X; x++ {
+			if got := cleaned.NRGBAAt(x, y); got != background {
+				t.Fatalf("pixel under glyph remained at (%d,%d): %+v", x, y, got)
+			}
+		}
+	}
+	for y := 2; y < 52; y++ {
+		if built.mask.GrayAt(borderX, y).Y != 0 {
+			t.Fatalf("neighboring border entered cleanup mask at (%d,%d)", borderX, y)
+		}
+		if got := cleaned.NRGBAAt(borderX, y); got != foreground {
+			t.Fatalf("neighboring border changed at (%d,%d): %+v", borderX, y, got)
+		}
+	}
+	if built.mask.GrayAt(coreBounds.Min.X-5, center.Y).Y != 0 {
+		t.Fatal("cleanup expanded beyond the local glyph boundary")
+	}
+}
+
 func buildFixtureMask(t *testing.T, source *image.NRGBA, box ocr.OCRBox, level string, foreground, background color.NRGBA) maskBuildResult {
 	t.Helper()
 	return buildFixtureMaskWithTextHeight(t, source, box, level, box.Height, foreground, background)
