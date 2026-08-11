@@ -20,7 +20,7 @@ func TestCleanupChangesOnlyConfirmedBoxesAndPreservesAlpha(t *testing.T) {
 		t.Fatal(err)
 	}
 	document := RenderDocument{Blocks: []RenderBlock{{CleanupBox: ocr.OCRBox{X: 5, Y: 6, Width: 4, Height: 3}, Background: newRenderColor(color.NRGBA{R: 200, G: 210, B: 220, A: 123}), CleanupMode: CleanupSolid}}}
-	cleaned, _, err := renderer.Clean(context.Background(), source, document)
+	cleaned, document, _, err := renderer.Clean(context.Background(), source, document)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestPrepareSkipsUntranslatedBlockAndDrawsCyrillic(t *testing.T) {
 	if len(document.Blocks) != 1 || len(document.SkippedBlocks) != 1 || document.SkippedBlocks[0].ID != "two" {
 		t.Fatalf("document=%+v", document)
 	}
-	cleaned, _, err := renderer.Clean(context.Background(), source, document)
+	cleaned, document, _, err := renderer.Clean(context.Background(), source, document)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestAtomicPNGAndJPEGEncodingPreservesDimensionsAndExistingFile(t *testing.T
 func TestPNGCleanupKeepsPixelsOutsideBoxByteEquivalentAfterDecode(t *testing.T) {
 	source := solidNRGBA(10, 10, color.NRGBA{R: 30, G: 40, B: 50, A: 60})
 	renderer, _ := NewRenderer(t.TempDir(), DefaultRenderConfig(), &fakeInpaintEngine{})
-	cleaned, _, err := renderer.Clean(context.Background(), source, RenderDocument{Blocks: []RenderBlock{{CleanupBox: ocr.OCRBox{X: 2, Y: 2, Width: 2, Height: 2}, Background: newRenderColor(color.NRGBA{R: 200, A: 255}), CleanupMode: CleanupSolid}}})
+	cleaned, _, _, err := renderer.Clean(context.Background(), source, RenderDocument{Blocks: []RenderBlock{{CleanupBox: ocr.OCRBox{X: 2, Y: 2, Width: 2, Height: 2}, Background: newRenderColor(color.NRGBA{R: 200, A: 255}), CleanupMode: CleanupSolid}}})
 	if err != nil {
 		t.Fatal(err)
 	}

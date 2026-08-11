@@ -151,6 +151,7 @@ func projectWords(words []OCRWord, pass ocrPass, imageWidth, imageHeight int) []
 	result := make([]OCRWord, 0, len(words))
 	for _, word := range words {
 		word.Box = projectBox(word.Box, pass, imageWidth, imageHeight)
+		word.Accepted = word.Accepted && hasRenderableProjectedGeometry(word.Box)
 		result = append(result, word)
 	}
 	return result
@@ -163,9 +164,18 @@ func projectAcceptedWords(words []OCRWord, pass ocrPass, imageWidth, imageHeight
 			continue
 		}
 		word.Box = projectBox(word.Box, pass, imageWidth, imageHeight)
+		if !hasRenderableProjectedGeometry(word.Box) {
+			continue
+		}
 		result = append(result, word)
 	}
 	return result
+}
+
+// A projected OCR box must cover at least one addressable source pixel on
+// both axes. Larger thresholds would incorrectly discard narrow punctuation.
+func hasRenderableProjectedGeometry(box OCRBox) bool {
+	return box.Width > 0 && box.Height > 0
 }
 
 func projectBox(box OCRBox, pass ocrPass, imageWidth, imageHeight int) OCRBox {

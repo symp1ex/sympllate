@@ -50,6 +50,51 @@ func TestParseTSVSupportsLargeRowsAndSortsWords(t *testing.T) {
 	}
 }
 
+func TestParseTSVPreservesLiteralQuotesAndPhysicalRows(t *testing.T) {
+	texts := []string{`"`, `12"`, `"quoted`, `foo"bar`}
+	for _, lineEnding := range []string{"\n", "\r\n"} {
+		name := "LF"
+		if lineEnding == "\r\n" {
+			name = "CRLF"
+		}
+		t.Run(name, func(t *testing.T) {
+			rows := strings.TrimSuffix(strings.ReplaceAll(tsvHeader, "\n", lineEnding), lineEnding)
+			for index, text := range texts {
+				row := strings.TrimSuffix(tsvWord(1, 1, 1, 1, index+1, "90", text), "\n")
+				rows += lineEnding + row
+			}
+			rows += lineEnding + strings.TrimSuffix(tsvWord(1, 1, 1, 1, len(texts)+1, "90", "after"), "\n")
+
+			page, err := ParseTSV(strings.NewReader(rows), 100, 100, DefaultFilterConfig())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(page.Words) != len(texts)+1 {
+				t.Fatalf("words=%+v", page.Words)
+			}
+			for index, text := range texts {
+				if page.Words[index].Text != text {
+					t.Fatalf("word %d text=%q want=%q", index, page.Words[index].Text, text)
+				}
+			}
+			if page.Words[len(texts)].Text != "after" {
+				t.Fatalf("following row was not parsed separately: %+v", page.Words)
+			}
+		})
+	}
+}
+
+func TestParseTSVPreservesTabsInFinalFieldWithoutTrailingNewline(t *testing.T) {
+	input := tsvHeader + strings.TrimSuffix(tsvWord(1, 1, 1, 1, 1, "90", "one\ttwo,three"), "\n")
+	page, err := ParseTSV(strings.NewReader(input), 100, 100, DefaultFilterConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Words) != 1 || page.Words[0].Text != "one\ttwo,three" {
+		t.Fatalf("words=%+v", page.Words)
+	}
+}
+
 func TestParseTSVRejectsMalformedInput(t *testing.T) {
 	cases := map[string]string{
 		"missing header": "level\ttext\n5\tx\n",

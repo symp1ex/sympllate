@@ -7,6 +7,7 @@ import (
 	"errors"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/png"
 	"io"
 	"log"
@@ -200,6 +201,109 @@ func TestBatchProtocolFailureFallsBackPerBlockAndRendersPartial(t *testing.T) {
 	}
 }
 
+func TestBatchMaskRejectionFiltersCleanupAndDrawAndReportsPartial(t *testing.T) {
+	directory := t.TempDir()
+	path := writeBatchNRGBA(t, directory, "mixed.png", maskConfidenceFixture())
+	page := maskConfidencePage(true)
+	completer := &sequenceBatchCompleter{responses: []string{`{"blocks":[{"id":"p1-b1-par1","text":"Плохо"},{"id":"p1-b2-par1","text":"Хорошо"}]}`}}
+	service := newBatchTestService(t, directory, &fakeBatchOCR{pages: []ocr.OCRPage{page}}, completer)
+	selection, _ := service.SelectFiles([]string{path})
+	id, err := service.Start(StartImageBatchRequest{SelectionID: selection.ID, Source: "en", Target: "ru", Debug: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := waitBatch(t, service, id)
+	if status.State != "completed" || status.Partial != 1 || status.Rendered != 1 || status.Failed != 0 {
+		t.Fatalf("status=%+v", status)
+	}
+	var report JobReport
+	readJSON(t, filepath.Join(status.OutputDirectory, "job.json"), &report)
+	file := report.Files[0]
+	if file.Status != "partial" || file.RenderedBlocks != 1 || len(file.SkippedBlocks) != 1 || file.SkippedBlocks[0] != (SkippedRenderBlock{ID: "p1-b1-par1", Reason: textMaskLowConfidenceCode}) {
+		t.Fatalf("file=%+v", file)
+	}
+	if len(file.Warnings) != 1 || file.Warnings[0] != (RenderWarning{Code: textMaskLowConfidenceCode, BlockID: "p1-b1-par1"}) {
+		t.Fatalf("warnings=%+v", file.Warnings)
+	}
+	original := decodeTestNRGBA(t, path)
+	output := decodeTestNRGBA(t, filepath.Join(status.OutputDirectory, "translated", "mixed.png"))
+	if got := output.NRGBAAt(60, 50); got != original.NRGBAAt(60, 50) {
+		t.Fatalf("rejected block changed: got=%+v want=%+v", got, original.NRGBAAt(60, 50))
+	}
+	if bytes.Equal(output.Pix, original.Pix) {
+		t.Fatal("safe block was neither cleaned nor drawn")
+	}
+	var renderDocument RenderDocument
+	readJSON(t, filepath.Join(status.OutputDirectory, "debug", "mixed.render.json"), &renderDocument)
+	if len(renderDocument.Blocks) != 1 || renderDocument.Blocks[0].ID != "p1-b2-par1" || len(renderDocument.SkippedBlocks) != 1 || renderDocument.SkippedBlocks[0].ID != "p1-b1-par1" {
+		t.Fatalf("debug render document=%+v", renderDocument)
+	}
+}
+
+func TestBatchAllMaskRejectionsPreserveOriginalAndContinueNextFile(t *testing.T) {
+	directory := t.TempDir()
+	problematic := writeBatchNRGBA(t, directory, "problematic.png", maskConfidenceFixture())
+	valid := writeBatchImage(t, directory, "valid.png")
+	recognizer := &fakeBatchOCR{pages: []ocr.OCRPage{maskConfidencePage(false), translatedOCRPage()}}
+	service := newBatchTestService(t, directory, recognizer, &fakeBatchCompleter{})
+	selection, _ := service.SelectFiles([]string{problematic, valid})
+	id, err := service.Start(StartImageBatchRequest{SelectionID: selection.ID, Source: "en", Target: "ru"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := waitBatch(t, service, id)
+	if status.State != "completed" || status.Processed != 2 || status.Partial != 1 || status.Translated != 1 || status.Failed != 0 {
+		t.Fatalf("status=%+v", status)
+	}
+	original, err := os.ReadFile(problematic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := os.ReadFile(filepath.Join(status.OutputDirectory, "translated", "problematic.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(output, original) {
+		t.Fatal("all-rejected image was re-encoded instead of preserving the original")
+	}
+	var report JobReport
+	readJSON(t, filepath.Join(status.OutputDirectory, "job.json"), &report)
+	if report.Files[0].RenderedBlocks != 0 || report.Files[0].Status != "partial" || report.Files[1].Status != "translated_with_warnings" {
+		t.Fatalf("files=%+v", report.Files)
+	}
+}
+
+func TestBatchCancellationDuringCleanupIsNotPartial(t *testing.T) {
+	directory := t.TempDir()
+	fixture := maskConfidenceFixture()
+	for x := 50; x < 70; x++ {
+		fixture.SetNRGBA(x, 50, color.NRGBA{A: 255})
+	}
+	path := writeBatchNRGBA(t, directory, "cancel-cleanup.png", fixture)
+	engine := &fakeInpaintEngine{block: true}
+	service := newBatchTestService(t, directory, &fakeBatchOCR{pages: []ocr.OCRPage{maskConfidencePage(false)}}, &fakeBatchCompleter{})
+	service.renderer.inpainter = engine
+	selection, _ := service.SelectFiles([]string{path})
+	id, err := service.Start(StartImageBatchRequest{SelectionID: selection.ID, Source: "en", Target: "ru"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for engine.callCount() == 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if engine.callCount() == 0 {
+		t.Fatal("cleanup did not reach inpaint")
+	}
+	if err := service.Cancel(id); err != nil {
+		t.Fatal(err)
+	}
+	status := waitBatch(t, service, id)
+	if status.State != "cancelled" || status.Partial != 0 || status.Failed != 0 {
+		t.Fatalf("status=%+v", status)
+	}
+}
+
 func TestBatchFileFailureContinuesAndCompletesWithErrors(t *testing.T) {
 	directory := t.TempDir()
 	broken := filepath.Join(directory, "broken.png")
@@ -358,6 +462,74 @@ func writeBatchImage(t *testing.T, directory, name string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func writeBatchNRGBA(t *testing.T, directory, name string, value *image.NRGBA) string {
+	t.Helper()
+	var buffer bytes.Buffer
+	if err := png.Encode(&buffer, value); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, name)
+	if err := os.WriteFile(path, buffer.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func decodeTestNRGBA(t *testing.T, path string) *image.NRGBA {
+	t.Helper()
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	decoded, _, err := image.Decode(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := image.NewNRGBA(decoded.Bounds())
+	draw.Draw(result, result.Bounds(), decoded, decoded.Bounds().Min, draw.Src)
+	return result
+}
+
+func maskConfidenceFixture() *image.NRGBA {
+	result := solidNRGBA(400, 120, color.NRGBA{R: 245, G: 245, B: 245, A: 255})
+	for y := 21; y < 89; y++ {
+		for x := 20; x < 140; x++ {
+			value := uint8(230)
+			if (x+y)%2 == 0 {
+				value = 250
+			}
+			result.SetNRGBA(x, y, color.NRGBA{R: value, G: value, B: value, A: 255})
+		}
+	}
+	for y := 37; y < 73; y++ {
+		for x := 36; x < 124; x++ {
+			result.SetNRGBA(x, y, color.NRGBA{R: 240, G: 240, B: 240, A: 255})
+		}
+	}
+	return result
+}
+
+func maskConfidencePage(includeSafe bool) ocr.OCRPage {
+	bad := testOCRParagraph("p1-b1-par1", "Bad", ocr.OCRBox{X: 40, Y: 40, Width: 80, Height: 30}, 1)
+	paragraphs := []ocr.OCRParagraph{bad}
+	words := []ocr.OCRWord{bad.Lines[0].Words[0]}
+	if includeSafe {
+		good := testOCRParagraph("p1-b2-par1", "Good", ocr.OCRBox{X: 250, Y: 40, Width: 80, Height: 30}, 2)
+		paragraphs = append(paragraphs, good)
+		words = append(words, good.Lines[0].Words[0])
+	}
+	return ocr.OCRPage{SchemaVersion: 1, Image: ocr.OCRImageInfo{Width: 400, Height: 120, MediaType: "image/png"}, Words: words, Paragraphs: paragraphs}
+}
+
+func testOCRParagraph(id, text string, box ocr.OCRBox, block int) ocr.OCRParagraph {
+	wordID := id + "-l1-w1"
+	lineID := id + "-l1"
+	word := ocr.OCRWord{ID: wordID, Text: text, Confidence: 90, Box: box, Accepted: true, Page: 1, Block: block, Paragraph: 1, Line: 1, Word: 1}
+	line := ocr.OCRLine{ID: lineID, Text: text, Confidence: 90, Box: box, Words: []ocr.OCRWord{word}, Page: 1, Block: block, Paragraph: 1, Line: 1}
+	return ocr.OCRParagraph{ID: id, Text: text, Confidence: 90, Box: box, Lines: []ocr.OCRLine{line}, Page: 1, Block: block, Paragraph: 1}
 }
 
 func translatedOCRPage() ocr.OCRPage {

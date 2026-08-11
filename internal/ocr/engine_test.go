@@ -185,6 +185,45 @@ func TestProjectBoxRoundsAndClampsToOriginal(t *testing.T) {
 	}
 }
 
+func TestProjectedWordsRejectGeometryCollapsedByRounding(t *testing.T) {
+	t.Parallel()
+	pass := ocrPass{crop: OCRBox{Width: 10, Height: 10}, width: 100, height: 100}
+	words := []OCRWord{
+		{Text: ".", Accepted: true, Box: OCRBox{X: 1, Y: 1, Width: 1, Height: 1}},
+		{Text: "!", Accepted: true, Box: OCRBox{X: 10, Y: 10, Width: 10, Height: 10}},
+	}
+	projected := projectWords(words, pass, 10, 10)
+	if projected[0].Accepted || !projected[1].Accepted {
+		t.Fatalf("projected=%+v", projected)
+	}
+	accepted := projectAcceptedWords(words, pass, 10, 10)
+	if len(accepted) != 1 || accepted[0].Text != "!" {
+		t.Fatalf("accepted=%+v", accepted)
+	}
+	page := rebuildOCRPage(projected, OCRImageInfo{Width: 10, Height: 10})
+	if len(page.Paragraphs) != 1 || page.Paragraphs[0].Text != "!" {
+		t.Fatalf("page=%+v", page)
+	}
+}
+
+func TestEngineParsesLiteralQuoteWithoutConsumingFollowingTSVRow(t *testing.T) {
+	t.Parallel()
+	engine := newTestEngine(t, "eng")
+	fake := &fakeOCRProcesses{engine: engine, tesseractTSV: func(_ int, _ []string) string {
+		return tsvHeader +
+			tsvRow(1, 1, 1, 1, 1, 20, 20, 80, 60, "90", `"`) +
+			strings.TrimSuffix(tsvRow(1, 1, 1, 1, 2, 120, 20, 80, 60, "90", "after"), "\n")
+	}}
+	engine.run = fake.run
+	page, err := engine.RecognizeStructured(context.Background(), testImage(100, 60), "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Words) != 2 || page.Words[0].Text != `"` || page.Words[1].Text != "after" {
+		t.Fatalf("words=%+v", page.Words)
+	}
+}
+
 func TestMergeOCRWordsDeduplicatesOverlapAndPrefersConfidence(t *testing.T) {
 	t.Parallel()
 	base := []OCRWord{{Text: "Install", Confidence: 70, Accepted: true, Box: OCRBox{X: 10, Y: 10, Width: 50, Height: 20}}}

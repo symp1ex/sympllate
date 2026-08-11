@@ -1,6 +1,7 @@
 package imagebatch
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"image"
@@ -17,6 +18,7 @@ type fakeInpaintEngine struct {
 	calls     int
 	closed    bool
 	err       error
+	block     bool
 	fillColor color.NRGBA
 }
 
@@ -27,8 +29,13 @@ func (f *fakeInpaintEngine) Inpaint(ctx context.Context, source *image.NRGBA, ma
 	f.mu.Lock()
 	f.calls++
 	err := f.err
+	block := f.block
 	fill := f.fillColor
 	f.mu.Unlock()
+	if block {
+		<-ctx.Done()
+		return inpaint.Result{}, ctx.Err()
+	}
 	if err != nil {
 		return inpaint.Result{}, err
 	}
@@ -180,12 +187,15 @@ func TestHybridCleanupRoutesUniformAndNeuralAndPreservesOutsideMask(t *testing.T
 		{ID: "neural", SourceBox: ocr.OCRBox{X: 35, Y: 30, Width: 20, Height: 30}, CleanupBox: ocr.OCRBox{X: 34, Y: 29, Width: 22, Height: 32}, Background: newRenderColor(color.NRGBA{R: 210, G: 210, B: 210, A: 255}), Foreground: newRenderColor(color.NRGBA{A: 255}), CleanupMode: CleanupNeural},
 	}}
 	originalOutside := source.NRGBAAt(10, 10)
-	cleaned, stats, err := renderer.Clean(context.Background(), source, document)
+	cleaned, filtered, stats, err := renderer.Clean(context.Background(), source, document)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if engine.callCount() != 1 || stats.UniformRegions != 1 || stats.NeuralRegions != 1 || stats.NeuralClusters != 1 {
 		t.Fatalf("calls=%d stats=%+v", engine.callCount(), stats)
+	}
+	if len(filtered.Blocks) != 2 {
+		t.Fatalf("filtered=%+v", filtered)
 	}
 	if got := cleaned.NRGBAAt(10, 10); got != originalOutside {
 		t.Fatalf("outside changed: got=%+v want=%+v", got, originalOutside)
@@ -203,7 +213,7 @@ func TestUniformCleanupDoesNotInvokeInpaintAndNeuralErrorsAreReturned(t *testing
 	engine := &fakeInpaintEngine{}
 	renderer, _ := NewRenderer(t.TempDir(), DefaultRenderConfig(), engine)
 	block := RenderBlock{ID: "text", SourceBox: ocr.OCRBox{X: 5, Y: 5, Width: 10, Height: 5}, CleanupBox: ocr.OCRBox{X: 4, Y: 4, Width: 12, Height: 7}, Background: newRenderColor(color.NRGBA{R: 240, G: 240, B: 240, A: 255}), Foreground: newRenderColor(color.NRGBA{A: 255}), CleanupMode: CleanupSolid}
-	if _, _, err := renderer.Clean(context.Background(), source, RenderDocument{Blocks: []RenderBlock{block}}); err != nil {
+	if _, _, _, err := renderer.Clean(context.Background(), source, RenderDocument{Blocks: []RenderBlock{block}}); err != nil {
 		t.Fatal(err)
 	}
 	if engine.callCount() != 0 {
@@ -214,8 +224,71 @@ func TestUniformCleanupDoesNotInvokeInpaintAndNeuralErrorsAreReturned(t *testing
 	}
 	engine.err = errors.New("inference failed")
 	block.CleanupMode = CleanupNeural
-	if _, _, err := renderer.Clean(context.Background(), source, RenderDocument{Blocks: []RenderBlock{block}}); err == nil || !errors.Is(err, engine.err) {
+	if _, _, _, err := renderer.Clean(context.Background(), source, RenderDocument{Blocks: []RenderBlock{block}}); err == nil || !errors.Is(err, engine.err) {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestCleanSkipsLowConfidenceMaskBeforeCleanupAndDraw(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFont(t, directory)
+	source := solidNRGBA(200, 80, color.NRGBA{R: 245, G: 245, B: 245, A: 255})
+	renderer, err := NewRenderer(directory, DefaultRenderConfig(), &fakeInpaintEngine{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := RenderBlock{
+		ID: "bad", SourceBox: ocr.OCRBox{X: 10, Y: 10, Width: 40, Height: 20}, CleanupBox: ocr.OCRBox{X: 8, Y: 8, Width: 44, Height: 24},
+		TextBox: ocr.OCRBox{X: 10, Y: 10, Width: 40, Height: 20}, Background: newRenderColor(color.NRGBA{R: 245, G: 245, B: 245, A: 255}),
+		Foreground: newRenderColor(color.NRGBA{A: 255}), CleanupMode: CleanupNeural, FontSize: 12, LineSpacing: 1.15, Lines: []string{"BAD"},
+	}
+	good := RenderBlock{
+		ID: "good", SourceBox: ocr.OCRBox{X: 100, Y: 10, Width: 60, Height: 30}, CleanupBox: ocr.OCRBox{X: 98, Y: 8, Width: 64, Height: 34},
+		TextBox: ocr.OCRBox{X: 100, Y: 10, Width: 60, Height: 30}, Background: newRenderColor(color.NRGBA{R: 220, G: 220, B: 220, A: 255}),
+		Foreground: newRenderColor(color.NRGBA{A: 255}), CleanupMode: CleanupSolid, FontSize: 12, LineSpacing: 1.15, Lines: []string{"OK"},
+	}
+
+	cleaned, filtered, _, err := renderer.Clean(context.Background(), source, RenderDocument{Blocks: []RenderBlock{bad, good}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered.Blocks) != 1 || filtered.Blocks[0].ID != "good" || len(filtered.SkippedBlocks) != 1 || filtered.SkippedBlocks[0] != (SkippedRenderBlock{ID: "bad", Reason: textMaskLowConfidenceCode}) {
+		t.Fatalf("filtered=%+v", filtered)
+	}
+	if len(filtered.Warnings) != 1 || filtered.Warnings[0] != (RenderWarning{Code: textMaskLowConfidenceCode, BlockID: "bad"}) {
+		t.Fatalf("warnings=%+v", filtered.Warnings)
+	}
+	if got := cleaned.NRGBAAt(20, 15); got != source.NRGBAAt(20, 15) {
+		t.Fatalf("skipped block was cleaned: got=%+v want=%+v", got, source.NRGBAAt(20, 15))
+	}
+	beforeDraw := append([]byte(nil), cleaned.Pix...)
+	if err := renderer.Draw(context.Background(), cleaned, filtered); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(beforeDraw, cleaned.Pix) {
+		t.Fatal("safe block was not drawn")
+	}
+	if got := cleaned.NRGBAAt(20, 15); got != source.NRGBAAt(20, 15) {
+		t.Fatalf("skipped block was drawn: got=%+v want=%+v", got, source.NRGBAAt(20, 15))
+	}
+}
+
+func TestCleanClassifiesUnsafeMaskAsSkipped(t *testing.T) {
+	source := solidNRGBA(40, 20, color.NRGBA{A: 255})
+	renderer, _ := NewRenderer(t.TempDir(), DefaultRenderConfig(), &fakeInpaintEngine{})
+	block := RenderBlock{
+		ID: "unsafe", SourceBox: ocr.OCRBox{X: 5, Y: 5, Width: 20, Height: 10}, CleanupBox: ocr.OCRBox{X: 4, Y: 4, Width: 22, Height: 12},
+		Background: newRenderColor(color.NRGBA{R: 255, G: 255, B: 255, A: 255}), Foreground: newRenderColor(color.NRGBA{A: 255}), CleanupMode: CleanupNeural,
+	}
+	cleaned, filtered, _, err := renderer.Clean(context.Background(), source, RenderDocument{Blocks: []RenderBlock{block}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered.Blocks) != 0 || len(filtered.SkippedBlocks) != 1 || filtered.SkippedBlocks[0].Reason != textMaskUnsafeCode || len(filtered.Warnings) != 1 || filtered.Warnings[0].Code != textMaskUnsafeCode {
+		t.Fatalf("filtered=%+v", filtered)
+	}
+	if !bytes.Equal(cleaned.Pix, source.Pix) {
+		t.Fatal("all-rejected cleanup changed the source")
 	}
 }
 

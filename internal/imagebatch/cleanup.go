@@ -15,18 +15,25 @@ import (
 )
 
 const (
-	cleanupPaddingHorizontal = 4
-	cleanupPaddingVertical   = 3
-	backgroundSampleWidth    = 16
-	minimumBackgroundSamples = 16
-	maximumBackgroundSamples = 4096
-	uniformVarianceThreshold = 25.0
-	textMaskDilationRadius   = 1
-	neuralContextPadding     = 48
-	neuralClusterGap         = 24
-	maximumClusterDimension  = 1024
-	maximumClusterArea       = 768 * 1024
-	maximumRegionDimension   = 768
+	cleanupPaddingHorizontal  = 4
+	cleanupPaddingVertical    = 3
+	backgroundSampleWidth     = 16
+	minimumBackgroundSamples  = 16
+	maximumBackgroundSamples  = 4096
+	uniformVarianceThreshold  = 25.0
+	textMaskDilationRadius    = 1
+	neuralContextPadding      = 48
+	neuralClusterGap          = 24
+	maximumClusterDimension   = 1024
+	maximumClusterArea        = 768 * 1024
+	maximumRegionDimension    = 768
+	textMaskLowConfidenceCode = "text_mask_low_confidence"
+	textMaskUnsafeCode        = "text_mask_unsafe"
+)
+
+var (
+	errTextMaskLowConfidence = errors.New("text mask confidence is too low")
+	errTextMaskUnsafe        = errors.New("text mask is unsafe")
 )
 
 type CleanupStats struct {
@@ -55,47 +62,62 @@ func cleanupModeFor(sample BackgroundSample) CleanupMode {
 	return CleanupNeural
 }
 
-func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document RenderDocument) (*image.NRGBA, CleanupStats, error) {
+func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document RenderDocument) (*image.NRGBA, RenderDocument, CleanupStats, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, CleanupStats{}, err
+		return nil, document, CleanupStats{}, err
 	}
 	if source == nil {
-		return nil, CleanupStats{}, errors.New("cleanup source image is nil")
+		return nil, document, CleanupStats{}, errors.New("cleanup source image is nil")
 	}
 	target := cloneNRGBA(source)
 	stats := CleanupStats{}
 	regions := make([]maskedRegion, 0, len(document.Blocks))
+	filtered := document
+	filtered.Blocks = make([]RenderBlock, 0, len(document.Blocks))
+	filtered.SkippedBlocks = append([]SkippedRenderBlock(nil), document.SkippedBlocks...)
+	filtered.Warnings = append([]RenderWarning(nil), document.Warnings...)
 	for _, block := range document.Blocks {
 		if err := ctx.Err(); err != nil {
-			return nil, stats, err
+			return nil, filtered, stats, err
 		}
 		switch block.CleanupMode {
 		case CleanupSolid:
 			stats.UniformRegions++
+			filtered.Blocks = append(filtered.Blocks, block)
 		case CleanupNeural:
 			mask, err := buildTextMask(ctx, source, block)
 			if err != nil {
-				return nil, stats, fmt.Errorf("build text mask for block %s: %w", block.ID, err)
+				code := textMaskRejectionCode(err)
+				if code == "" {
+					return nil, filtered, stats, fmt.Errorf("build text mask for block %s: %w", block.ID, err)
+				}
+				filtered.SkippedBlocks = append(filtered.SkippedBlocks, SkippedRenderBlock{ID: block.ID, Reason: code})
+				filtered.Warnings = append(filtered.Warnings, RenderWarning{Code: code, BlockID: block.ID})
+				continue
 			}
 			regions = append(regions, splitMaskedRegion(mask)...)
 			stats.NeuralRegions++
+			filtered.Blocks = append(filtered.Blocks, block)
 		default:
-			return nil, stats, fmt.Errorf("block %s has unknown cleanup mode %q", block.ID, block.CleanupMode)
+			return nil, filtered, stats, fmt.Errorf("block %s has unknown cleanup mode %q", block.ID, block.CleanupMode)
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, filtered, stats, err
 	}
 
 	clusters := clusterMaskedRegions(regions, source.Bounds())
 	stats.NeuralClusters = len(clusters)
 	for _, cluster := range clusters {
 		if err := ctx.Err(); err != nil {
-			return nil, stats, err
+			return nil, filtered, stats, err
 		}
 		cropBounds := expandRectangle(cluster.bounds, neuralContextPadding, source.Bounds())
 		crop := cropNRGBA(source, cropBounds)
 		mask := clusterMask(regions, cluster, cropBounds)
 		result, err := r.inpainter.Inpaint(ctx, crop, mask)
 		if err != nil {
-			return nil, stats, fmt.Errorf("LaMa cleanup crop %v: %w", cropBounds, err)
+			return nil, filtered, stats, fmt.Errorf("LaMa cleanup crop %v: %w", cropBounds, err)
 		}
 		stats.Preprocessing += result.Timings.Preprocessing
 		stats.Inference += result.Timings.Inference
@@ -103,15 +125,26 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 		compositeMasked(target, result.Image, mask, cropBounds.Min)
 	}
 
-	for _, block := range document.Blocks {
+	for _, block := range filtered.Blocks {
 		if block.CleanupMode != CleanupSolid {
 			continue
 		}
 		if err := solidCleanup(ctx, target, block.CleanupBox, block.Background.NRGBA()); err != nil {
-			return nil, stats, fmt.Errorf("solid cleanup block %s: %w", block.ID, err)
+			return nil, filtered, stats, fmt.Errorf("solid cleanup block %s: %w", block.ID, err)
 		}
 	}
-	return target, stats, nil
+	return target, filtered, stats, nil
+}
+
+func textMaskRejectionCode(err error) string {
+	switch {
+	case errors.Is(err, errTextMaskLowConfidence):
+		return textMaskLowConfidenceCode
+	case errors.Is(err, errTextMaskUnsafe):
+		return textMaskUnsafeCode
+	default:
+		return ""
+	}
 }
 
 func solidCleanup(ctx context.Context, target *image.NRGBA, box ocr.OCRBox, value color.NRGBA) error {
@@ -140,7 +173,7 @@ func buildTextMask(ctx context.Context, source *image.NRGBA, block RenderBlock) 
 	foreground := block.Foreground.NRGBA()
 	candidates := 0
 	for y := box.Y; y < box.Y+box.Height; y++ {
-		if y&31 == 0 {
+		if (y-box.Y)&31 == 0 {
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
@@ -156,10 +189,10 @@ func buildTextMask(ctx context.Context, source *image.NRGBA, block RenderBlock) 
 	area := box.Width * box.Height
 	minimum := max(2, area/1000)
 	if candidates < minimum {
-		return nil, fmt.Errorf("text mask confidence is too low: selected %d of %d pixels", candidates, area)
+		return nil, fmt.Errorf("%w: selected %d of %d pixels", errTextMaskLowConfidence, candidates, area)
 	}
 	if candidates*10 > area*7 {
-		return nil, fmt.Errorf("text mask is unsafe: selected %d of %d pixels", candidates, area)
+		return nil, fmt.Errorf("%w: selected %d of %d pixels", errTextMaskUnsafe, candidates, area)
 	}
 	return dilateMask(seed, textMaskDilationRadius), nil
 }

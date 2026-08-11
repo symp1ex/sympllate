@@ -1,7 +1,7 @@
 package ocr
 
 import (
-	"encoding/csv"
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -85,14 +85,12 @@ func ParseTSV(input io.Reader, imageWidth, imageHeight int, filter OCRFilterConf
 	if imageWidth <= 0 || imageHeight <= 0 {
 		return OCRPage{}, errors.New("image dimensions must be positive")
 	}
-	reader := csv.NewReader(input)
-	reader.Comma = '\t'
-	reader.FieldsPerRecord = -1
-	reader.ReuseRecord = false
-	header, err := reader.Read()
+	reader := bufio.NewReader(input)
+	headerLine, err := readTSVLine(reader)
 	if err != nil {
 		return OCRPage{}, fmt.Errorf("read TSV header: %w", err)
 	}
+	header := strings.Split(headerLine, "\t")
 	indexes, err := tsvHeaderIndexes(header)
 	if err != nil {
 		return OCRPage{}, err
@@ -100,7 +98,7 @@ func ParseTSV(input io.Reader, imageWidth, imageHeight int, filter OCRFilterConf
 	words := make([]OCRWord, 0)
 	row := 1
 	for {
-		record, readErr := reader.Read()
+		line, readErr := readTSVLine(reader)
 		if errors.Is(readErr, io.EOF) {
 			break
 		}
@@ -108,6 +106,7 @@ func ParseTSV(input io.Reader, imageWidth, imageHeight int, filter OCRFilterConf
 		if readErr != nil {
 			return OCRPage{}, fmt.Errorf("read TSV row %d: %w", row, readErr)
 		}
+		record := strings.SplitN(line, "\t", len(header))
 		if len(record) != len(header) {
 			return OCRPage{}, fmt.Errorf("TSV row %d has %d fields; expected %d", row, len(record), len(header))
 		}
@@ -127,6 +126,19 @@ func ParseTSV(input io.Reader, imageWidth, imageHeight int, filter OCRFilterConf
 	sort.SliceStable(words, func(i, j int) bool { return lessWord(words[i], words[j]) })
 	paragraphs := groupWords(words)
 	return OCRPage{SchemaVersion: 1, Image: OCRImageInfo{Width: imageWidth, Height: imageHeight}, Words: words, Paragraphs: paragraphs}, nil
+}
+
+func readTSVLine(reader *bufio.Reader) (string, error) {
+	line, err := reader.ReadString('\n')
+	if errors.Is(err, io.EOF) && len(line) > 0 {
+		err = nil
+	}
+	if err != nil {
+		return "", err
+	}
+	line = strings.TrimSuffix(line, "\n")
+	line = strings.TrimSuffix(line, "\r")
+	return line, nil
 }
 
 func tsvHeaderIndexes(header []string) (map[string]int, error) {

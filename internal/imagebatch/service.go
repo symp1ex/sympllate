@@ -397,14 +397,17 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 		return finish("failed", stage), systemRenderError(stage, err), false
 	}
 	report.DurationsMillis["layout"] = s.now().Sub(layoutStarted).Milliseconds()
-	report.RenderedBlocks = len(renderDocument.Blocks)
-	report.SkippedBlocks = renderDocument.SkippedBlocks
-	report.Warnings = renderDocument.Warnings
 	s.logf("image layout completed: job=%s name=%s renderable=%d skipped=%d warnings=%d duration=%s", job.status.ID, report.SourceFile, len(renderDocument.Blocks), len(renderDocument.SkippedBlocks), len(renderDocument.Warnings), s.now().Sub(layoutStarted))
 
 	if len(renderDocument.Blocks) == 0 {
+		report.RenderedBlocks = 0
+		report.SkippedBlocks = renderDocument.SkippedBlocks
+		report.Warnings = renderDocument.Warnings
 		s.updateStage(job, "encode_output")
 		if err := atomicWriteBytesContext(ctx, finalPath, prepared.Original); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return finish("cancelled", "encode_output"), nil, true
+			}
 			s.fileFailed(job, report.SourceFile, "encode_output", err)
 			return finish("failed", "encode_output"), nil, false
 		}
@@ -415,7 +418,7 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 
 	s.updateStage(job, "clean_background")
 	cleanupStarted := s.now()
-	cleaned, cleanupStats, err := s.renderer.Clean(ctx, prepared.Image, renderDocument)
+	cleaned, renderDocument, cleanupStats, err := s.renderer.Clean(ctx, prepared.Image, renderDocument)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return finish("cancelled", "clean_background"), nil, true
@@ -424,11 +427,28 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 		return finish("failed", "clean_background"), nil, false
 	}
 	report.DurationsMillis["cleanup"] = s.now().Sub(cleanupStarted).Milliseconds()
+	report.RenderedBlocks = len(renderDocument.Blocks)
+	report.SkippedBlocks = renderDocument.SkippedBlocks
+	report.Warnings = renderDocument.Warnings
 	s.logf(
 		"image cleanup completed: job=%s name=%s uniform_regions=%d neural_regions=%d neural_clusters=%d preprocessing=%s inference=%s postprocessing=%s duration=%s",
 		job.status.ID, report.SourceFile, cleanupStats.UniformRegions, cleanupStats.NeuralRegions, cleanupStats.NeuralClusters,
 		cleanupStats.Preprocessing, cleanupStats.Inference, cleanupStats.Postprocessing, s.now().Sub(cleanupStarted),
 	)
+	if len(renderDocument.Blocks) == 0 {
+		s.updateStage(job, "encode_output")
+		if err := atomicWriteBytesContext(ctx, finalPath, prepared.Original); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return finish("cancelled", "encode_output"), nil, true
+			}
+			s.fileFailed(job, report.SourceFile, "encode_output", err)
+			return finish("failed", "encode_output"), nil, false
+		}
+		s.incrementRendered(job, "partial", len(renderDocument.Warnings))
+		s.renderDebug(ctx, job, &report, prepared.Validated.Data, page)
+		s.renderDebugArtifacts(ctx, job, &report, prepared.Image, prepared.Image, renderDocument)
+		return finish("partial", ""), nil, false
+	}
 	cleanedDebug := cloneNRGBA(cleaned)
 	s.updateStage(job, "render_text")
 	renderStarted := s.now()

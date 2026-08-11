@@ -2,6 +2,7 @@ package imagebatch
 
 import (
 	"context"
+	"errors"
 	"image"
 	"image/color"
 	"testing"
@@ -57,8 +58,8 @@ func TestBackgroundAndCleanupCancellation(t *testing.T) {
 		t.Fatal("expected cancellation")
 	}
 	renderer, _ := NewRenderer(t.TempDir(), DefaultRenderConfig(), &fakeInpaintEngine{})
-	if _, _, err := renderer.Clean(ctx, source, RenderDocument{}); err == nil {
-		t.Fatal("expected cancellation")
+	if _, _, _, err := renderer.Clean(ctx, source, RenderDocument{}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation, got %v", err)
 	}
 }
 
