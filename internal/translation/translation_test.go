@@ -32,3 +32,11 @@ func TestValidateRequest(t *testing.T) {
 		}
 	}
 }
+
+func TestCleanResultForSourceNormalizesVisibleParagraphs(t *testing.T) {
+	t.Parallel()
+	got := CleanResultForSource(`Translation: one\n\ntwo`, "first\r\n\r\nsecond")
+	if got != "one\n\ntwo" {
+		t.Fatalf("CleanResultForSource() = %q; want real paragraph breaks", got)
+	}
+}

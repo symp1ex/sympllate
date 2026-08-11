@@ -58,10 +58,17 @@ func CleanResult(text string) string {
 	text = strings.TrimSpace(text)
 	for _, prefix := range []string{"Translation:", "Translated text:", "Перевод:"} {
 		if strings.HasPrefix(text, prefix) {
-			return strings.TrimSpace(strings.TrimPrefix(text, prefix))
+			text = strings.TrimSpace(strings.TrimPrefix(text, prefix))
+			break
 		}
 	}
-	return text
+	return NormalizeModelTranslation(text, "")
+}
+
+// CleanResultForSource also uses the source formatting to distinguish escaped
+// paragraph breaks from meaningful single LF escape sequences.
+func CleanResultForSource(text, sourceText string) string {
+	return NormalizeModelTranslation(CleanResult(text), sourceText)
 }
 
 func validLanguageCode(value string) bool {

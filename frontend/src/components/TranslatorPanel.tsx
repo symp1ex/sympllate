@@ -9,6 +9,7 @@ import {
   releaseImagePreview,
 } from '../imageInput'
 import type { SourceInput } from '../imageInput'
+import { sourceLanguageForImage } from '../languageDefaults'
 import { ErrorMessage } from './ErrorMessage'
 import { LanguageSelect } from './LanguageSelect'
 import { LoadingIndicator } from './LoadingIndicator'
@@ -55,6 +56,7 @@ export function TranslatorPanel({ config, languages }: Props) {
         return
       }
       setSourceInput(prepared)
+      setSource((current) => sourceLanguageForImage(current, languages, config.defaultLanguagePair.second))
       setTranslatedText('')
     } catch (caught) {
       if (mounted.current && imageSelection.current === selection) setError(errorMessage(caught))

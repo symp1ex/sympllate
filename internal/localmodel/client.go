@@ -76,7 +76,7 @@ func (c *Client) Translate(ctx context.Context, req translation.TranslateRequest
 	if err != nil {
 		return translation.TranslateResult{}, err
 	}
-	return translation.TranslateResult{Text: translation.CleanResult(text)}, nil
+	return translation.TranslateResult{Text: translation.CleanResultForSource(text, req.Text)}, nil
 }
 
 // Complete runs one raw TranslateGemma prompt. Model requests are serialized so

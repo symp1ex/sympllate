@@ -2,19 +2,21 @@ import { useEffect, useRef, useState } from 'react'
 import type { BatchSelection, ImageBatchStatus, Language } from '../api'
 import { cancelImageBatch, errorMessage, pollImageBatch, selectBatchImageDirectory, selectBatchImageFiles, startImageBatch } from '../api'
 import { imageBatchProgress, imageBatchStageLabel, imageBatchStateLabel } from '../imageBatchState'
+import { defaultConcreteSource } from '../languageDefaults'
 import { ErrorMessage } from './ErrorMessage'
 import { LanguageSelect } from './LanguageSelect'
 
 interface Props {
   languages: Language[]
+  defaultSource: string
   defaultTarget: string
   disabled: boolean
   onBusyChange: (busy: boolean) => void
 }
 
-export function ImageBatchPanel({ languages, defaultTarget, disabled, onBusyChange }: Props) {
+export function ImageBatchPanel({ languages, defaultSource, defaultTarget, disabled, onBusyChange }: Props) {
   const [selection, setSelection] = useState<BatchSelection | null>(null)
-  const [source, setSource] = useState('auto')
+  const [source, setSource] = useState(() => defaultConcreteSource(languages, defaultSource))
   const [target, setTarget] = useState(defaultTarget)
   const [debug, setDebug] = useState(false)
   const [fillWordBoxes, setFillWordBoxes] = useState(false)
@@ -64,7 +66,7 @@ export function ImageBatchPanel({ languages, defaultTarget, disabled, onBusyChan
   }
 
   const start = async () => {
-    if (!selection || disabled || selecting || jobID) return
+    if (!selection || !source || disabled || selecting || jobID) return
     setError('')
     try {
       const id = await startImageBatch({ selectionId: selection.id, source, target, debug, fillWordBoxes })
@@ -104,11 +106,11 @@ export function ImageBatchPanel({ languages, defaultTarget, disabled, onBusyChan
         <span className="batch-selection" title={selection?.displayName}>{selection ? `Selected: ${selection.fileCount} · ${selection.displayName}` : 'No images selected'}</span>
       </div>
       <div className="batch-language-row">
-        <LanguageSelect id="batch-source-language" label="Source language" value={source} languages={languages} onChange={setSource} disabled={active || disabled} />
+        <LanguageSelect id="batch-source-language" label="Source language" value={source} languages={languages} onChange={setSource} disabled={active || disabled} allowAuto={false} />
         <LanguageSelect id="batch-target-language" label="Target language" value={target} languages={languages} onChange={setTarget} disabled={active || disabled} allowAuto={false} />
         {active
           ? <button type="button" onClick={() => void cancel()}>Cancel</button>
-          : <button className="primary" type="button" onClick={() => void start()} disabled={!selection || disabled || selecting}>Start batch</button>}
+          : <button className="primary" type="button" onClick={() => void start()} disabled={!selection || !source || disabled || selecting}>Start batch</button>}
       </div>
       {status && <div className="batch-status" role="status">
         <div><strong>{imageBatchStateLabel(status.state)}</strong><span>{status.processed} of {status.total}</span></div>

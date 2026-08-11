@@ -22,6 +22,12 @@ const resizeHandles = [
 
 type UpdateState = 'disabled' | 'idle' | 'checking' | 'available' | 'installing' | 'error'
 
+const windowTitles: Record<Props['mode'], string> = {
+  main: 'Sympllate',
+  popup: 'Quick Translation',
+  batch: 'Batch Image Translation',
+}
+
 export function WindowChrome({ children, mode, onSettings, lockContentOverflow = false }: Props) {
   const [applicationInfo, setApplicationInfo] = useState<ApplicationInfo>({ version: '', updaterEnabled: false })
   const [updateState, setUpdateState] = useState<UpdateState>('disabled')
@@ -186,6 +192,9 @@ export function WindowChrome({ children, mode, onSettings, lockContentOverflow =
     ? 'Retry update check'
     : updateState === 'available' ? 'Install update' : `Application version ${versionText}`
   const spinnerVisible = updateState === 'checking' || updateState === 'installing'
+  const titleClassName = mode === 'main'
+    ? 'custom-titlebar__name'
+    : 'custom-titlebar__name custom-titlebar__name--secondary'
 
   return (
     <div className={`window-root window-root--${mode}`}>
@@ -205,7 +214,7 @@ export function WindowChrome({ children, mode, onSettings, lockContentOverflow =
         }}
       >
         <div className="custom-titlebar__brand">
-          <span className="custom-titlebar__name">Sympllate</span>
+          <span className={titleClassName}>{windowTitles[mode]}</span>
           {mode === 'main' && versionText && (
             <button
               type="button"

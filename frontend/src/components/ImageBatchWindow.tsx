@@ -13,7 +13,13 @@ export function ImageBatchWindow({ config, languages }: { config: ClientConfig; 
 
   return (
     <main className="batch-window-shell">
-      <ImageBatchPanel languages={languages} defaultTarget={config.defaultLanguagePair.first} disabled={false} onBusyChange={ignoreBusyChange} />
+      <ImageBatchPanel
+        languages={languages}
+        defaultSource={config.defaultLanguagePair.second}
+        defaultTarget={config.defaultLanguagePair.first}
+        disabled={false}
+        onBusyChange={ignoreBusyChange}
+      />
     </main>
   )
 }

@@ -101,6 +101,19 @@ func TestClientTranslateTimeout(t *testing.T) {
 	}
 }
 
+func TestClientTranslateNormalizesVisibleParagraphs(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"one\\n\\ntwo"}}]}`))
+	}))
+	defer server.Close()
+	client := NewClient(server.URL, "test-key", 100, 0, 100, time.Second)
+	result, err := client.Translate(context.Background(), translation.TranslateRequest{Text: "first\n\nsecond", Source: "en", Target: "ru"})
+	if err != nil || result.Text != "one\n\ntwo" {
+		t.Fatalf("Translate() = %q, %v; want real paragraph breaks", result.Text, err)
+	}
+}
+
 func TestClientReportsUnsupportedImageInput(t *testing.T) {
 	t.Parallel()
 	client := NewClient("http://127.0.0.1:1", "test-key", 10, 0, 100, time.Second)
@@ -143,12 +156,12 @@ func TestClientTranslateImageSendsOnlyOCRTextToLocalServer(t *testing.T) {
 func TestClientTranslateImageNormalizesImageResultOnly(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"one\\r\\ntwo C:\\\\react folder\\nsys"}}]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"one\\r\\ntwo\\n\\nthree C:\\\\react folder\\nsys"}}]}`))
 	}))
 	defer server.Close()
 	client := NewClientWithImageTextExtractor(server.URL, "test-key", 100, 0, 1000, time.Second, fakeImageTextExtractor{text: "source"})
 	result, err := client.TranslateImage(context.Background(), localImageRequest(t))
-	if err != nil || result.Text != "one\ntwo C:\\\\react folder\\nsys" {
+	if err != nil || result.Text != "one\ntwo\n\nthree C:\\\\react folder\\nsys" {
 		t.Fatalf("TranslateImage() = %q, %v", result.Text, err)
 	}
 }

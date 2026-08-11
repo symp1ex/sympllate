@@ -33,7 +33,7 @@ import (
 )
 
 var errRestartRequested = errors.New("application restart requested")
-var version = "0.3.9.0"
+var version = "0.3.9.3"
 
 func main() {
 	if err := run(); errors.Is(err, errRestartRequested) {

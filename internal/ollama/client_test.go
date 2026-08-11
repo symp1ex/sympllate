@@ -70,11 +70,11 @@ func TestParseImageResponseAllowsNoText(t *testing.T) {
 	}
 }
 
-func TestImageResponsePathsNormalizeVisibleCRLF(t *testing.T) {
+func TestImageResponsePathsNormalizeVisibleLineBreaks(t *testing.T) {
 	t.Parallel()
-	body := []byte(`{"response":"one\\r\\n\\r\\ntwo C:\\\\react folder\\nsys"}`)
+	body := []byte(`{"response":"one\\r\\n\\r\\ntwo\\n\\nthree C:\\\\react folder\\nsys"}`)
 	parsed, err := ParseImageResponse(http.StatusOK, body)
-	if err != nil || parsed.Text != "one\n\ntwo C:\\\\react folder\\nsys" {
+	if err != nil || parsed.Text != "one\n\ntwo\n\nthree C:\\\\react folder\\nsys" {
 		t.Fatalf("ParseImageResponse() = %q, %v", parsed.Text, err)
 	}
 
@@ -185,6 +185,24 @@ func TestTranslateInputLimit(t *testing.T) {
 	_, err = client.Translate(context.Background(), TranslateRequest{Text: "четыре", Source: "ru", Target: "en"})
 	if err == nil || !strings.Contains(err.Error(), "maximum 3") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestTranslateNormalizesVisibleParagraphs(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"response":"one\\n\\ntwo"}`))
+	}))
+	defer server.Close()
+	cfg := config.Default().Ollama
+	cfg.BaseURL = server.URL
+	client, err := New(cfg, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.Translate(context.Background(), TranslateRequest{Text: "first\n\nsecond", Source: "en", Target: "ru"})
+	if err != nil || result.Text != "one\n\ntwo" {
+		t.Fatalf("Translate() = %q, %v; want real paragraph breaks", result.Text, err)
 	}
 }
 
