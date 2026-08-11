@@ -2,10 +2,10 @@
 
 Sympllate собирается в двух вариантах для Windows x64.
 
-- **Lite** использует Ollama, уже установленную и настроенную пользователем. GGUF-модель и llama.cpp в поставку не входят; локальные LaMa/ONNX Runtime для image cleanup входят в обе редакции.
+- **Lite** использует Ollama, уже установленную и настроенную пользователем. GGUF-модель и llama.cpp в поставку не входят; локальные LaMa/ONNX Runtime для image cleanup добавляются в обе редакции только при передаче соответствующих путей скрипту сборки.
 - **Portable** запускает поставленный `llama-server.exe` и GGUF-модель. Приложение не устанавливает и не скачивает Ollama, llama.cpp, модель или драйверы во время работы.
 
-Оба варианта используют Microsoft Edge WebView2 Runtime, установленный в Windows, и локальный CPU-only ONNX Runtime 1.26.0 для удаления текста с изображений. Portable также требует рабочий драйвер GPU; выбор GPU backend определяется только содержимым поставленного runtime llama.cpp и доступными драйверами. LaMa не подключает CUDA или DirectML и не занимает GPU переводчика.
+Оба варианта используют Microsoft Edge WebView2 Runtime, установленный в Windows. Сборка с локальным image cleanup дополнительно использует CPU-only ONNX Runtime 1.26.0 для удаления текста с изображений. Portable также требует рабочий драйвер GPU; выбор GPU backend определяется только содержимым поставленного runtime llama.cpp и доступными драйверами. LaMa не подключает CUDA или DirectML и не занимает GPU переводчика.
 
 ## Конфигурация provider
 
@@ -19,7 +19,7 @@ Portable layout:
 Sympllate/
 ├── translator.exe
 ├── config.json
-├── bin/
+├── bin/                     # если переданы оба inpaint-пути
 │   └── inpaint/
 │       ├── onnxruntime.dll
 │       └── inpainting_lama.onnx
@@ -33,7 +33,16 @@ Sympllate/
 
 ## Сборка
 
-Для сборки нужен MinGW-w64 GCC с UCRT (скрипт автоматически использует `C:\msys64\ucrt64\bin\gcc.exe`, если `gcc` отсутствует в `PATH`). LaMa-модель и CPU DLL не скачиваются и передаются явно для обоих вариантов:
+Для сборки нужен MinGW-w64 GCC с UCRT (скрипт автоматически использует `C:\msys64\ucrt64\bin\gcc.exe`, если `gcc` отсутствует в `PATH`). Запуск без параметров создаёт минимальную Lite-сборку: `translator.exe`, шрифт `bin\fonts\regular.ttf` и его лицензию `bin\fonts\LICENSE.txt`:
+
+```powershell
+.\build.ps1
+```
+
+Чтобы добавить локальный image cleanup, пути к LaMa-модели и CPU DLL передаются вместе. Эти файлы не скачиваются автоматически:
+
+- LaMa: скачайте [`inpainting_lama_2025jan.onnx` из OpenCV Zoo](https://github.com/opencv/opencv_zoo/raw/refs/heads/main/models/inpainting_lama/inpainting_lama_2025jan.onnx) и переименуйте файл в `inpainting_lama.onnx`.
+- ONNX Runtime: скачайте [CPU-архив ONNX Runtime 1.26.0 для Windows x64](https://github.com/microsoft/onnxruntime/releases/download/v1.26.0/onnxruntime-win-x64-1.26.0.zip); нужный `onnxruntime.dll` находится в каталоге `lib` архива.
 
 ```powershell
 .\build.ps1 `
@@ -54,6 +63,8 @@ Portable из заранее подготовленных локальных р�
 ```
 
 Обе директории за один вызов создаются через `-Edition All` с теми же Portable-параметрами. Результаты находятся в `dist\lite` и `dist\portable`. Скрипт не создаёт ZIP или установщик, не включает WebView2 Runtime и не загружает внешние ресурсы.
+
+Если `-InpaintModelPath` и `-OnnxRuntimePath` не указаны, каталог `bin\inpaint` не создаётся. Указать только один из этих параметров нельзя.
 
 ## Перевод изображений
 

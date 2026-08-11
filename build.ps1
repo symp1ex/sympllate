@@ -4,9 +4,7 @@ param(
     [string]$Edition = 'Lite',
     [string]$ModelPath,
     [string]$LlamaRuntimePath,
-    [Parameter(Mandatory = $true)]
     [string]$InpaintModelPath,
-    [Parameter(Mandatory = $true)]
     [string]$OnnxRuntimePath
 )
 
@@ -40,14 +38,25 @@ $projectRoot = $PSScriptRoot
 $frontendRoot = Join-Path $projectRoot 'frontend'
 $distRoot = Join-Path $projectRoot 'dist'
 
-if ([IO.Path]::GetFileName($InpaintModelPath) -cne 'inpainting_lama.onnx' -or -not (Test-Path -LiteralPath $InpaintModelPath -PathType Leaf)) {
-    throw "Укажите существующую LaMa-модель с именем inpainting_lama.onnx: $InpaintModelPath"
+$inpaintModelProvided = $PSBoundParameters.ContainsKey('InpaintModelPath')
+$onnxRuntimeProvided = $PSBoundParameters.ContainsKey('OnnxRuntimePath')
+if ($inpaintModelProvided -xor $onnxRuntimeProvided) {
+    throw 'Параметры -InpaintModelPath и -OnnxRuntimePath необходимо указывать вместе.'
 }
-if ([IO.Path]::GetFileName($OnnxRuntimePath) -cne 'onnxruntime.dll' -or -not (Test-Path -LiteralPath $OnnxRuntimePath -PathType Leaf)) {
-    throw "Укажите существующий ONNX Runtime 1.26.0 DLL с именем onnxruntime.dll: $OnnxRuntimePath"
+
+$includeInpaintAssets = $inpaintModelProvided
+$resolvedInpaintModel = $null
+$resolvedOnnxRuntime = $null
+if ($includeInpaintAssets) {
+    if ([IO.Path]::GetFileName($InpaintModelPath) -cne 'inpainting_lama.onnx' -or -not (Test-Path -LiteralPath $InpaintModelPath -PathType Leaf)) {
+        throw "Укажите существующую LaMa-модель с именем inpainting_lama.onnx: $InpaintModelPath"
+    }
+    if ([IO.Path]::GetFileName($OnnxRuntimePath) -cne 'onnxruntime.dll' -or -not (Test-Path -LiteralPath $OnnxRuntimePath -PathType Leaf)) {
+        throw "Укажите существующий ONNX Runtime 1.26.0 DLL с именем onnxruntime.dll: $OnnxRuntimePath"
+    }
+    $resolvedInpaintModel = (Resolve-Path -LiteralPath $InpaintModelPath).Path
+    $resolvedOnnxRuntime = (Resolve-Path -LiteralPath $OnnxRuntimePath).Path
 }
-$resolvedInpaintModel = (Resolve-Path -LiteralPath $InpaintModelPath).Path
-$resolvedOnnxRuntime = (Resolve-Path -LiteralPath $OnnxRuntimePath).Path
 
 $resolvedModel = $null
 $resolvedRuntime = $null
@@ -108,16 +117,20 @@ function Build-Translator([string]$OutputDirectory) {
     }
     Copy-Item -LiteralPath (Join-Path $projectRoot 'assets\fonts\GO-FONT-LICENSE.txt') -Destination (Join-Path $fontDirectory 'LICENSE.txt')
 
-    $inpaintDirectory = Join-Path $OutputDirectory 'bin\inpaint'
-    New-Item -ItemType Directory -Path $inpaintDirectory -Force | Out-Null
-    Copy-Item -LiteralPath $resolvedInpaintModel -Destination (Join-Path $inpaintDirectory 'inpainting_lama.onnx')
-    Copy-Item -LiteralPath $resolvedOnnxRuntime -Destination (Join-Path $inpaintDirectory 'onnxruntime.dll')
+    if ($includeInpaintAssets) {
+        $inpaintDirectory = Join-Path $OutputDirectory 'bin\inpaint'
+        New-Item -ItemType Directory -Path $inpaintDirectory -Force | Out-Null
+        Copy-Item -LiteralPath $resolvedInpaintModel -Destination (Join-Path $inpaintDirectory 'inpainting_lama.onnx')
+        Copy-Item -LiteralPath $resolvedOnnxRuntime -Destination (Join-Path $inpaintDirectory 'onnxruntime.dll')
+    }
 }
 
 function Build-Lite {
     $target = New-CleanEditionDirectory 'lite'
     Build-Translator $target
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'config.example.json') -Destination (Join-Path $target 'config.example.json')
+    if ($includeInpaintAssets) {
+        Copy-Item -LiteralPath (Join-Path $projectRoot 'config.example.json') -Destination (Join-Path $target 'config.example.json')
+    }
     Write-Host "Lite готов: $target"
 }
 
