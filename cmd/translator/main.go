@@ -19,6 +19,7 @@ import (
 	"github.com/sympllate/translator/internal/config"
 	"github.com/sympllate/translator/internal/hotkeys"
 	"github.com/sympllate/translator/internal/imagebatch"
+	"github.com/sympllate/translator/internal/inpaint"
 	"github.com/sympllate/translator/internal/language"
 	"github.com/sympllate/translator/internal/localmodel"
 	"github.com/sympllate/translator/internal/logger"
@@ -32,7 +33,7 @@ import (
 )
 
 var errRestartRequested = errors.New("application restart requested")
-var version = "0.3.7.4"
+var version = "0.3.8.0"
 
 func main() {
 	if err := run(); errors.Is(err, errRestartRequested) {
@@ -129,24 +130,30 @@ func run() error {
 		return errors.New("the selected provider does not support structured translation")
 	}
 	renderConfig := imagebatch.DefaultRenderConfig()
-	renderConfig.CleanupPaddingX = cfg.ImageBatch.CleanupPaddingX
-	renderConfig.CleanupPaddingY = cfg.ImageBatch.CleanupPaddingY
-	renderConfig.BackgroundSampleWidth = cfg.ImageBatch.BackgroundSampleWidth
 	renderConfig.MinimumFontSize = cfg.ImageBatch.MinimumFontSize
 	renderConfig.MaximumFontSize = cfg.ImageBatch.MaximumFontSize
 	renderConfig.LineSpacing = cfg.ImageBatch.LineSpacing
 	renderConfig.JPEGQuality = cfg.ImageBatch.JPEGQuality
-	batchService, err := imagebatch.NewService(ctx, filepath.Dir(configPath), ocr.New(filepath.Dir(configPath), ocr.DefaultTimeout), completer, cfg.Limits.MaxInputCharacters, renderConfig, applicationLogger)
+	inpaintEngine, err := inpaint.NewEngine(filepath.Dir(configPath))
 	if err != nil {
+		return fmt.Errorf("configure local LaMa inpainting: %w", err)
+	}
+	batchService, err := imagebatch.NewService(ctx, filepath.Dir(configPath), ocr.New(filepath.Dir(configPath), ocr.DefaultTimeout), completer, cfg.Limits.MaxInputCharacters, renderConfig, inpaintEngine, applicationLogger)
+	if err != nil {
+		_ = inpaintEngine.Close()
 		return fmt.Errorf("configure image batch service: %w", err)
 	}
 	clip := clipboard.New(applicationLogger)
 	popup := window.NewPopup(cfg, html, service, clip)
 	if err := popup.Start(); err != nil {
+		batchService.Close()
+		batchService.Wait()
 		return err
 	}
 	batchWindow := window.NewImageBatchWindow(cfg, html, service, batchService, clip, popup)
 	if err := batchWindow.Start(); err != nil {
+		batchService.Close()
+		batchService.Wait()
 		popup.Close()
 		return err
 	}
@@ -158,6 +165,8 @@ func run() error {
 		controller.Close()
 		batchWindow.Close()
 		popup.Close()
+		batchService.Close()
+		batchService.Wait()
 		return err
 	}
 	applicationLogger.Printf("global hotkeys registered: show=%s replace=%s", showCombination.Display, replaceCombination.Display)

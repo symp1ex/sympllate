@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sympllate/translator/internal/inpaint"
 	"github.com/sympllate/translator/internal/logger"
 	"github.com/sympllate/translator/internal/ocr"
 	"github.com/sympllate/translator/internal/translation"
@@ -54,7 +55,7 @@ type batchJob struct {
 	errors    []BatchFileError
 }
 
-func NewService(ctx context.Context, executableDir string, recognizer StructuredOCR, completer translation.RawCompleter, maxInputCharacters int, renderConfig RenderConfig, log logger.PrintLogger) (*Service, error) {
+func NewService(ctx context.Context, executableDir string, recognizer StructuredOCR, completer translation.RawCompleter, maxInputCharacters int, renderConfig RenderConfig, inpainter inpaint.Engine, log logger.PrintLogger) (*Service, error) {
 	structuredTranslator, err := translation.NewStructuredTranslator(completer, maxInputCharacters)
 	if err != nil {
 		return nil, err
@@ -62,7 +63,7 @@ func NewService(ctx context.Context, executableDir string, recognizer Structured
 	if recognizer == nil || executableDir == "" {
 		return nil, errors.New("invalid image batch service configuration")
 	}
-	renderer, err := NewRenderer(executableDir, renderConfig)
+	renderer, err := NewRenderer(executableDir, renderConfig, inpainter)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +198,12 @@ func (s *Service) Close() {
 	s.mu.Unlock()
 }
 
-func (s *Service) Wait() { s.wg.Wait(); s.renderer.Close() }
+func (s *Service) Wait() {
+	s.wg.Wait()
+	if err := s.renderer.Close(); err != nil {
+		s.logf("image inpaint shutdown failed: error=%v", err)
+	}
+}
 
 func (s *Service) run(ctx context.Context, job *batchJob) {
 	s.setState(job, "preparing", "")
@@ -409,7 +415,7 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 
 	s.updateStage(job, "clean_background")
 	cleanupStarted := s.now()
-	cleaned, err := s.renderer.Clean(ctx, prepared.Image, renderDocument)
+	cleaned, cleanupStats, err := s.renderer.Clean(ctx, prepared.Image, renderDocument)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return finish("cancelled", "clean_background"), nil, true
@@ -418,13 +424,11 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 		return finish("failed", "clean_background"), nil, false
 	}
 	report.DurationsMillis["cleanup"] = s.now().Sub(cleanupStarted).Milliseconds()
-	nonUniform := 0
-	for _, warning := range renderDocument.Warnings {
-		if warning.Code == "non_uniform_background" {
-			nonUniform++
-		}
-	}
-	s.logf("image cleanup completed: job=%s name=%s regions=%d non_uniform=%d duration=%s", job.status.ID, report.SourceFile, len(renderDocument.Blocks), nonUniform, s.now().Sub(cleanupStarted))
+	s.logf(
+		"image cleanup completed: job=%s name=%s uniform_regions=%d neural_regions=%d neural_clusters=%d preprocessing=%s inference=%s postprocessing=%s duration=%s",
+		job.status.ID, report.SourceFile, cleanupStats.UniformRegions, cleanupStats.NeuralRegions, cleanupStats.NeuralClusters,
+		cleanupStats.Preprocessing, cleanupStats.Inference, cleanupStats.Postprocessing, s.now().Sub(cleanupStarted),
+	)
 	cleanedDebug := cloneNRGBA(cleaned)
 	s.updateStage(job, "render_text")
 	renderStarted := s.now()

@@ -4,30 +4,37 @@ import (
 	"context"
 	"fmt"
 	"image"
-	"image/draw"
 	"math"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/sympllate/translator/internal/inpaint"
 	"github.com/sympllate/translator/internal/ocr"
 	"golang.org/x/image/font"
 	"golang.org/x/image/math/fixed"
 )
 
 type Renderer struct {
-	config RenderConfig
-	fonts  *fontCache
+	config    RenderConfig
+	fonts     *fontCache
+	inpainter inpaint.Engine
 }
 
-func NewRenderer(executableDir string, config RenderConfig) (*Renderer, error) {
+func NewRenderer(executableDir string, config RenderConfig, inpainter inpaint.Engine) (*Renderer, error) {
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
-	return &Renderer{config: config, fonts: newFontCache(executableDir)}, nil
+	if inpainter == nil {
+		return nil, fmt.Errorf("invalid image renderer configuration: inpaint engine is required")
+	}
+	return &Renderer{config: config, fonts: newFontCache(executableDir), inpainter: inpainter}, nil
 }
 
-func (r *Renderer) Close() { r.fonts.close() }
+func (r *Renderer) Close() error {
+	r.fonts.close()
+	return r.inpainter.Close()
+}
 
 func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OCRPage, translation TranslationDocument) (RenderDocument, error) {
 	width, height := source.Bounds().Dx(), source.Bounds().Dy()
@@ -92,11 +99,11 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 			document.SkippedBlocks = append(document.SkippedBlocks, SkippedRenderBlock{ID: paragraph.ID, Reason: reason})
 			continue
 		}
-		cleanup := ExpandBox(sourceBoxes[index], CleanupPadding{Horizontal: r.config.CleanupPaddingX, Vertical: r.config.CleanupPaddingY}, width, height)
+		cleanup := ExpandBox(sourceBoxes[index], CleanupPadding{Horizontal: cleanupPaddingHorizontal, Vertical: cleanupPaddingVertical}, width, height)
 		if intersectsOther(cleanup, sourceBoxes, index) {
 			cleanup = sourceBoxes[index]
 		}
-		background, err := SampleBackground(ctx, source, boxFromOCR(cleanup), r.config.BackgroundSampleWidth, r.config.MinimumSamples, r.config.MaximumSamples)
+		background, err := SampleBackground(ctx, source, boxFromOCR(cleanup), backgroundSampleWidth, minimumBackgroundSamples, maximumBackgroundSamples)
 		if err != nil {
 			return RenderDocument{}, fmt.Errorf("sample background for block %s: %w", paragraph.ID, err)
 		}
@@ -113,14 +120,10 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 			document.SkippedBlocks = append(document.SkippedBlocks, SkippedRenderBlock{ID: paragraph.ID, Reason: "text_does_not_fit_safely"})
 			continue
 		}
-		warnings := make([]string, 0, 2)
+		warnings := make([]string, 0, 1)
 		if background.Fallback {
 			warnings = append(warnings, "insufficient_background_sample")
 			document.Warnings = append(document.Warnings, RenderWarning{Code: "insufficient_background_sample", BlockID: paragraph.ID})
-		}
-		if background.Variance > r.config.NonUniformThreshold {
-			warnings = append(warnings, "non_uniform_background")
-			document.Warnings = append(document.Warnings, RenderWarning{Code: "non_uniform_background", BlockID: paragraph.ID})
 		}
 		if fit.FontSize <= r.config.MinimumFontSize {
 			warnings = append(warnings, "minimum_font_size")
@@ -130,7 +133,8 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 			ID: paragraph.ID, SourceText: paragraph.Text, TranslatedText: block.TranslatedText,
 			SourceBox: sourceBoxes[index], CleanupBox: cleanup, TextBox: textBox,
 			Background: newRenderColor(background.Color), Foreground: newRenderColor(foreground),
-			FontSize: fit.FontSize, LineSpacing: r.config.LineSpacing, Lines: fit.Lines,
+			CleanupMode: cleanupModeFor(background),
+			FontSize:    fit.FontSize, LineSpacing: r.config.LineSpacing, Lines: fit.Lines,
 			Alignment: alignment, VerticalAlign: verticalAlignment, Status: "renderable", Warning: strings.Join(warnings, ","),
 		})
 		activeTextBoxes = append(activeTextBoxes, textBox)
@@ -208,28 +212,6 @@ func intersectsAny(candidate ocr.OCRBox, boxes []ocr.OCRBox) bool {
 		}
 	}
 	return false
-}
-
-func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document RenderDocument) (*image.NRGBA, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	target := image.NewNRGBA(image.Rect(0, 0, source.Bounds().Dx(), source.Bounds().Dy()))
-	draw.Draw(target, target.Bounds(), source, source.Bounds().Min, draw.Src)
-	for _, block := range document.Blocks {
-		value := block.Background.NRGBA()
-		for y := block.CleanupBox.Y; y < block.CleanupBox.Y+block.CleanupBox.Height; y++ {
-			if y&31 == 0 {
-				if err := ctx.Err(); err != nil {
-					return nil, err
-				}
-			}
-			for x := block.CleanupBox.X; x < block.CleanupBox.X+block.CleanupBox.Width; x++ {
-				target.SetNRGBA(x, y, value)
-			}
-		}
-	}
-	return target, nil
 }
 
 func (r *Renderer) Draw(ctx context.Context, target *image.NRGBA, document RenderDocument) error {

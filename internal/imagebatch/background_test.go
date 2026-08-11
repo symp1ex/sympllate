@@ -56,8 +56,8 @@ func TestBackgroundAndCleanupCancellation(t *testing.T) {
 	if _, err := SampleBackground(ctx, source, boxFromOCR(ocr.OCRBox{X: 10, Y: 10, Width: 50, Height: 50}), 4, 4, 1024); err == nil {
 		t.Fatal("expected cancellation")
 	}
-	renderer, _ := NewRenderer(t.TempDir(), DefaultRenderConfig())
-	if _, err := renderer.Clean(ctx, source, RenderDocument{}); err == nil {
+	renderer, _ := NewRenderer(t.TempDir(), DefaultRenderConfig(), &fakeInpaintEngine{})
+	if _, _, err := renderer.Clean(ctx, source, RenderDocument{}); err == nil {
 		t.Fatal("expected cancellation")
 	}
 }
@@ -65,7 +65,7 @@ func TestBackgroundAndCleanupCancellation(t *testing.T) {
 func TestForegroundContrastFallbacks(t *testing.T) {
 	light := solidNRGBA(10, 10, color.NRGBA{R: 245, G: 245, B: 245, A: 255})
 	foreground, err := SampleForeground(context.Background(), light, ocr.OCRBox{Width: 10, Height: 10}, color.NRGBA{R: 245, G: 245, B: 245, A: 255})
-	if err != nil || !IsNearlyBlack(foreground) {
+	if err != nil || Luminance(foreground) > 0.04 {
 		t.Fatalf("foreground=%+v err=%v", foreground, err)
 	}
 	dark := solidNRGBA(10, 10, color.NRGBA{R: 10, G: 10, B: 10, A: 255})

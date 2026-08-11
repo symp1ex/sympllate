@@ -101,16 +101,22 @@ func TestBatchLifecycleSuccessWritesDocumentsAndDebug(t *testing.T) {
 	recognizer := &fakeBatchOCR{pages: []ocr.OCRPage{translatedOCRPage()}}
 	completer := &fakeBatchCompleter{}
 	service := newBatchTestService(t, executableDir, recognizer, completer)
-	opened := ""
-	service.openDirectory = func(path string) error { opened = path; return nil }
+	opened := make(chan string, 1)
+	service.openDirectory = func(path string) error { opened <- path; return nil }
 	selection, _ := service.SelectFiles([]string{imagePath})
 	id, err := service.Start(StartImageBatchRequest{SelectionID: selection.ID, Source: "en", Target: "ru", Debug: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	status := waitBatch(t, service, id)
-	if status.State != "completed" || status.Processed != 1 || status.Translated != 1 || opened != status.OutputDirectory {
-		t.Fatalf("status=%+v opened=%q", status, opened)
+	var openedPath string
+	select {
+	case openedPath = <-opened:
+	case <-time.After(time.Second):
+		t.Fatal("output directory was not opened")
+	}
+	if status.State != "completed" || status.Processed != 1 || status.Translated != 1 || openedPath != status.OutputDirectory {
+		t.Fatalf("status=%+v opened=%q", status, openedPath)
 	}
 	for _, relative := range []string{"images/page.png", "translated/page.png", "ocr/page.ocr.json", "translations/page.translation.json", "debug/page.ocr.png", "debug/page.cleaned.png", "debug/page.layout.png", "debug/page.render.json", "job.json", "errors.json"} {
 		if _, err := os.Stat(filepath.Join(status.OutputDirectory, filepath.FromSlash(relative))); err != nil {
@@ -314,7 +320,7 @@ func TestBatchPreflightAndExplorerFailure(t *testing.T) {
 func newBatchTestService(t *testing.T, executableDir string, recognizer StructuredOCR, completer translation.RawCompleter) *Service {
 	t.Helper()
 	writeTestFont(t, executableDir)
-	service, err := NewService(context.Background(), executableDir, recognizer, completer, 12_000, DefaultRenderConfig(), log.New(io.Discard, "", 0))
+	service, err := NewService(context.Background(), executableDir, recognizer, completer, 12_000, DefaultRenderConfig(), &fakeInpaintEngine{}, log.New(io.Discard, "", 0))
 	if err != nil {
 		t.Fatal(err)
 	}

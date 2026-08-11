@@ -3,7 +3,11 @@ param(
     [ValidateSet('Lite', 'Portable', 'All')]
     [string]$Edition = 'Lite',
     [string]$ModelPath,
-    [string]$LlamaRuntimePath
+    [string]$LlamaRuntimePath,
+    [Parameter(Mandatory = $true)]
+    [string]$InpaintModelPath,
+    [Parameter(Mandatory = $true)]
+    [string]$OnnxRuntimePath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,9 +22,32 @@ if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
     throw 'Go не найден. Установите Go 1.24 или новее.'
 }
 
+$gcc = Get-Command gcc -ErrorAction SilentlyContinue
+if ($null -eq $gcc) {
+    $msysGcc = 'C:\msys64\ucrt64\bin\gcc.exe'
+    if (Test-Path -LiteralPath $msysGcc -PathType Leaf) {
+        $env:Path = (Split-Path -Parent $msysGcc) + [IO.Path]::PathSeparator + $env:Path
+        $gcc = Get-Command gcc -ErrorAction SilentlyContinue
+    }
+}
+if ($null -eq $gcc) {
+    throw 'Для сборки ONNX Runtime binding нужен MinGW-w64 GCC (например C:\msys64\ucrt64\bin\gcc.exe).'
+}
+$env:CGO_ENABLED = '1'
+$env:CC = $gcc.Source
+
 $projectRoot = $PSScriptRoot
 $frontendRoot = Join-Path $projectRoot 'frontend'
 $distRoot = Join-Path $projectRoot 'dist'
+
+if ([IO.Path]::GetFileName($InpaintModelPath) -cne 'inpainting_lama.onnx' -or -not (Test-Path -LiteralPath $InpaintModelPath -PathType Leaf)) {
+    throw "Укажите существующую LaMa-модель с именем inpainting_lama.onnx: $InpaintModelPath"
+}
+if ([IO.Path]::GetFileName($OnnxRuntimePath) -cne 'onnxruntime.dll' -or -not (Test-Path -LiteralPath $OnnxRuntimePath -PathType Leaf)) {
+    throw "Укажите существующий ONNX Runtime 1.26.0 DLL с именем onnxruntime.dll: $OnnxRuntimePath"
+}
+$resolvedInpaintModel = (Resolve-Path -LiteralPath $InpaintModelPath).Path
+$resolvedOnnxRuntime = (Resolve-Path -LiteralPath $OnnxRuntimePath).Path
 
 $resolvedModel = $null
 $resolvedRuntime = $null
@@ -80,6 +107,11 @@ function Build-Translator([string]$OutputDirectory) {
         throw "Подготовка шрифта завершилась с кодом $LASTEXITCODE"
     }
     Copy-Item -LiteralPath (Join-Path $projectRoot 'assets\fonts\GO-FONT-LICENSE.txt') -Destination (Join-Path $fontDirectory 'LICENSE.txt')
+
+    $inpaintDirectory = Join-Path $OutputDirectory 'bin\inpaint'
+    New-Item -ItemType Directory -Path $inpaintDirectory -Force | Out-Null
+    Copy-Item -LiteralPath $resolvedInpaintModel -Destination (Join-Path $inpaintDirectory 'inpainting_lama.onnx')
+    Copy-Item -LiteralPath $resolvedOnnxRuntime -Destination (Join-Path $inpaintDirectory 'onnxruntime.dll')
 }
 
 function Build-Lite {

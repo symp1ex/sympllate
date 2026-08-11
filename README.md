@@ -2,10 +2,10 @@
 
 Sympllate собирается в двух вариантах для Windows x64.
 
-- **Lite** использует Ollama, уже установленную и настроенную пользователем. Локальные бинарники и модель в поставку не входят.
+- **Lite** использует Ollama, уже установленную и настроенную пользователем. GGUF-модель и llama.cpp в поставку не входят; локальные LaMa/ONNX Runtime для image cleanup входят в обе редакции.
 - **Portable** запускает поставленный `llama-server.exe` и GGUF-модель. Приложение не устанавливает и не скачивает Ollama, llama.cpp, модель или драйверы во время работы.
 
-Оба варианта используют Microsoft Edge WebView2 Runtime, установленный в Windows. Portable также требует рабочий драйвер GPU; выбор GPU backend определяется содержимым поставленного runtime llama.cpp и доступными драйверами.
+Оба варианта используют Microsoft Edge WebView2 Runtime, установленный в Windows, и локальный CPU-only ONNX Runtime 1.26.0 для удаления текста с изображений. Portable также требует рабочий драйвер GPU; выбор GPU backend определяется только содержимым поставленного runtime llama.cpp и доступными драйверами. LaMa не подключает CUDA или DirectML и не занимает GPU переводчика.
 
 ## Конфигурация provider
 
@@ -19,6 +19,10 @@ Portable layout:
 Sympllate/
 ├── translator.exe
 ├── config.json
+├── bin/
+│   └── inpaint/
+│       ├── onnxruntime.dll
+│       └── inpainting_lama.onnx
 ├── models/
 │   └── <model>.gguf
 └── runtime/
@@ -29,12 +33,13 @@ Sympllate/
 
 ## Сборка
 
-Lite (также является безопасным вариантом по умолчанию):
+Для сборки нужен MinGW-w64 GCC с UCRT (скрипт автоматически использует `C:\msys64\ucrt64\bin\gcc.exe`, если `gcc` отсутствует в `PATH`). LaMa-модель и CPU DLL не скачиваются и передаются явно для обоих вариантов:
 
 ```powershell
-.\build.ps1
-# или
-.\build.ps1 -Edition Lite
+.\build.ps1 `
+  -Edition Lite `
+  -InpaintModelPath C:\models\inpainting_lama.onnx `
+  -OnnxRuntimePath C:\runtime\onnxruntime.dll
 ```
 
 Portable из заранее подготовленных локальных ресурсов:
@@ -43,7 +48,9 @@ Portable из заранее подготовленных локальных р�
 .\build.ps1 `
   -Edition Portable `
   -ModelPath C:\models\translator.gguf `
-  -LlamaRuntimePath C:\runtime\llama
+  -LlamaRuntimePath C:\runtime\llama `
+  -InpaintModelPath C:\models\inpainting_lama.onnx `
+  -OnnxRuntimePath C:\runtime\onnxruntime.dll
 ```
 
 Обе директории за один вызов создаются через `-Edition All` с теми же Portable-параметрами. Результаты находятся в `dist\lite` и `dist\portable`. Скрипт не создаёт ZIP или установщик, не включает WebView2 Runtime и не загружает внешние ресурсы.
@@ -68,9 +75,9 @@ Sympllate/
 
 Кнопка с иконкой файла справа от **Copy translation** открывает отдельное окно **Batch image translation**. В нём можно выбрать несколько PNG, JPEG, WebP, TIFF или BMP-файлов либо один каталог. Закрытие прячет окно по аналогии с quick translate popup; активное задание продолжает выполняться, а повторное открытие показывает его текущий статус. Каталог просматривается нерекурсивно; скрытые, временные, symbolic-link/junction entries и неподдерживаемые расширения пропускаются. Файлы сортируются natural sort (`page-2.png` перед `page-10.png`). Абсолютные пути выбранных файлов хранятся только на стороне Go в краткоживущем selection record и не передаются в WebView.
 
-Задание выполняет файлы последовательно: проверяет и копирует оригинал без перекодирования, запускает Tesseract TSV OCR, группирует слова по Tesseract page/block/paragraph/line identifiers и переводит абзацы через TranslateGemma. После успешного layout исходный текст заменяется автоматически: renderer берёт кольцо пикселей вокруг OCR-области, вычисляет поканальную медиану локального фона, заливает cleanup box и рисует перевод. Это простой документный режим, ориентированный на светлые и достаточно однородные страницы; прямоугольная заливка и небольшие фоновые артефакты ожидаемы.
+Задание выполняет файлы последовательно: проверяет и копирует оригинал без перекодирования, запускает Tesseract TSV OCR, группирует слова по Tesseract page/block/paragraph/line identifiers и переводит абзацы через TranslateGemma. После layout renderer анализирует кольцо пикселей вокруг OCR-области. Однородный фон очищается точной дешёвой заливкой; градиенты, рамки, UI и текстуры направляются в shared CPU-session LaMa. Для LaMa строится маска пикселей текста по foreground/background contrast с dilation в один пиксель. Близкие маски объединяются, получают 48 px контекста и aspect-ratio preserving letterbox до 512×512; целая страница не уменьшается.
 
-Размер шрифта подбирается ограниченным бинарным поиском. Перенос сохраняет явные переводы строк, выполняется по словам и безопасно разбивает слишком длинные URL/идентификаторы по rune boundary. Если текст не помещается, text box ограниченно расширяется вниз, затем по горизонтали, без пересечения соседних OCR-блоков. Блок, который нельзя безопасно восстановить, не очищается; файл получает статус `partial`. Неоднородный фон и минимальный размер шрифта дают `translated_with_warnings`, но не считаются ошибкой.
+Размер шрифта подбирается ограниченным бинарным поиском. Перенос сохраняет явные переводы строк, выполняется по словам и безопасно разбивает слишком длинные URL/идентификаторы по rune boundary. Если текст не помещается, text box ограниченно расширяется вниз, затем по горизонтали, без пересечения соседних OCR-блоков. Блок, который нельзя безопасно восстановить, не очищается; файл получает статус `partial`. Минимальный размер шрифта остаётся предупреждением. Если для сложного фона нельзя безопасно построить text mask или LaMa inference завершается ошибкой, файл получает явную ошибку `clean_background`; прямоугольная заливка как скрытый fallback не используется.
 
 Параллельные модельные запросы и несколько FFmpeg-процессов не выполняются. Задание можно отменить во время подготовки, layout, cleanup, render и encoding; уже записанные результаты сохраняются, временные файлы удаляются, а незавершённый итоговый файл не публикуется.
 
@@ -98,8 +105,8 @@ PNG и JPEG декодируются и кодируются pure Go один р
 
 Renderer использует Go Regular из `golang.org/x/image/font/gofont/goregular` (BSD-3-Clause). Сборка детерминированно создаёт `bin\fonts\regular.ttf` рядом с EXE и кладёт рядом текст лицензии; системные Windows fonts не используются. Один TTF парсится один раз, faces кэшируются по размеру. Проверены латиница, кириллица, цифры и символы, присутствующие в шрифте. Сложный shaping арабского письма, вертикальный текст, блоки 90°/270° и произвольный rotation текущим pure-Go renderer не поддерживаются.
 
-Debug mode создаёт OCR overlay, изображение после median fill (`*.cleaned.png`), итоговый layout overlay с source/cleanup/text boxes (`*.layout.png`) и фактический `RenderDocument` (`*.render.json`). Ошибка debug-файла не отменяет основной результат.
+Debug mode создаёт OCR overlay, изображение после hybrid cleanup (`*.cleaned.png`), итоговый layout overlay с source/cleanup/text boxes (`*.layout.png`) и фактический `RenderDocument` (`*.render.json`). Ошибка debug-файла не отменяет основной результат.
 
-Параметры `imageBatch` в `config.json`: `cleanupPaddingX`, `cleanupPaddingY`, `backgroundSampleWidth`, `minimumFontSize`, `maximumFontSize`, `lineSpacing` и `jpegQuality`. Отсутствующие поля получают defaults, поэтому старые конфигурации продолжают загружаться.
+Параметры `imageBatch` в `config.json`: `minimumFontSize`, `maximumFontSize`, `lineSpacing` и `jpegQuality`. Порог однородности, sampling, mask dilation, crop padding и tensor preprocessing являются тестируемыми деталями реализации и не вынесены в пользовательский config.
 
-Текущая очистка не использует G’MIC, OpenCV, ImageMagick или inpainting. Она предназначена прежде всего для технической документации, инструкций, книг и сканов с горизонтальным текстом на светлом/однотонном фоне. G’MIC/inpainting для фотографического и сложного фона остаётся отдельной следующей фазой.
+ONNX environment, LaMa session и фиксированные tensors создаются один раз при запуске приложения, переиспользуются всеми изображениями и освобождаются после отмены/завершения batch jobs при shutdown. Одновременно выполняется не более одного inference. Alpha исходника сохраняется вне маски и предсказуемо сохраняется внутри восстановленных пикселей.

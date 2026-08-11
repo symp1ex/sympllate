@@ -23,7 +23,6 @@ func Luminance(value color.NRGBA) float64 {
 }
 
 func IsNearlyWhite(value color.NRGBA) bool { return value.A > 0 && Luminance(value) >= 0.88 }
-func IsNearlyBlack(value color.NRGBA) bool { return value.A > 0 && Luminance(value) <= 0.04 }
 
 func ContrastRatio(foreground, background color.NRGBA) float64 {
 	a, b := Luminance(foreground), Luminance(background)

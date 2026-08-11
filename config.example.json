@@ -61,9 +61,6 @@
     "store_days": 2
   },
   "imageBatch": {
-    "cleanupPaddingX": 4,
-    "cleanupPaddingY": 3,
-    "backgroundSampleWidth": 4,
     "minimumFontSize": 10,
     "maximumFontSize": 48,
     "lineSpacing": 1.15,

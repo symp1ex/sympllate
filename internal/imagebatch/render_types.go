@@ -7,35 +7,24 @@ import (
 )
 
 type RenderConfig struct {
-	CleanupPaddingX       int
-	CleanupPaddingY       int
-	BackgroundSampleWidth int
 	MinimumFontSize       float64
 	MaximumFontSize       float64
 	LineSpacing           float64
 	HorizontalTextPadding int
 	VerticalTextPadding   int
 	JPEGQuality           int
-	MaximumSamples        int
-	MinimumSamples        int
-	NonUniformThreshold   float64
 }
 
 func DefaultRenderConfig() RenderConfig {
 	return RenderConfig{
-		CleanupPaddingX: 4, CleanupPaddingY: 3, BackgroundSampleWidth: 4,
 		MinimumFontSize: 10, MaximumFontSize: 48, LineSpacing: 1.15,
 		HorizontalTextPadding: 2, VerticalTextPadding: 2, JPEGQuality: 92,
-		MaximumSamples: 4096, MinimumSamples: 8, NonUniformThreshold: 625,
 	}
 }
 
 func (c RenderConfig) validate() error {
-	if c.CleanupPaddingX < 0 || c.CleanupPaddingY < 0 || c.HorizontalTextPadding < 0 || c.VerticalTextPadding < 0 {
+	if c.HorizontalTextPadding < 0 || c.VerticalTextPadding < 0 {
 		return errInvalidRenderConfig("padding cannot be negative")
-	}
-	if c.BackgroundSampleWidth <= 0 || c.MaximumSamples <= 0 || c.MinimumSamples <= 0 {
-		return errInvalidRenderConfig("sampling limits must be positive")
 	}
 	if c.MinimumFontSize <= 0 || c.MaximumFontSize < c.MinimumFontSize || c.LineSpacing < 1 || c.JPEGQuality < 1 || c.JPEGQuality > 100 {
 		return errInvalidRenderConfig("font or encoding limits are invalid")
@@ -92,6 +81,7 @@ type RenderBlock struct {
 	TextBox        ocr.OCRBox  `json:"textBox"`
 	Background     RenderColor `json:"background"`
 	Foreground     RenderColor `json:"foreground"`
+	CleanupMode    CleanupMode `json:"cleanupMode"`
 	FontSize       float64     `json:"fontSize"`
 	LineSpacing    float64     `json:"lineSpacing"`
 	Lines          []string    `json:"lines"`
@@ -100,6 +90,13 @@ type RenderBlock struct {
 	Status         string      `json:"status"`
 	Warning        string      `json:"warning,omitempty"`
 }
+
+type CleanupMode string
+
+const (
+	CleanupSolid  CleanupMode = "solid"
+	CleanupNeural CleanupMode = "neural"
+)
 
 type SkippedRenderBlock struct {
 	ID     string `json:"id"`
@@ -141,5 +138,4 @@ type TextFitResult struct {
 	TextHeight int
 	Fits       bool
 	Overflow   bool
-	Truncated  bool
 }
