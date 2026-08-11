@@ -376,10 +376,11 @@ func TestEngineAutoUsesInstalledLanguagesAndDirectBinLayout(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(bin, "tesseract.exe"))
-	writeFile(t, filepath.Join(bin, "ffmpeg.exe"))
+	ffmpegPath := filepath.Join(bin, "ffmpeg", "ffmpeg.exe")
+	writeFile(t, ffmpegPath)
 	writeFile(t, filepath.Join(bin, "tessdata", "eng.traineddata"))
 	direct := New(base, time.Second)
-	if direct.executablePath != filepath.Join(bin, "tesseract.exe") || !direct.Capability().Supported {
+	if direct.executablePath != filepath.Join(bin, "tesseract.exe") || direct.ffmpegPath != ffmpegPath || !direct.Capability().Supported {
 		t.Fatalf("engine=%+v capability=%+v", direct, direct.Capability())
 	}
 }

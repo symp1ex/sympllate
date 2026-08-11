@@ -206,11 +206,13 @@ export function TranslatorPanel({ config, languages }: Props) {
       {notice && <div className="notice" role="status">{notice}</div>}
       <div className="actions">
         <button className="primary" onClick={() => void runTranslation()} disabled={busy || !canTranslate}>{loading ? 'Translating…' : imageLoading ? 'Reading image…' : 'Translate'}</button>
-        <button onClick={() => void copyTranslation()} disabled={!translatedText}>Copy translation</button>
+        <button onClick={() => void copyTranslation()} disabled={!translatedText}>Copy</button>
         <button className="batch-window-launcher" type="button" onClick={() => void openBatchWindow()} aria-label="Open batch image translation" title="Batch image translation">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M6 2.75h8.2L19 7.55v13.7H6z" />
-            <path d="M14 2.75v5h5M9 12h7M9 16h7" />
+            <path d="M6.5 3.5h8.25a1.75 1.75 0 0 1 1.75 1.75v8.25" />
+            <rect x="3.5" y="6.5" width="10.5" height="12" rx="1.5" />
+            <circle cx="7" cy="10" r="1" />
+            <path d="m5 16 2.75-3 1.9 2 1.4-1.5 2.95 3M17 8.5h4m-1.5-1.5L21 8.5 19.5 10M21 15.5h-4m1.5-1.5L17 15.5l1.5 1.5" />
           </svg>
         </button>
         {busy && <LoadingIndicator />}

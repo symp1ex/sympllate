@@ -33,7 +33,7 @@ type ffmpegAdapter struct {
 }
 
 func newFFmpegAdapter(executableDir string) *ffmpegAdapter {
-	return &ffmpegAdapter{executable: filepath.Join(executableDir, "bin", "ffmpeg.exe"), timeout: defaultFFmpegTimeout, runner: execRunner{}}
+	return &ffmpegAdapter{executable: filepath.Join(executableDir, "bin", "ffmpeg", "ffmpeg.exe"), timeout: defaultFFmpegTimeout, runner: execRunner{}}
 }
 
 type preparedSource struct {

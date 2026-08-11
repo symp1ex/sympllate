@@ -52,7 +52,7 @@ func New(executableDir string, timeout time.Duration) *Engine {
 	execRunner := ffmpeg.ExecRunner{}
 	return &Engine{
 		executablePath: filepath.Join(tesseractDir, "tesseract.exe"),
-		ffmpegPath:     filepath.Join(executableDir, "bin", "ffmpeg.exe"),
+		ffmpegPath:     filepath.Join(executableDir, "bin", "ffmpeg", "ffmpeg.exe"),
 		tessdataDir:    filepath.Join(tesseractDir, "tessdata"),
 		timeout:        timeout,
 		run:            execRunner.Run,

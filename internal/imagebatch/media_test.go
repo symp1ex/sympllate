@@ -20,6 +20,15 @@ type fakeProcessRunner struct {
 	args [][]string
 }
 
+func TestNewFFmpegAdapterUsesNestedBinDirectory(t *testing.T) {
+	directory := t.TempDir()
+	adapter := newFFmpegAdapter(directory)
+	want := filepath.Join(directory, "bin", "ffmpeg", "ffmpeg.exe")
+	if adapter.executable != want {
+		t.Fatalf("executable=%q want=%q", adapter.executable, want)
+	}
+}
+
 func (f *fakeProcessRunner) Run(ctx context.Context, executable string, args []string, stdout, stderr io.Writer) error {
 	f.args = append(f.args, append([]string(nil), args...))
 	if f.run != nil {
