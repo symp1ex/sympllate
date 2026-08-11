@@ -23,6 +23,7 @@ func renderDebugImage(ctx context.Context, imageData []byte, page ocr.OCRPage, o
 	draw.Draw(canvas, canvas.Bounds(), source, source.Bounds().Min, draw.Src)
 	paragraphColor := color.RGBA{R: 255, G: 32, B: 32, A: 255}
 	lineColor := color.RGBA{R: 32, G: 128, B: 255, A: 255}
+	wordColor := color.RGBA{R: 32, G: 200, B: 96, A: 255}
 	for _, paragraph := range page.Paragraphs {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -30,6 +31,9 @@ func renderDebugImage(ctx context.Context, imageData []byte, page ocr.OCRPage, o
 		drawBox(canvas, paragraph.Box, paragraphColor, 2)
 		for _, line := range paragraph.Lines {
 			drawBox(canvas, line.Box, lineColor, 1)
+			for _, word := range line.Words {
+				drawBox(canvas, word.Box, wordColor, 1)
+			}
 		}
 		drawLabel(canvas, paragraph.Box.X+2, paragraph.Box.Y+2, paragraph.ID, paragraphColor)
 	}

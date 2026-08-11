@@ -172,6 +172,8 @@ func TestLargeSingleOCRMaskIsSplitBeforeClustering(t *testing.T) {
 
 func TestHybridCleanupRoutesUniformAndNeuralAndPreservesOutsideMask(t *testing.T) {
 	source := textureFixture(160, 100)
+	source.SetNRGBA(102, 12, color.NRGBA{A: 255})
+	source.SetNRGBA(102, 13, color.NRGBA{A: 255})
 	for y := 35; y < 55; y++ {
 		for x := 40; x < 44; x++ {
 			source.SetNRGBA(x, y, color.NRGBA{A: 77})
@@ -183,7 +185,7 @@ func TestHybridCleanupRoutesUniformAndNeuralAndPreservesOutsideMask(t *testing.T
 		t.Fatal(err)
 	}
 	document := RenderDocument{Blocks: []RenderBlock{
-		{ID: "solid", SourceBox: ocr.OCRBox{X: 100, Y: 10, Width: 15, Height: 10}, CleanupBox: ocr.OCRBox{X: 99, Y: 9, Width: 17, Height: 12}, Background: newRenderColor(color.NRGBA{R: 12, G: 34, B: 56, A: 255}), Foreground: newRenderColor(color.NRGBA{A: 255}), CleanupMode: CleanupSolid},
+		{ID: "solid", SourceBox: ocr.OCRBox{X: 100, Y: 10, Width: 15, Height: 10}, CleanupBox: ocr.OCRBox{X: 99, Y: 9, Width: 17, Height: 12}, Background: newRenderColor(color.NRGBA{R: 240, G: 240, B: 240, A: 255}), Foreground: newRenderColor(color.NRGBA{A: 255}), CleanupMode: CleanupSolid},
 		{ID: "neural", SourceBox: ocr.OCRBox{X: 35, Y: 30, Width: 20, Height: 30}, CleanupBox: ocr.OCRBox{X: 34, Y: 29, Width: 22, Height: 32}, Background: newRenderColor(color.NRGBA{R: 210, G: 210, B: 210, A: 255}), Foreground: newRenderColor(color.NRGBA{A: 255}), CleanupMode: CleanupNeural},
 	}}
 	originalOutside := source.NRGBAAt(10, 10)
@@ -203,8 +205,11 @@ func TestHybridCleanupRoutesUniformAndNeuralAndPreservesOutsideMask(t *testing.T
 	if got := cleaned.NRGBAAt(40, 40); got.A != 77 || got.G != 180 {
 		t.Fatalf("neural pixel=%+v", got)
 	}
-	if got := cleaned.NRGBAAt(100, 10); got != (color.NRGBA{R: 12, G: 34, B: 56, A: 255}) {
+	if got := cleaned.NRGBAAt(102, 12); got != (color.NRGBA{R: 240, G: 240, B: 240, A: 255}) {
 		t.Fatalf("solid pixel=%+v", got)
+	}
+	if got := cleaned.NRGBAAt(100, 10); got != source.NRGBAAt(100, 10) {
+		t.Fatalf("unmasked solid pixel changed: got=%+v want=%+v", got, source.NRGBAAt(100, 10))
 	}
 }
 
@@ -247,6 +252,7 @@ func TestCleanSkipsLowConfidenceMaskBeforeCleanupAndDraw(t *testing.T) {
 		TextBox: ocr.OCRBox{X: 100, Y: 10, Width: 60, Height: 30}, Background: newRenderColor(color.NRGBA{R: 220, G: 220, B: 220, A: 255}),
 		Foreground: newRenderColor(color.NRGBA{A: 255}), CleanupMode: CleanupSolid, FontSize: 12, LineSpacing: 1.15, Lines: []string{"OK"},
 	}
+	drawSyntheticWord(source, good.SourceBox)
 
 	cleaned, filtered, _, err := renderer.Clean(context.Background(), source, RenderDocument{Blocks: []RenderBlock{bad, good}})
 	if err != nil {
@@ -329,4 +335,20 @@ func textureFixture(width, height int) *image.NRGBA {
 		}
 	}
 	return result
+}
+
+func drawSyntheticWord(target *image.NRGBA, box ocr.OCRBox) {
+	ink := color.NRGBA{A: 255}
+	top := box.Y + max(2, box.Height/6)
+	bottom := box.Y + box.Height - max(2, box.Height/6)
+	step := max(5, box.Height/4)
+	for x, glyph := box.X+max(2, box.Height/8), 0; x+2 < box.X+box.Width-1 && glyph < 6; x, glyph = x+step, glyph+1 {
+		for y := top; y < bottom; y++ {
+			target.SetNRGBA(x, y, ink)
+		}
+		middle := top + (bottom-top)/2
+		for px := x; px <= x+2 && px < box.X+box.Width; px++ {
+			target.SetNRGBA(px, middle, ink)
+		}
+	}
 }

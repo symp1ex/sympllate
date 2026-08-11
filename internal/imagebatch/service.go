@@ -412,7 +412,7 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 			return finish("failed", "encode_output"), nil, false
 		}
 		s.incrementRendered(job, "partial", len(renderDocument.Warnings))
-		s.renderDebugArtifacts(ctx, job, &report, prepared.Image, prepared.Image, renderDocument)
+		s.renderDebugArtifacts(ctx, job, &report, prepared.Image, prepared.Image, prepared.Image, renderDocument, CleanupStats{})
 		return finish("partial", ""), nil, false
 	}
 
@@ -431,10 +431,19 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 	report.SkippedBlocks = renderDocument.SkippedBlocks
 	report.Warnings = renderDocument.Warnings
 	s.logf(
-		"image cleanup completed: job=%s name=%s uniform_regions=%d neural_regions=%d neural_clusters=%d preprocessing=%s inference=%s postprocessing=%s duration=%s",
+		"image cleanup completed: job=%s name=%s uniform_regions=%d neural_regions=%d neural_clusters=%d ocr_pixels=%d candidate_pixels=%d cleanup_pixels=%d protected_pixels=%d rejected_components=%d suspicious_blocks=%d cleanup_ratio=%.4f preprocessing=%s inference=%s postprocessing=%s duration=%s",
 		job.status.ID, report.SourceFile, cleanupStats.UniformRegions, cleanupStats.NeuralRegions, cleanupStats.NeuralClusters,
+		cleanupStats.OCRRegionPixels, cleanupStats.CandidatePixels, cleanupStats.FinalCleanupPixels, cleanupStats.ProtectedGraphicsPixels, cleanupStats.RejectedComponents, cleanupStats.SuspiciousBlocks, cleanupStats.CleanupPixelRatio,
 		cleanupStats.Preprocessing, cleanupStats.Inference, cleanupStats.Postprocessing, s.now().Sub(cleanupStarted),
 	)
+	if job.request.Debug {
+		for _, blockStats := range cleanupStats.Blocks {
+			s.logf("image cleanup block: block=%s ocr_level=%s region=%+v candidate_pixels=%d accepted_pixels=%d rejected_components=%d protected_line_pixels=%d cleanup_ratio=%.4f cleanup_mode=%s conservative_fallback=%t", blockStats.ID, blockStats.OCRLevel, blockStats.Region, blockStats.CandidatePixels, blockStats.FinalCleanupPixels, blockStats.RejectedComponents, blockStats.ProtectedPixels, blockStats.CleanupPixelRatio, blockStats.CleanupMode, blockStats.ConservativeFallback)
+			for _, rejection := range blockStats.Rejections {
+				s.logf("image cleanup component rejected: block=%s reason=%s bbox=%+v width=%d height=%d area=%d aspect_ratio=%.2f fill_ratio=%.3f", blockStats.ID, rejection.Reason, rejection.Box, rejection.Width, rejection.Height, rejection.Area, rejection.AspectRatio, rejection.FillRatio)
+			}
+		}
+	}
 	if len(renderDocument.Blocks) == 0 {
 		s.updateStage(job, "encode_output")
 		if err := atomicWriteBytesContext(ctx, finalPath, prepared.Original); err != nil {
@@ -446,7 +455,7 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 		}
 		s.incrementRendered(job, "partial", len(renderDocument.Warnings))
 		s.renderDebug(ctx, job, &report, prepared.Validated.Data, page)
-		s.renderDebugArtifacts(ctx, job, &report, prepared.Image, prepared.Image, renderDocument)
+		s.renderDebugArtifacts(ctx, job, &report, prepared.Image, prepared.Image, prepared.Image, renderDocument, cleanupStats)
 		return finish("partial", ""), nil, false
 	}
 	cleanedDebug := cloneNRGBA(cleaned)
@@ -483,7 +492,7 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 	s.incrementRendered(job, status, len(renderDocument.Warnings))
 	s.logf("image render completed: job=%s name=%s format=%s rendered_blocks=%d duration=%s", job.status.ID, report.SourceFile, prepared.Extension, len(renderDocument.Blocks), s.now().Sub(renderStarted))
 	s.renderDebug(ctx, job, &report, prepared.Validated.Data, page)
-	s.renderDebugArtifacts(ctx, job, &report, cleanedDebug, cleaned, renderDocument)
+	s.renderDebugArtifacts(ctx, job, &report, prepared.Image, cleanedDebug, cleaned, renderDocument, cleanupStats)
 	return finish(status, ""), nil, false
 }
 

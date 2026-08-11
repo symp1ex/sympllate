@@ -91,6 +91,7 @@ type RenderBlock struct {
 	TranslatedText    string             `json:"translatedText"`
 	SourceBox         ocr.OCRBox         `json:"sourceBox"`
 	CleanupBox        ocr.OCRBox         `json:"cleanupBox"`
+	CleanupRegions    []CleanupRegion    `json:"cleanupRegions,omitempty"`
 	TextBox           ocr.OCRBox         `json:"textBox"`
 	Background        RenderColor        `json:"background"`
 	Foreground        RenderColor        `json:"foreground"`
@@ -117,6 +118,14 @@ type RenderBlock struct {
 	FallbackReason    string             `json:"fallbackReason,omitempty"`
 	Status            string             `json:"status"`
 	Warning           string             `json:"warning,omitempty"`
+}
+
+// CleanupRegion is a spatial prior for source glyph detection. Its box limits
+// where cleanup candidates may be searched; it is never itself an erase mask.
+type CleanupRegion struct {
+	Level      string     `json:"level"`
+	Box        ocr.OCRBox `json:"box"`
+	TextHeight int        `json:"textHeight"`
 }
 
 type RenderLineLayout struct {

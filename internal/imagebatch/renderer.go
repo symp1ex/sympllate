@@ -145,9 +145,10 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 			document.Warnings = append(document.Warnings, RenderWarning{Code: "font_size_below_preferred_range", BlockID: paragraph.ID})
 		}
 		lineLayouts := positionTextLines(fit, textBox, alignment, verticalAlignment, r.config.HorizontalTextPadding, r.config.VerticalTextPadding)
+		cleanupRegions := cleanupRegionsFor(paragraph, transform, width, height)
 		document.Blocks = append(document.Blocks, RenderBlock{
 			ID: paragraph.ID, SourceText: paragraph.Text, TranslatedText: block.TranslatedText,
-			SourceBox: sourceBoxes[index], CleanupBox: cleanup, TextBox: textBox,
+			SourceBox: sourceBoxes[index], CleanupBox: cleanup, CleanupRegions: cleanupRegions, TextBox: textBox,
 			Background: newRenderColor(background.Color), Foreground: newRenderColor(foreground),
 			CleanupMode: cleanupModeFor(background),
 			FontSize:    fit.FontSize, PreferredFontSize: preferredFontSize,
@@ -164,6 +165,45 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 		activeTextBoxes = append(activeTextBoxes, textBox)
 	}
 	return document, nil
+}
+
+func cleanupRegionsFor(paragraph ocr.OCRParagraph, transform CoordinateTransform, width, height int) []CleanupRegion {
+	regions := make([]CleanupRegion, 0)
+	for _, line := range paragraph.Lines {
+		for _, word := range line.Words {
+			if !word.Accepted {
+				continue
+			}
+			regions = appendCleanupRegion(regions, "word", word.Box, transform, width, height)
+		}
+	}
+	if len(regions) > 0 {
+		return regions
+	}
+	for _, line := range paragraph.Lines {
+		regions = appendCleanupRegion(regions, "line", line.Box, transform, width, height)
+	}
+	if len(regions) > 0 {
+		return regions
+	}
+	regions = appendCleanupRegion(regions, "paragraph", paragraph.Box, transform, width, height)
+	if len(regions) == 1 {
+		regions[0].TextHeight = max(1, regions[0].Box.Height/sourceLineCount(paragraph))
+	}
+	return regions
+}
+
+func appendCleanupRegion(regions []CleanupRegion, level string, box ocr.OCRBox, transform CoordinateTransform, width, height int) []CleanupRegion {
+	box = ClampBox(TransformBox(box, transform), width, height)
+	if box.Width <= 0 || box.Height <= 0 {
+		return regions
+	}
+	for _, existing := range regions {
+		if existing.Box == box {
+			return regions
+		}
+	}
+	return append(regions, CleanupRegion{Level: level, Box: box, TextHeight: box.Height})
 }
 
 func (r *Renderer) supportsText(value string) (bool, error) {

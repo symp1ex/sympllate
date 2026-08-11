@@ -14,12 +14,15 @@ import (
 )
 
 func TestCleanupChangesOnlyConfirmedBoxesAndPreservesAlpha(t *testing.T) {
-	source := solidNRGBA(20, 20, color.NRGBA{R: 10, G: 20, B: 30, A: 111})
+	background := color.NRGBA{R: 200, G: 210, B: 220, A: 123}
+	source := solidNRGBA(20, 20, background)
+	source.SetNRGBA(6, 7, color.NRGBA{R: 10, G: 20, B: 30, A: 111})
+	source.SetNRGBA(7, 7, color.NRGBA{R: 10, G: 20, B: 30, A: 111})
 	renderer, err := NewRenderer(t.TempDir(), DefaultRenderConfig(), &fakeInpaintEngine{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	document := RenderDocument{Blocks: []RenderBlock{{CleanupBox: ocr.OCRBox{X: 5, Y: 6, Width: 4, Height: 3}, Background: newRenderColor(color.NRGBA{R: 200, G: 210, B: 220, A: 123}), CleanupMode: CleanupSolid}}}
+	document := RenderDocument{Blocks: []RenderBlock{{SourceBox: ocr.OCRBox{X: 5, Y: 6, Width: 4, Height: 3}, CleanupBox: ocr.OCRBox{X: 5, Y: 6, Width: 4, Height: 3}, Background: newRenderColor(background), Foreground: newRenderColor(color.NRGBA{R: 10, G: 20, B: 30, A: 111}), CleanupMode: CleanupSolid}}}
 	cleaned, document, _, err := renderer.Clean(context.Background(), source, document)
 	if err != nil {
 		t.Fatal(err)
@@ -44,6 +47,7 @@ func TestPrepareSkipsUntranslatedBlockAndDrawsCyrillic(t *testing.T) {
 	}
 	defer renderer.Close()
 	source := solidNRGBA(300, 120, color.NRGBA{R: 245, G: 245, B: 245, A: 255})
+	drawSyntheticWord(source, ocr.OCRBox{X: 10, Y: 10, Width: 120, Height: 40})
 	page := ocr.OCRPage{SchemaVersion: 1, Image: ocr.OCRImageInfo{Width: 300, Height: 120}, Paragraphs: []ocr.OCRParagraph{
 		{ID: "one", Text: "One", Box: ocr.OCRBox{X: 10, Y: 10, Width: 120, Height: 40}, Lines: []ocr.OCRLine{{Text: "One"}}},
 		{ID: "two", Text: "Two", Box: ocr.OCRBox{X: 160, Y: 10, Width: 120, Height: 40}, Lines: []ocr.OCRLine{{Text: "Two"}}},
@@ -75,6 +79,32 @@ func TestPrepareSkipsUntranslatedBlockAndDrawsCyrillic(t *testing.T) {
 	}
 	if got := cleaned.NRGBAAt(170, 20); got != source.NRGBAAt(170, 20) {
 		t.Fatalf("skipped block changed: got=%+v want=%+v", got, source.NRGBAAt(170, 20))
+	}
+}
+
+func TestCleanupRegionsPreferOnePreciseOCRLevel(t *testing.T) {
+	transform := CoordinateTransform{SourceWidth: 200, SourceHeight: 100, OCRWidth: 200, OCRHeight: 100, ScaleX: 1, ScaleY: 1}
+	wordOne := ocr.OCRWord{Box: ocr.OCRBox{X: 10, Y: 12, Width: 25, Height: 10}, Accepted: true}
+	wordTwo := ocr.OCRWord{Box: ocr.OCRBox{X: 40, Y: 12, Width: 30, Height: 10}, Accepted: true}
+	paragraph := ocr.OCRParagraph{
+		Box:   ocr.OCRBox{X: 8, Y: 8, Width: 90, Height: 20},
+		Lines: []ocr.OCRLine{{Box: ocr.OCRBox{X: 9, Y: 10, Width: 65, Height: 14}, Words: []ocr.OCRWord{wordOne, wordTwo}}},
+	}
+	regions := cleanupRegionsFor(paragraph, transform, 200, 100)
+	if len(regions) != 2 || regions[0].Level != "word" || regions[0].Box != wordOne.Box || regions[1].Box != wordTwo.Box {
+		t.Fatalf("word regions=%+v", regions)
+	}
+
+	paragraph.Lines[0].Words = nil
+	regions = cleanupRegionsFor(paragraph, transform, 200, 100)
+	if len(regions) != 1 || regions[0].Level != "line" || regions[0].Box != paragraph.Lines[0].Box {
+		t.Fatalf("line fallback=%+v", regions)
+	}
+
+	paragraph.Lines = nil
+	regions = cleanupRegionsFor(paragraph, transform, 200, 100)
+	if len(regions) != 1 || regions[0].Level != "paragraph" || regions[0].Box != paragraph.Box {
+		t.Fatalf("paragraph fallback=%+v", regions)
 	}
 }
 
@@ -130,8 +160,10 @@ func TestAtomicPNGAndJPEGEncodingPreservesDimensionsAndExistingFile(t *testing.T
 
 func TestPNGCleanupKeepsPixelsOutsideBoxByteEquivalentAfterDecode(t *testing.T) {
 	source := solidNRGBA(10, 10, color.NRGBA{R: 30, G: 40, B: 50, A: 60})
+	source.SetNRGBA(2, 2, color.NRGBA{A: 60})
+	source.SetNRGBA(3, 2, color.NRGBA{A: 60})
 	renderer, _ := NewRenderer(t.TempDir(), DefaultRenderConfig(), &fakeInpaintEngine{})
-	cleaned, _, _, err := renderer.Clean(context.Background(), source, RenderDocument{Blocks: []RenderBlock{{CleanupBox: ocr.OCRBox{X: 2, Y: 2, Width: 2, Height: 2}, Background: newRenderColor(color.NRGBA{R: 200, A: 255}), CleanupMode: CleanupSolid}}})
+	cleaned, _, _, err := renderer.Clean(context.Background(), source, RenderDocument{Blocks: []RenderBlock{{SourceBox: ocr.OCRBox{X: 2, Y: 2, Width: 2, Height: 2}, CleanupBox: ocr.OCRBox{X: 2, Y: 2, Width: 2, Height: 2}, Background: newRenderColor(color.NRGBA{R: 30, G: 40, B: 50, A: 60}), Foreground: newRenderColor(color.NRGBA{A: 60}), CleanupMode: CleanupSolid}}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -119,7 +119,12 @@ func TestBatchLifecycleSuccessWritesDocumentsAndDebug(t *testing.T) {
 	if status.State != "completed" || status.Processed != 1 || status.Translated != 1 || openedPath != status.OutputDirectory {
 		t.Fatalf("status=%+v opened=%q", status, openedPath)
 	}
-	for _, relative := range []string{"images/page.png", "translated/page.png", "ocr/page.ocr.json", "translations/page.translation.json", "debug/page.ocr.png", "debug/page.cleaned.png", "debug/page.layout.png", "debug/page.render.json", "job.json", "errors.json"} {
+	for _, relative := range []string{
+		"images/page.png", "translated/page.png", "ocr/page.ocr.json", "translations/page.translation.json",
+		"debug/page.ocr.png", "debug/page.original.png", "debug/page.candidate-mask.png", "debug/page.protected-graphics-mask.png",
+		"debug/page.final-cleanup-mask.png", "debug/page.cleanup-overlay.png", "debug/page.cleaned.png", "debug/page.final.png",
+		"debug/page.layout.png", "debug/page.render.json", "job.json", "errors.json",
+	} {
 		if _, err := os.Stat(filepath.Join(status.OutputDirectory, filepath.FromSlash(relative))); err != nil {
 			t.Errorf("missing %s: %v", relative, err)
 		}
@@ -268,7 +273,7 @@ func TestBatchAllMaskRejectionsPreserveOriginalAndContinueNextFile(t *testing.T)
 	}
 	var report JobReport
 	readJSON(t, filepath.Join(status.OutputDirectory, "job.json"), &report)
-	if report.Files[0].RenderedBlocks != 0 || report.Files[0].Status != "partial" || report.Files[1].Status != "translated_with_warnings" {
+	if report.Files[0].RenderedBlocks != 0 || report.Files[0].Status != "partial" || report.Files[1].Status != "translated" {
 		t.Fatalf("files=%+v", report.Files)
 	}
 }
@@ -451,8 +456,8 @@ func waitBatch(t *testing.T, service *Service, id string) ImageBatchStatus {
 
 func writeBatchImage(t *testing.T, directory, name string) string {
 	t.Helper()
-	value := image.NewRGBA(image.Rect(0, 0, 200, 100))
-	value.Set(1, 1, color.RGBA{R: 255, A: 255})
+	value := solidNRGBA(200, 100, color.NRGBA{R: 245, G: 245, B: 245, A: 255})
+	drawSyntheticWord(value, ocr.OCRBox{X: 10, Y: 10, Width: 120, Height: 30})
 	var buffer bytes.Buffer
 	if err := png.Encode(&buffer, value); err != nil {
 		t.Fatal(err)
@@ -509,6 +514,7 @@ func maskConfidenceFixture() *image.NRGBA {
 			result.SetNRGBA(x, y, color.NRGBA{R: 240, G: 240, B: 240, A: 255})
 		}
 	}
+	drawSyntheticWord(result, ocr.OCRBox{X: 250, Y: 40, Width: 80, Height: 30})
 	return result
 }
 
