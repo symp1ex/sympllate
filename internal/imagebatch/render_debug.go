@@ -34,6 +34,12 @@ func (s *Service) renderDebugArtifacts(ctx context.Context, job *batchJob, repor
 		{"debug_candidate_mask", filepath.Join(job.layout.Debug, stem+".candidate-mask.png"), func() error {
 			return atomicEncodeGoImage(ctx, cleanupMaskOrBlank(stats.Diagnostics.CandidateMask, source.Bounds()), filepath.Join(job.layout.Debug, stem+".candidate-mask.png"), ".png", s.renderer.config.JPEGQuality)
 		}},
+		{"debug_strict_text_core_mask", filepath.Join(job.layout.Debug, stem+".strict-text-core-mask.png"), func() error {
+			return atomicEncodeGoImage(ctx, cleanupMaskOrBlank(stats.Diagnostics.StrictTextCoreMask, source.Bounds()), filepath.Join(job.layout.Debug, stem+".strict-text-core-mask.png"), ".png", s.renderer.config.JPEGQuality)
+		}},
+		{"debug_fringe_recovery_mask", filepath.Join(job.layout.Debug, stem+".fringe-recovery-mask.png"), func() error {
+			return atomicEncodeGoImage(ctx, cleanupMaskOrBlank(stats.Diagnostics.FringeRecoveryMask, source.Bounds()), filepath.Join(job.layout.Debug, stem+".fringe-recovery-mask.png"), ".png", s.renderer.config.JPEGQuality)
+		}},
 		{"debug_protected_mask", filepath.Join(job.layout.Debug, stem+".protected-graphics-mask.png"), func() error {
 			return atomicEncodeGoImage(ctx, cleanupMaskOrBlank(stats.Diagnostics.ProtectedMask, source.Bounds()), filepath.Join(job.layout.Debug, stem+".protected-graphics-mask.png"), ".png", s.renderer.config.JPEGQuality)
 		}},
@@ -71,7 +77,9 @@ func cleanupMaskOrBlank(mask *image.Gray, bounds image.Rectangle) *image.Gray {
 
 func writeCleanupDebug(ctx context.Context, source *image.NRGBA, document RenderDocument, diagnostics CleanupDiagnostics, path string, jpegQuality int) error {
 	canvas := cloneNRGBA(source)
-	overlayMask(canvas, diagnostics.CandidateMask, color.NRGBA{R: 255, G: 210, B: 32, A: 96})
+	overlayMask(canvas, diagnostics.CandidateMask, color.NRGBA{R: 255, G: 210, B: 32, A: 72})
+	overlayMask(canvas, diagnostics.StrictTextCoreMask, color.NRGBA{R: 255, G: 190, B: 32, A: 144})
+	overlayMask(canvas, diagnostics.FringeRecoveryMask, color.NRGBA{R: 180, G: 96, B: 255, A: 160})
 	overlayMask(canvas, diagnostics.RejectedMask, color.NRGBA{R: 255, G: 96, B: 32, A: 144})
 	overlayMask(canvas, diagnostics.ProtectedMask, color.NRGBA{R: 32, G: 220, B: 255, A: 176})
 	overlayMask(canvas, diagnostics.FinalCleanupMask, color.NRGBA{R: 64, G: 220, B: 96, A: 192})
