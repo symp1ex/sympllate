@@ -28,7 +28,7 @@ func DefaultRenderConfig() RenderConfig {
 	return RenderConfig{
 		MinimumFontSize: 10, MaximumFontSize: 48, LineSpacing: 1.15,
 		HorizontalTextPadding: 2, VerticalTextPadding: 2, JPEGQuality: 92,
-		Layout: LayoutConfig{MaximumUpscaleRatio: 1.05, PreferredShrinkRatio: 0.70},
+		Layout: LayoutConfig{MaximumUpscaleRatio: 1.05, PreferredShrinkRatio: 0.85},
 	}
 }
 
@@ -86,38 +86,85 @@ type RenderDocument struct {
 }
 
 type RenderBlock struct {
-	ID                string             `json:"id"`
-	SourceText        string             `json:"sourceText"`
-	TranslatedText    string             `json:"translatedText"`
-	SourceBox         ocr.OCRBox         `json:"sourceBox"`
-	CleanupBox        ocr.OCRBox         `json:"cleanupBox"`
-	CleanupRegions    []CleanupRegion    `json:"cleanupRegions,omitempty"`
-	TextBox           ocr.OCRBox         `json:"textBox"`
-	Background        RenderColor        `json:"background"`
-	Foreground        RenderColor        `json:"foreground"`
-	CleanupMode       CleanupMode        `json:"cleanupMode"`
-	FontSize          float64            `json:"fontSize"`
-	PreferredFontSize float64            `json:"preferredFontSize"`
-	MinimumFontSize   float64            `json:"minimumFontSize"`
-	MaximumFontSize   float64            `json:"maximumFontSize"`
-	LineSpacing       float64            `json:"lineSpacing"`
-	Lines             []string           `json:"lines"`
-	LineLayouts       []RenderLineLayout `json:"lineLayouts"`
-	SourceLineCount   int                `json:"sourceLineCount"`
-	LineHeight        int                `json:"lineHeight"`
-	LineStep          int                `json:"lineStep"`
-	Ascent            int                `json:"ascent"`
-	TextWidth         int                `json:"textWidth"`
-	TextHeight        int                `json:"textHeight"`
-	Alignment         string             `json:"alignment"`
-	VerticalAlign     string             `json:"verticalAlign"`
-	BoxExpanded       bool               `json:"boxExpanded"`
-	FontReduced       bool               `json:"fontReduced"`
-	EmergencyShrink   bool               `json:"emergencyShrink"`
-	LayoutScore       float64            `json:"layoutScore"`
-	FallbackReason    string             `json:"fallbackReason,omitempty"`
-	Status            string             `json:"status"`
-	Warning           string             `json:"warning,omitempty"`
+	ID                  string             `json:"id"`
+	SourceText          string             `json:"sourceText"`
+	TranslatedText      string             `json:"translatedText"`
+	SourceBox           ocr.OCRBox         `json:"sourceBox"`
+	CleanupBox          ocr.OCRBox         `json:"cleanupBox"`
+	CleanupRegions      []CleanupRegion    `json:"cleanupRegions,omitempty"`
+	TextBox             ocr.OCRBox         `json:"textBox"`
+	SourceWords         []SourceWordLayout `json:"sourceWords"`
+	SourceLines         []SourceLineLayout `json:"sourceLines"`
+	SourceLineHeights   []int              `json:"sourceLineHeights"`
+	SourceLineWidths    []int              `json:"sourceLineWidths"`
+	SourceLineGaps      []int              `json:"sourceLineGaps"`
+	FontEstimate        FontStyleEstimate  `json:"fontEstimate"`
+	Background          RenderColor        `json:"background"`
+	Foreground          RenderColor        `json:"foreground"`
+	CleanupMode         CleanupMode        `json:"cleanupMode"`
+	FontSize            float64            `json:"fontSize"`
+	PreferredFontSize   float64            `json:"preferredFontSize"`
+	MinimumFontSize     float64            `json:"minimumFontSize"`
+	MaximumFontSize     float64            `json:"maximumFontSize"`
+	LineSpacing         float64            `json:"lineSpacing"`
+	Lines               []string           `json:"lines"`
+	LineLayouts         []RenderLineLayout `json:"lineLayouts"`
+	SourceLineCount     int                `json:"sourceLineCount"`
+	LineHeight          int                `json:"lineHeight"`
+	LineStep            int                `json:"lineStep"`
+	Ascent              int                `json:"ascent"`
+	TextWidth           int                `json:"textWidth"`
+	TextHeight          int                `json:"textHeight"`
+	TranslatedLineCount int                `json:"translatedLineCount"`
+	Alignment           string             `json:"alignment"`
+	VerticalAlign       string             `json:"verticalAlign"`
+	BoxExpanded         bool               `json:"boxExpanded"`
+	FontReduced         bool               `json:"fontReduced"`
+	EmergencyShrink     bool               `json:"emergencyShrink"`
+	LayoutScore         float64            `json:"layoutScore"`
+	FontReductionRatio  float64            `json:"fontReductionRatio"`
+	ExpansionRatio      float64            `json:"expansionRatio"`
+	AnchorDisplacement  float64            `json:"anchorDisplacement"`
+	LineStepRatio       float64            `json:"lineStepRatio"`
+	FallbackReason      string             `json:"fallbackReason,omitempty"`
+	Status              string             `json:"status"`
+	Warning             string             `json:"warning,omitempty"`
+}
+
+type SourceWordLayout struct {
+	Text string     `json:"text"`
+	Box  ocr.OCRBox `json:"box"`
+}
+
+type SourceLineLayout struct {
+	ID     string     `json:"id"`
+	Text   string     `json:"text"`
+	Box    ocr.OCRBox `json:"box"`
+	Width  int        `json:"width"`
+	Height int        `json:"height"`
+}
+
+// FontStyleEstimate keeps typography inference independent from the currently
+// bundled face. Style remains regular until a reliable image-weight signal or
+// a bundled bold face is available; font size and line step are still inferred
+// from source geometry.
+type FontStyleEstimate struct {
+	Style               string                   `json:"style"`
+	FontSize            float64                  `json:"fontSize"`
+	LineStep            float64                  `json:"lineStep"`
+	Confidence          float64                  `json:"confidence"`
+	IndividualEstimates []IndividualFontEstimate `json:"individualEstimates"`
+}
+
+type IndividualFontEstimate struct {
+	LineID           string  `json:"lineId"`
+	Text             string  `json:"text"`
+	SourceInkHeight  int     `json:"sourceInkHeight"`
+	SourceLineWidth  int     `json:"sourceLineWidth"`
+	MedianWordHeight float64 `json:"medianWordHeight"`
+	EstimatedSize    float64 `json:"estimatedSize"`
+	NormalizedError  float64 `json:"normalizedError"`
+	WidthWeight      float64 `json:"widthWeight"`
 }
 
 // CleanupRegion is a spatial prior for source glyph detection. Its box limits
@@ -172,27 +219,32 @@ type TextFitRequest struct {
 	MaxFontSize       float64
 	PreferredFontSize float64
 	LineSpacing       float64
+	SourceLineStep    float64
 	HorizontalPad     int
 	VerticalPad       int
 }
 
 type TextFitResult struct {
-	FontSize          float64
-	PreferredFontSize float64
-	MinimumFontSize   float64
-	Lines             []string
-	LineWidths        []int
-	TextWidth         int
-	TextHeight        int
-	LineHeight        int
-	LineStep          int
-	Ascent            int
-	Descent           int
-	Fits              bool
-	Overflow          bool
-	BoxExpanded       bool
-	FontReduced       bool
-	EmergencyShrink   bool
-	Score             float64
-	FallbackReason    string
+	FontSize           float64
+	PreferredFontSize  float64
+	MinimumFontSize    float64
+	Lines              []string
+	LineWidths         []int
+	TextWidth          int
+	TextHeight         int
+	LineHeight         int
+	LineStep           int
+	Ascent             int
+	Descent            int
+	Fits               bool
+	Overflow           bool
+	BoxExpanded        bool
+	FontReduced        bool
+	EmergencyShrink    bool
+	Score              float64
+	FontReductionRatio float64
+	ExpansionRatio     float64
+	AnchorDisplacement float64
+	LineStepRatio      float64
+	FallbackReason     string
 }

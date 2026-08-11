@@ -12,72 +12,214 @@ import (
 )
 
 const (
-	fontSizeStep         = 0.25
-	sourceMetricFontSize = 64.0
-	orphanWidthRatio     = 0.45
+	fontSizeStep     = 0.25
+	orphanWidthRatio = 0.45
 )
 
-// EstimateSourceFontSize converts OCR ink geometry to the pixel size of the
-// bundled font. Line boxes are preferred because paragraph boxes also include
-// inter-line gaps. Word boxes and finally a per-line share of the paragraph
-// box are deterministic fallbacks for incomplete OCR geometry.
+// EstimateSourceFontSize is the compatibility wrapper for the richer geometry
+// estimate used by Renderer.Prepare.
 func EstimateSourceFontSize(ctx context.Context, fonts *fontCache, paragraph ocr.OCRParagraph, transform CoordinateTransform, minimum, maximum float64) (float64, error) {
-	face, err := fonts.face(sourceMetricFontSize)
-	if err != nil {
-		return 0, err
-	}
-	estimates := make([]float64, 0, len(paragraph.Lines))
-	for _, line := range paragraph.Lines {
-		if err := ctx.Err(); err != nil {
-			return 0, err
-		}
-		box := TransformBox(line.Box, transform)
-		if estimate, ok := estimateSizeFromInk(face, line.Text, box.Height); ok {
-			estimates = append(estimates, estimate)
-		}
-	}
-	if len(estimates) == 0 {
-		for _, line := range paragraph.Lines {
-			for _, word := range line.Words {
-				box := TransformBox(word.Box, transform)
-				if estimate, ok := estimateSizeFromInk(face, word.Text, box.Height); ok {
-					estimates = append(estimates, estimate)
-				}
-			}
-		}
-	}
-	if len(estimates) == 0 {
-		box := TransformBox(paragraph.Box, transform)
-		logicalLines := nonEmptyTextLines(paragraph.Text)
-		if len(logicalLines) == 0 {
-			logicalLines = []string{paragraph.Text}
-		}
-		observedLineHeight := float64(box.Height) / float64(max(1, len(logicalLines)))
-		for _, line := range logicalLines {
-			if estimate, ok := estimateSizeFromInk(face, line, int(math.Round(observedLineHeight))); ok {
-				estimates = append(estimates, estimate)
-			}
-		}
-	}
-	preferred := minimum
-	if len(estimates) > 0 {
-		preferred = median(estimates)
-	}
-	preferred = math.Max(minimum, math.Min(maximum, preferred))
-	return roundFontSize(preferred), nil
+	estimate, err := EstimateSourceTypography(ctx, fonts, paragraph, transform, minimum, maximum)
+	return estimate.FontSize, err
 }
 
-func estimateSizeFromInk(face font.Face, text string, observedHeight int) (float64, bool) {
-	text = strings.TrimSpace(text)
-	if text == "" || observedHeight <= 0 || !utf8.ValidString(text) {
-		return 0, false
+type sourceLineGeometry struct {
+	id, text         string
+	box              ocr.OCRBox
+	wordBoxes        []ocr.OCRBox
+	wordTexts        []string
+	medianWordHeight float64
+	widthWeight      float64
+}
+
+// EstimateSourceTypography treats font size as a fitted parameter of the
+// bundled face. It compares candidate font metrics with several observed OCR
+// signals and combines lines robustly, so a short or unusual glyph run cannot
+// dictate the whole paragraph.
+func EstimateSourceTypography(ctx context.Context, fonts *fontCache, paragraph ocr.OCRParagraph, transform CoordinateTransform, minimum, maximum float64) (FontStyleEstimate, error) {
+	minimum = math.Max(fontSizeStep, minimum)
+	maximum = math.Max(minimum, maximum)
+	geometry := sourceGeometry(paragraph, transform)
+	if len(geometry) == 0 {
+		return FontStyleEstimate{Style: "regular", FontSize: roundFontSize(minimum)}, nil
 	}
-	bounds, _ := font.BoundString(face, text)
-	inkHeight := (bounds.Max.Y - bounds.Min.Y).Ceil()
-	if inkHeight <= 0 {
-		return 0, false
+	bestSize, bestError := minimum, math.MaxFloat64
+	for size := roundFontSizeUp(minimum); size <= maximum+fontSizeStep/2; size += fontSizeStep {
+		if err := ctx.Err(); err != nil {
+			return FontStyleEstimate{}, err
+		}
+		face, err := fonts.face(size)
+		if err != nil {
+			return FontStyleEstimate{}, err
+		}
+		errors := make([]float64, 0, len(geometry))
+		for _, line := range geometry {
+			errors = append(errors, sourceLineCandidateError(face, line))
+		}
+		errorValue := trimmedMean(errors)
+		if errorValue < bestError {
+			bestSize, bestError = size, errorValue
+		}
 	}
-	return sourceMetricFontSize * float64(observedHeight) / float64(inkHeight), true
+	individual := make([]IndividualFontEstimate, 0, len(geometry))
+	individualSizes := make([]float64, 0, len(geometry))
+	for _, line := range geometry {
+		lineBestSize, lineBestError := bestSize, math.MaxFloat64
+		for size := roundFontSizeUp(minimum); size <= maximum+fontSizeStep/2; size += fontSizeStep {
+			face, err := fonts.face(size)
+			if err != nil {
+				return FontStyleEstimate{}, err
+			}
+			if candidateError := sourceLineCandidateError(face, line); candidateError < lineBestError {
+				lineBestSize, lineBestError = size, candidateError
+			}
+		}
+		individualSizes = append(individualSizes, lineBestSize)
+		individual = append(individual, IndividualFontEstimate{
+			LineID: line.id, Text: line.text, SourceInkHeight: line.box.Height, SourceLineWidth: line.box.Width,
+			MedianWordHeight: line.medianWordHeight, EstimatedSize: roundFontSize(lineBestSize),
+			NormalizedError: roundMetric(lineBestError), WidthWeight: roundMetric(line.widthWeight),
+		})
+	}
+	// The global metric fit is stabilized by the median individual estimate.
+	// This prevents a wide noisy line from outweighing all remaining lines.
+	if len(individualSizes) > 1 {
+		bestSize = (bestSize + median(individualSizes)) / 2
+	}
+	bestSize = roundFontSize(math.Max(minimum, math.Min(maximum, bestSize)))
+	lineStep := observedSourceLineStep(geometry)
+	confidence := math.Max(0, math.Min(1, 1-bestError))
+	if len(geometry) == 1 {
+		confidence *= 0.75
+	}
+	return FontStyleEstimate{
+		Style: "regular", FontSize: bestSize, LineStep: roundMetric(lineStep),
+		Confidence: roundMetric(confidence), IndividualEstimates: individual,
+	}, nil
+}
+
+func sourceGeometry(paragraph ocr.OCRParagraph, transform CoordinateTransform) []sourceLineGeometry {
+	result := make([]sourceLineGeometry, 0, len(paragraph.Lines))
+	for _, line := range paragraph.Lines {
+		text := strings.TrimSpace(line.Text)
+		box := TransformBox(line.Box, transform)
+		if text == "" || !utf8.ValidString(text) {
+			continue
+		}
+		geometry := sourceLineGeometry{id: line.ID, text: text, box: box}
+		heights := make([]float64, 0, len(line.Words))
+		for _, word := range line.Words {
+			wordText := strings.TrimSpace(word.Text)
+			wordBox := TransformBox(word.Box, transform)
+			if wordText == "" || wordBox.Width <= 0 || wordBox.Height <= 0 {
+				continue
+			}
+			geometry.wordTexts = append(geometry.wordTexts, wordText)
+			geometry.wordBoxes = append(geometry.wordBoxes, wordBox)
+			heights = append(heights, float64(wordBox.Height))
+		}
+		if len(heights) > 0 {
+			geometry.medianWordHeight = median(heights)
+		}
+		if (geometry.box.Width <= 0 || geometry.box.Height <= 0) && len(geometry.wordBoxes) > 0 {
+			geometry.box = unionLayoutBoxes(geometry.wordBoxes)
+		}
+		if geometry.box.Width <= 0 || geometry.box.Height <= 0 {
+			continue
+		}
+		runes := utf8.RuneCountInString(text)
+		geometry.widthWeight = 0.01
+		if len(geometry.wordBoxes) > 0 {
+			geometry.widthWeight = math.Min(1, 0.60+float64(min(4, len(geometry.wordBoxes)))*0.05+float64(runes)/100)
+		}
+		result = append(result, geometry)
+	}
+	if len(result) == 0 {
+		text := strings.TrimSpace(paragraph.Text)
+		box := TransformBox(paragraph.Box, transform)
+		if text != "" && box.Width > 0 && box.Height > 0 {
+			lines := max(1, len(nonEmptyTextLines(text)))
+			box.Height = max(1, box.Height/lines)
+			result = append(result, sourceLineGeometry{text: text, box: box, widthWeight: 0.01})
+		}
+	}
+	return result
+}
+
+func unionLayoutBoxes(boxes []ocr.OCRBox) ocr.OCRBox {
+	if len(boxes) == 0 {
+		return ocr.OCRBox{}
+	}
+	left, top := boxes[0].X, boxes[0].Y
+	right, bottom := boxes[0].X+boxes[0].Width, boxes[0].Y+boxes[0].Height
+	for _, box := range boxes[1:] {
+		left, top = min(left, box.X), min(top, box.Y)
+		right, bottom = max(right, box.X+box.Width), max(bottom, box.Y+box.Height)
+	}
+	return ocr.OCRBox{X: left, Y: top, Width: right - left, Height: bottom - top}
+}
+
+func sourceLineCandidateError(face font.Face, line sourceLineGeometry) float64 {
+	bounds, _ := font.BoundString(face, line.text)
+	predictedHeight := (bounds.Max.Y - bounds.Min.Y).Ceil()
+	predictedWidth := measure(face, line.text)
+	heightError := normalizedDifference(float64(predictedHeight), float64(line.box.Height))
+	widthError := normalizedDifference(float64(predictedWidth), float64(line.box.Width))
+	score := heightError*0.35 + widthError*line.widthWeight*0.65
+	if len(line.wordBoxes) > 1 {
+		wordErrors := make([]float64, 0, len(line.wordBoxes))
+		for index, box := range line.wordBoxes {
+			wordBounds, _ := font.BoundString(face, line.wordTexts[index])
+			wordHeight := (wordBounds.Max.Y - wordBounds.Min.Y).Ceil()
+			wordErrors = append(wordErrors,
+				normalizedDifference(float64(wordHeight), float64(box.Height))*0.35+
+					normalizedDifference(float64(measure(face, line.wordTexts[index])), float64(box.Width))*0.65,
+			)
+		}
+		score = score*0.75 + trimmedMean(wordErrors)*0.25
+	}
+	return score
+}
+
+func observedSourceLineStep(lines []sourceLineGeometry) float64 {
+	steps := make([]float64, 0, len(lines)-1)
+	for index := 1; index < len(lines); index++ {
+		previousCenter := float64(lines[index-1].box.Y) + float64(lines[index-1].box.Height)/2
+		currentCenter := float64(lines[index].box.Y) + float64(lines[index].box.Height)/2
+		if currentCenter > previousCenter {
+			steps = append(steps, currentCenter-previousCenter)
+		}
+	}
+	if len(steps) == 0 {
+		return 0
+	}
+	return median(steps)
+}
+
+func normalizedDifference(left, right float64) float64 {
+	return math.Abs(left-right) / math.Max(1, math.Max(math.Abs(left), math.Abs(right)))
+}
+
+func trimmedMean(values []float64) float64 {
+	if len(values) == 0 {
+		return 1
+	}
+	ordered := append([]float64(nil), values...)
+	sort.Float64s(ordered)
+	trim := 0
+	if len(ordered) >= 5 {
+		trim = len(ordered) / 5
+	}
+	ordered = ordered[trim : len(ordered)-trim]
+	total := 0.0
+	for _, value := range ordered {
+		total += value
+	}
+	return total / float64(len(ordered))
+}
+
+func roundMetric(value float64) float64 {
+	return math.Round(value*1000) / 1000
 }
 
 func median(values []float64) float64 {
@@ -335,6 +477,10 @@ func measureFit(ctx context.Context, fonts *fontCache, request TextFitRequest, s
 	ascent, descent := metrics.Ascent.Ceil(), metrics.Descent.Ceil()
 	lineHeight := max(1, (metrics.Ascent + metrics.Descent).Ceil())
 	lineStep := max(lineHeight, int(math.Ceil(float64(metrics.Height.Ceil())*request.LineSpacing)))
+	if request.SourceLineStep > 0 && request.PreferredFontSize > 0 {
+		scaledSourceStep := int(math.Round(request.SourceLineStep * size / request.PreferredFontSize))
+		lineStep = max(lineHeight, scaledSourceStep)
+	}
 	textHeight := 0
 	if len(lines) > 0 {
 		textHeight = lineHeight + lineStep*max(0, len(lines)-1)

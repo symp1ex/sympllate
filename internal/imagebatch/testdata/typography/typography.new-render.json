@@ -1,0 +1,955 @@
+{
+  "schemaVersion": 1,
+  "sourceFile": "typography-synthetic.png",
+  "imageWidth": 640,
+  "imageHeight": 360,
+  "coordinateTransform": {
+    "sourceWidth": 640,
+    "sourceHeight": 360,
+    "ocrWidth": 640,
+    "ocrHeight": 360,
+    "scaleX": 1,
+    "scaleY": 1
+  },
+  "blocks": [
+    {
+      "id": "title",
+      "sourceText": "MAINTENANCE MANUAL",
+      "translatedText": "ТЕХНИЧЕСКОЕ ОБСЛУЖИВАНИЕ",
+      "sourceBox": {
+        "x": 190,
+        "y": 18,
+        "width": 281,
+        "height": 19
+      },
+      "cleanupBox": {
+        "x": 186,
+        "y": 15,
+        "width": 289,
+        "height": 25
+      },
+      "cleanupRegions": [
+        {
+          "level": "word",
+          "box": {
+            "x": 190,
+            "y": 18,
+            "width": 281,
+            "height": 19
+          },
+          "textHeight": 19
+        }
+      ],
+      "textBox": {
+        "x": 190,
+        "y": 18,
+        "width": 281,
+        "height": 67
+      },
+      "sourceWords": [
+        {
+          "text": "MAINTENANCE MANUAL",
+          "box": {
+            "x": 190,
+            "y": 18,
+            "width": 281,
+            "height": 19
+          }
+        }
+      ],
+      "sourceLines": [
+        {
+          "id": "title-l",
+          "text": "MAINTENANCE MANUAL",
+          "box": {
+            "x": 190,
+            "y": 18,
+            "width": 281,
+            "height": 19
+          },
+          "width": 281,
+          "height": 19
+        }
+      ],
+      "sourceLineHeights": [
+        19
+      ],
+      "sourceLineWidths": [
+        281
+      ],
+      "sourceLineGaps": [],
+      "fontEstimate": {
+        "style": "regular",
+        "fontSize": 23.75,
+        "lineStep": 0,
+        "confidence": 0.749,
+        "individualEstimates": [
+          {
+            "lineId": "title-l",
+            "text": "MAINTENANCE MANUAL",
+            "sourceInkHeight": 19,
+            "sourceLineWidth": 281,
+            "medianWordHeight": 19,
+            "estimatedSize": 23.75,
+            "normalizedError": 0.002,
+            "widthWeight": 0.83
+          }
+        ]
+      },
+      "background": {
+        "r": 248,
+        "g": 248,
+        "b": 246,
+        "a": 255
+      },
+      "foreground": {
+        "r": 35,
+        "g": 37,
+        "b": 41,
+        "a": 255
+      },
+      "cleanupMode": "solid",
+      "fontSize": 23.75,
+      "preferredFontSize": 23.75,
+      "minimumFontSize": 20.1875,
+      "maximumFontSize": 24.9375,
+      "lineSpacing": 1.15,
+      "lines": [
+        "ТЕХНИЧЕСКОЕ",
+        "ОБСЛУЖИВАНИЕ"
+      ],
+      "lineLayouts": [
+        {
+          "text": "ТЕХНИЧЕСКОЕ",
+          "x": 241,
+          "baselineY": 43,
+          "width": 178
+        },
+        {
+          "text": "ОБСЛУЖИВАНИЕ",
+          "x": 229,
+          "baselineY": 76,
+          "width": 203
+        }
+      ],
+      "sourceLineCount": 1,
+      "lineHeight": 29,
+      "lineStep": 33,
+      "ascent": 23,
+      "textWidth": 203,
+      "textHeight": 62,
+      "translatedLineCount": 2,
+      "alignment": "center",
+      "verticalAlign": "middle",
+      "boxExpanded": true,
+      "fontReduced": false,
+      "emergencyShrink": false,
+      "layoutScore": 43.26,
+      "fontReductionRatio": 1,
+      "expansionRatio": 2.526,
+      "anchorDisplacement": 0,
+      "lineStepRatio": 0,
+      "fallbackReason": "bbox_expanded",
+      "status": "renderable"
+    },
+    {
+      "id": "left-heading",
+      "sourceText": "ENGINE CHECK",
+      "translatedText": "ЛЕВЫЙ ЗАГОЛОВОК",
+      "sourceBox": {
+        "x": 28,
+        "y": 66,
+        "width": 137,
+        "height": 14
+      },
+      "cleanupBox": {
+        "x": 24,
+        "y": 63,
+        "width": 145,
+        "height": 20
+      },
+      "cleanupRegions": [
+        {
+          "level": "word",
+          "box": {
+            "x": 28,
+            "y": 66,
+            "width": 137,
+            "height": 14
+          },
+          "textHeight": 14
+        }
+      ],
+      "textBox": {
+        "x": 10,
+        "y": 66,
+        "width": 180,
+        "height": 26
+      },
+      "sourceWords": [
+        {
+          "text": "ENGINE CHECK",
+          "box": {
+            "x": 28,
+            "y": 66,
+            "width": 137,
+            "height": 14
+          }
+        }
+      ],
+      "sourceLines": [
+        {
+          "id": "left-heading-l",
+          "text": "ENGINE CHECK",
+          "box": {
+            "x": 28,
+            "y": 66,
+            "width": 137,
+            "height": 14
+          },
+          "width": 137,
+          "height": 14
+        }
+      ],
+      "sourceLineHeights": [
+        14
+      ],
+      "sourceLineWidths": [
+        137
+      ],
+      "sourceLineGaps": [],
+      "fontEstimate": {
+        "style": "regular",
+        "fontSize": 17.5,
+        "lineStep": 0,
+        "confidence": 0.745,
+        "individualEstimates": [
+          {
+            "lineId": "left-heading-l",
+            "text": "ENGINE CHECK",
+            "sourceInkHeight": 14,
+            "sourceLineWidth": 137,
+            "medianWordHeight": 14,
+            "estimatedSize": 17.5,
+            "normalizedError": 0.007,
+            "widthWeight": 0.77
+          }
+        ]
+      },
+      "background": {
+        "r": 248,
+        "g": 248,
+        "b": 246,
+        "a": 255
+      },
+      "foreground": {
+        "r": 99,
+        "g": 100,
+        "b": 102,
+        "a": 255
+      },
+      "cleanupMode": "solid",
+      "fontSize": 17.5,
+      "preferredFontSize": 17.5,
+      "minimumFontSize": 14.875,
+      "maximumFontSize": 18.375,
+      "lineSpacing": 1.15,
+      "lines": [
+        "ЛЕВЫЙ ЗАГОЛОВОК"
+      ],
+      "lineLayouts": [
+        {
+          "text": "ЛЕВЫЙ ЗАГОЛОВОК",
+          "x": 12,
+          "baselineY": 85,
+          "width": 175
+        }
+      ],
+      "sourceLineCount": 1,
+      "lineHeight": 21,
+      "lineStep": 25,
+      "ascent": 17,
+      "textWidth": 175,
+      "textHeight": 21,
+      "translatedLineCount": 1,
+      "alignment": "left",
+      "verticalAlign": "middle",
+      "boxExpanded": true,
+      "fontReduced": false,
+      "emergencyShrink": false,
+      "layoutScore": 50.4,
+      "fontReductionRatio": 1,
+      "expansionRatio": 1.44,
+      "anchorDisplacement": 18,
+      "lineStepRatio": 0,
+      "fallbackReason": "bbox_expanded",
+      "status": "renderable"
+    },
+    {
+      "id": "left-body",
+      "sourceText": "Check engine oil level\nbefore starting the unit\nand inspect the filter",
+      "translatedText": "Перед запуском проверьте уровень моторного масла и состояние фильтра.",
+      "sourceBox": {
+        "x": 28,
+        "y": 105,
+        "width": 142,
+        "height": 58
+      },
+      "cleanupBox": {
+        "x": 24,
+        "y": 102,
+        "width": 150,
+        "height": 64
+      },
+      "cleanupRegions": [
+        {
+          "level": "word",
+          "box": {
+            "x": 28,
+            "y": 105,
+            "width": 140,
+            "height": 14
+          },
+          "textHeight": 14
+        },
+        {
+          "level": "word",
+          "box": {
+            "x": 28,
+            "y": 127,
+            "width": 142,
+            "height": 14
+          },
+          "textHeight": 14
+        },
+        {
+          "level": "word",
+          "box": {
+            "x": 28,
+            "y": 149,
+            "width": 128,
+            "height": 14
+          },
+          "textHeight": 14
+        }
+      ],
+      "textBox": {
+        "x": 28,
+        "y": 105,
+        "width": 142,
+        "height": 87
+      },
+      "sourceWords": [
+        {
+          "text": "Check engine oil level",
+          "box": {
+            "x": 28,
+            "y": 105,
+            "width": 140,
+            "height": 14
+          }
+        },
+        {
+          "text": "before starting the unit",
+          "box": {
+            "x": 28,
+            "y": 127,
+            "width": 142,
+            "height": 14
+          }
+        },
+        {
+          "text": "and inspect the filter",
+          "box": {
+            "x": 28,
+            "y": 149,
+            "width": 128,
+            "height": 14
+          }
+        }
+      ],
+      "sourceLines": [
+        {
+          "id": "left-body-l",
+          "text": "Check engine oil level",
+          "box": {
+            "x": 28,
+            "y": 105,
+            "width": 140,
+            "height": 14
+          },
+          "width": 140,
+          "height": 14
+        },
+        {
+          "id": "left-body-l",
+          "text": "before starting the unit",
+          "box": {
+            "x": 28,
+            "y": 127,
+            "width": 142,
+            "height": 14
+          },
+          "width": 142,
+          "height": 14
+        },
+        {
+          "id": "left-body-l",
+          "text": "and inspect the filter",
+          "box": {
+            "x": 28,
+            "y": 149,
+            "width": 128,
+            "height": 14
+          },
+          "width": 128,
+          "height": 14
+        }
+      ],
+      "sourceLineHeights": [
+        14,
+        14,
+        14
+      ],
+      "sourceLineWidths": [
+        140,
+        142,
+        128
+      ],
+      "sourceLineGaps": [
+        8,
+        8
+      ],
+      "fontEstimate": {
+        "style": "regular",
+        "fontSize": 13.5,
+        "lineStep": 22,
+        "confidence": 0.996,
+        "individualEstimates": [
+          {
+            "lineId": "left-body-l",
+            "text": "Check engine oil level",
+            "sourceInkHeight": 14,
+            "sourceLineWidth": 140,
+            "medianWordHeight": 14,
+            "estimatedSize": 13.5,
+            "normalizedError": 0.004,
+            "widthWeight": 0.87
+          },
+          {
+            "lineId": "left-body-l",
+            "text": "before starting the unit",
+            "sourceInkHeight": 14,
+            "sourceLineWidth": 142,
+            "medianWordHeight": 14,
+            "estimatedSize": 13.5,
+            "normalizedError": 0.004,
+            "widthWeight": 0.89
+          },
+          {
+            "lineId": "left-body-l",
+            "text": "and inspect the filter",
+            "sourceInkHeight": 14,
+            "sourceLineWidth": 128,
+            "medianWordHeight": 14,
+            "estimatedSize": 13.5,
+            "normalizedError": 0.004,
+            "widthWeight": 0.87
+          }
+        ]
+      },
+      "background": {
+        "r": 248,
+        "g": 248,
+        "b": 246,
+        "a": 255
+      },
+      "foreground": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 255
+      },
+      "cleanupMode": "solid",
+      "fontSize": 13.5,
+      "preferredFontSize": 13.5,
+      "minimumFontSize": 11.475,
+      "maximumFontSize": 14.175,
+      "lineSpacing": 1.15,
+      "lines": [
+        "Перед запуском",
+        "проверьте уровень",
+        "моторного масла и",
+        "состояние фильтра."
+      ],
+      "lineLayouts": [
+        {
+          "text": "Перед запуском",
+          "x": 30,
+          "baselineY": 120,
+          "width": 104
+        },
+        {
+          "text": "проверьте уровень",
+          "x": 30,
+          "baselineY": 142,
+          "width": 123
+        },
+        {
+          "text": "моторного масла и",
+          "x": 30,
+          "baselineY": 164,
+          "width": 123
+        },
+        {
+          "text": "состояние фильтра.",
+          "x": 30,
+          "baselineY": 186,
+          "width": 130
+        }
+      ],
+      "sourceLineCount": 3,
+      "lineHeight": 16,
+      "lineStep": 22,
+      "ascent": 13,
+      "textWidth": 130,
+      "textHeight": 82,
+      "translatedLineCount": 4,
+      "alignment": "left",
+      "verticalAlign": "top",
+      "boxExpanded": true,
+      "fontReduced": false,
+      "emergencyShrink": false,
+      "layoutScore": 23,
+      "fontReductionRatio": 1,
+      "expansionRatio": 0.5,
+      "anchorDisplacement": 0,
+      "lineStepRatio": 1,
+      "fallbackReason": "bbox_expanded",
+      "status": "renderable"
+    },
+    {
+      "id": "right-body",
+      "sourceText": "Tighten all fasteners\nInstall the safety cover\nbefore normal operation",
+      "translatedText": "Затяните крепёж и убедитесь, что защитная крышка установлена правильно.",
+      "sourceBox": {
+        "x": 350,
+        "y": 105,
+        "width": 152,
+        "height": 58
+      },
+      "cleanupBox": {
+        "x": 346,
+        "y": 102,
+        "width": 160,
+        "height": 64
+      },
+      "cleanupRegions": [
+        {
+          "level": "word",
+          "box": {
+            "x": 350,
+            "y": 105,
+            "width": 131,
+            "height": 14
+          },
+          "textHeight": 14
+        },
+        {
+          "level": "word",
+          "box": {
+            "x": 350,
+            "y": 127,
+            "width": 145,
+            "height": 14
+          },
+          "textHeight": 14
+        },
+        {
+          "level": "word",
+          "box": {
+            "x": 350,
+            "y": 149,
+            "width": 152,
+            "height": 14
+          },
+          "textHeight": 14
+        }
+      ],
+      "textBox": {
+        "x": 350,
+        "y": 105,
+        "width": 168,
+        "height": 58
+      },
+      "sourceWords": [
+        {
+          "text": "Tighten all fasteners",
+          "box": {
+            "x": 350,
+            "y": 105,
+            "width": 131,
+            "height": 14
+          }
+        },
+        {
+          "text": "Install the safety cover",
+          "box": {
+            "x": 350,
+            "y": 127,
+            "width": 145,
+            "height": 14
+          }
+        },
+        {
+          "text": "before normal operation",
+          "box": {
+            "x": 350,
+            "y": 149,
+            "width": 152,
+            "height": 14
+          }
+        }
+      ],
+      "sourceLines": [
+        {
+          "id": "right-body-l",
+          "text": "Tighten all fasteners",
+          "box": {
+            "x": 350,
+            "y": 105,
+            "width": 131,
+            "height": 14
+          },
+          "width": 131,
+          "height": 14
+        },
+        {
+          "id": "right-body-l",
+          "text": "Install the safety cover",
+          "box": {
+            "x": 350,
+            "y": 127,
+            "width": 145,
+            "height": 14
+          },
+          "width": 145,
+          "height": 14
+        },
+        {
+          "id": "right-body-l",
+          "text": "before normal operation",
+          "box": {
+            "x": 350,
+            "y": 149,
+            "width": 152,
+            "height": 14
+          },
+          "width": 152,
+          "height": 14
+        }
+      ],
+      "sourceLineHeights": [
+        14,
+        14,
+        14
+      ],
+      "sourceLineWidths": [
+        131,
+        145,
+        152
+      ],
+      "sourceLineGaps": [
+        8,
+        8
+      ],
+      "fontEstimate": {
+        "style": "regular",
+        "fontSize": 13.5,
+        "lineStep": 22,
+        "confidence": 0.997,
+        "individualEstimates": [
+          {
+            "lineId": "right-body-l",
+            "text": "Tighten all fasteners",
+            "sourceInkHeight": 14,
+            "sourceLineWidth": 131,
+            "medianWordHeight": 14,
+            "estimatedSize": 14,
+            "normalizedError": 0,
+            "widthWeight": 0.86
+          },
+          {
+            "lineId": "right-body-l",
+            "text": "Install the safety cover",
+            "sourceInkHeight": 14,
+            "sourceLineWidth": 145,
+            "medianWordHeight": 14,
+            "estimatedSize": 13.5,
+            "normalizedError": 0,
+            "widthWeight": 0.89
+          },
+          {
+            "lineId": "right-body-l",
+            "text": "before normal operation",
+            "sourceInkHeight": 14,
+            "sourceLineWidth": 152,
+            "medianWordHeight": 14,
+            "estimatedSize": 13.5,
+            "normalizedError": 0.004,
+            "widthWeight": 0.88
+          }
+        ]
+      },
+      "background": {
+        "r": 248,
+        "g": 248,
+        "b": 246,
+        "a": 255
+      },
+      "foreground": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 255
+      },
+      "cleanupMode": "solid",
+      "fontSize": 11.5,
+      "preferredFontSize": 13.5,
+      "minimumFontSize": 11.475,
+      "maximumFontSize": 14.175,
+      "lineSpacing": 1.15,
+      "lines": [
+        "Затяните крепёж и убедитесь,",
+        "что защитная крышка",
+        "установлена правильно."
+      ],
+      "lineLayouts": [
+        {
+          "text": "Затяните крепёж и убедитесь,",
+          "x": 352,
+          "baselineY": 118,
+          "width": 158
+        },
+        {
+          "text": "что защитная крышка",
+          "x": 352,
+          "baselineY": 137,
+          "width": 111
+        },
+        {
+          "text": "установлена правильно.",
+          "x": 352,
+          "baselineY": 156,
+          "width": 128
+        }
+      ],
+      "sourceLineCount": 3,
+      "lineHeight": 14,
+      "lineStep": 19,
+      "ascent": 11,
+      "textWidth": 158,
+      "textHeight": 52,
+      "translatedLineCount": 3,
+      "alignment": "left",
+      "verticalAlign": "top",
+      "boxExpanded": true,
+      "fontReduced": true,
+      "emergencyShrink": false,
+      "layoutScore": 23.7,
+      "fontReductionRatio": 0.8518518518518519,
+      "expansionRatio": 0.105,
+      "anchorDisplacement": 0,
+      "lineStepRatio": 0.8636363636363636,
+      "fallbackReason": "bbox_expanded_and_font_reduced",
+      "status": "renderable"
+    },
+    {
+      "id": "table",
+      "sourceText": "OIL PRESSURE 240 kPa\nMAXIMUM 300 kPa",
+      "translatedText": "ДАВЛЕНИЕ МАСЛА 240 кПа",
+      "sourceBox": {
+        "x": 350,
+        "y": 250,
+        "width": 138,
+        "height": 29
+      },
+      "cleanupBox": {
+        "x": 346,
+        "y": 247,
+        "width": 146,
+        "height": 35
+      },
+      "cleanupRegions": [
+        {
+          "level": "word",
+          "box": {
+            "x": 350,
+            "y": 250,
+            "width": 138,
+            "height": 10
+          },
+          "textHeight": 10
+        },
+        {
+          "level": "word",
+          "box": {
+            "x": 350,
+            "y": 269,
+            "width": 107,
+            "height": 10
+          },
+          "textHeight": 10
+        }
+      ],
+      "textBox": {
+        "x": 350,
+        "y": 250,
+        "width": 138,
+        "height": 39
+      },
+      "sourceWords": [
+        {
+          "text": "OIL PRESSURE 240 kPa",
+          "box": {
+            "x": 350,
+            "y": 250,
+            "width": 138,
+            "height": 10
+          }
+        },
+        {
+          "text": "MAXIMUM 300 kPa",
+          "box": {
+            "x": 350,
+            "y": 269,
+            "width": 107,
+            "height": 10
+          }
+        }
+      ],
+      "sourceLines": [
+        {
+          "id": "table-l",
+          "text": "OIL PRESSURE 240 kPa",
+          "box": {
+            "x": 350,
+            "y": 250,
+            "width": 138,
+            "height": 10
+          },
+          "width": 138,
+          "height": 10
+        },
+        {
+          "id": "table-l",
+          "text": "MAXIMUM 300 kPa",
+          "box": {
+            "x": 350,
+            "y": 269,
+            "width": 107,
+            "height": 10
+          },
+          "width": 107,
+          "height": 10
+        }
+      ],
+      "sourceLineHeights": [
+        10,
+        10
+      ],
+      "sourceLineWidths": [
+        138,
+        107
+      ],
+      "sourceLineGaps": [
+        9
+      ],
+      "fontEstimate": {
+        "style": "regular",
+        "fontSize": 11.75,
+        "lineStep": 19,
+        "confidence": 0.996,
+        "individualEstimates": [
+          {
+            "lineId": "table-l",
+            "text": "OIL PRESSURE 240 kPa",
+            "sourceInkHeight": 10,
+            "sourceLineWidth": 138,
+            "medianWordHeight": 10,
+            "estimatedSize": 12,
+            "normalizedError": 0.004,
+            "widthWeight": 0.85
+          },
+          {
+            "lineId": "table-l",
+            "text": "MAXIMUM 300 kPa",
+            "sourceInkHeight": 10,
+            "sourceLineWidth": 107,
+            "medianWordHeight": 10,
+            "estimatedSize": 11.75,
+            "normalizedError": 0,
+            "widthWeight": 0.8
+          }
+        ]
+      },
+      "background": {
+        "r": 248,
+        "g": 248,
+        "b": 246,
+        "a": 255
+      },
+      "foreground": {
+        "r": 102,
+        "g": 104,
+        "b": 106,
+        "a": 255
+      },
+      "cleanupMode": "solid",
+      "fontSize": 11.75,
+      "preferredFontSize": 11.75,
+      "minimumFontSize": 10,
+      "maximumFontSize": 12.3375,
+      "lineSpacing": 1.15,
+      "lines": [
+        "ДАВЛЕНИЕ",
+        "МАСЛА 240 кПа"
+      ],
+      "lineLayouts": [
+        {
+          "text": "ДАВЛЕНИЕ",
+          "x": 352,
+          "baselineY": 264,
+          "width": 64
+        },
+        {
+          "text": "МАСЛА 240 кПа",
+          "x": 352,
+          "baselineY": 283,
+          "width": 89
+        }
+      ],
+      "sourceLineCount": 2,
+      "lineHeight": 15,
+      "lineStep": 19,
+      "ascent": 12,
+      "textWidth": 89,
+      "textHeight": 34,
+      "translatedLineCount": 2,
+      "alignment": "left",
+      "verticalAlign": "top",
+      "boxExpanded": true,
+      "fontReduced": false,
+      "emergencyShrink": false,
+      "layoutScore": 3.45,
+      "fontReductionRatio": 1,
+      "expansionRatio": 0.345,
+      "anchorDisplacement": 0,
+      "lineStepRatio": 1,
+      "fallbackReason": "bbox_expanded",
+      "status": "renderable"
+    }
+  ],
+  "skippedBlocks": [],
+  "warnings": []
+}

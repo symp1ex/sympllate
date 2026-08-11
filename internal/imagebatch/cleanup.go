@@ -186,6 +186,7 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 				return nil, filtered, stats, fmt.Errorf("build text mask for block %s: %w", block.ID, err)
 			}
 			filtered.SkippedBlocks = append(filtered.SkippedBlocks, SkippedRenderBlock{ID: block.ID, Reason: code})
+			filtered.Warnings = warningsWithoutBlock(filtered.Warnings, block.ID)
 			filtered.Warnings = append(filtered.Warnings, RenderWarning{Code: code, BlockID: block.ID})
 			continue
 		}
@@ -193,6 +194,7 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 		finalPixels := countMask(mask)
 		if finalPixels == 0 {
 			filtered.SkippedBlocks = append(filtered.SkippedBlocks, SkippedRenderBlock{ID: block.ID, Reason: textMaskOverlapCode})
+			filtered.Warnings = warningsWithoutBlock(filtered.Warnings, block.ID)
 			filtered.Warnings = append(filtered.Warnings, RenderWarning{Code: textMaskOverlapCode, BlockID: block.ID})
 			continue
 		}
@@ -248,6 +250,16 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 		stats.CleanupPixelRatio = float64(stats.FinalCleanupPixels) / float64(stats.OCRRegionPixels)
 	}
 	return target, filtered, stats, nil
+}
+
+func warningsWithoutBlock(warnings []RenderWarning, blockID string) []RenderWarning {
+	result := warnings[:0]
+	for _, warning := range warnings {
+		if warning.BlockID != blockID {
+			result = append(result, warning)
+		}
+	}
+	return result
 }
 
 func newCleanupDiagnostics(bounds image.Rectangle) CleanupDiagnostics {

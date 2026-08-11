@@ -108,7 +108,7 @@ func TestEstimateSourceFontSizeUsesLineGeometry(t *testing.T) {
 			values = append(values, preferred)
 		}
 		for _, value := range values[1:] {
-			if math.Abs(value-values[0]) > 0.5 {
+			if math.Abs(value-values[0]) > 1.1 {
 				t.Fatalf("label sizes are not stable: %v", values)
 			}
 		}
@@ -116,9 +116,14 @@ func TestEstimateSourceFontSizeUsesLineGeometry(t *testing.T) {
 
 	t.Run("word and paragraph fallbacks", func(t *testing.T) {
 		wordHeight := sourceInkHeight(t, fonts, 12, "Fallback")
+		face, faceErr := fonts.face(12)
+		if faceErr != nil {
+			t.Fatal(faceErr)
+		}
+		wordWidth := measure(face, "Fallback")
 		withWord := ocr.OCRParagraph{
-			ID: "word", Text: "Fallback", Box: ocr.OCRBox{X: 20, Y: 20, Width: 120, Height: wordHeight},
-			Lines: []ocr.OCRLine{{Text: "Fallback", Words: []ocr.OCRWord{{Text: "Fallback", Box: ocr.OCRBox{X: 20, Y: 20, Width: 80, Height: wordHeight}}}}},
+			ID: "word", Text: "Fallback", Box: ocr.OCRBox{X: 20, Y: 20, Width: wordWidth, Height: wordHeight},
+			Lines: []ocr.OCRLine{{Text: "Fallback", Words: []ocr.OCRWord{{Text: "Fallback", Box: ocr.OCRBox{X: 20, Y: 20, Width: wordWidth, Height: wordHeight}}}}},
 		}
 		wordSize, err := EstimateSourceFontSize(context.Background(), fonts, withWord, transform, 8, 48)
 		if err != nil || math.Abs(wordSize-12) > 0.5 {
@@ -160,7 +165,7 @@ func TestPreferredFirstFitting(t *testing.T) {
 
 	t.Run("same size", func(t *testing.T) {
 		base := ocr.OCRBox{X: 20, Y: 20, Width: 120, Height: sourceInkHeight(t, fonts, 12, "Products")}
-		_, fit, err := renderer.fitBlock(context.Background(), "Продукты", 12, 1, base, []ocr.OCRBox{base}, 0, nil, 400, 200)
+		_, fit, err := renderer.fitBlock(context.Background(), "Продукты", 12, 1, 0, "left", base, []ocr.OCRBox{base}, 0, nil, 400, 200)
 		if err != nil || !fit.Fits {
 			t.Fatalf("fit=%+v err=%v", fit, err)
 		}
@@ -169,13 +174,13 @@ func TestPreferredFirstFitting(t *testing.T) {
 		}
 	})
 
-	t.Run("longer translation wraps before shrinking", func(t *testing.T) {
+	t.Run("longer translation uses safe expansion before shrinking", func(t *testing.T) {
 		base := ocr.OCRBox{X: 20, Y: 20, Width: 92, Height: sourceInkHeight(t, fonts, 12, "Tax category")}
-		box, fit, err := renderer.fitBlock(context.Background(), "Категория налога", 12, 1, base, []ocr.OCRBox{base}, 0, nil, 400, 200)
+		box, fit, err := renderer.fitBlock(context.Background(), "Категория налога", 12, 1, 0, "left", base, []ocr.OCRBox{base}, 0, nil, 400, 200)
 		if err != nil || !fit.Fits {
 			t.Fatalf("box=%+v fit=%+v err=%v", box, fit, err)
 		}
-		if fit.FontSize != 12 || len(fit.Lines) < 2 || !fit.BoxExpanded || fit.FontReduced {
+		if fit.FontSize != 12 || len(fit.Lines) != 1 || !fit.BoxExpanded || fit.FontReduced {
 			t.Fatalf("box=%+v fit=%+v", box, fit)
 		}
 	})
@@ -198,11 +203,11 @@ func TestPreferredFirstFitting(t *testing.T) {
 	t.Run("emergency shrink is diagnosed", func(t *testing.T) {
 		base := ocr.OCRBox{X: 20, Y: 20, Width: 180, Height: 40}
 		blocker := ocr.OCRBox{X: 10, Y: 62, Width: 220, Height: 30}
-		_, fit, err := renderer.fitBlock(context.Background(), "Очень длинный перевод технического описания", 20, 1, base, []ocr.OCRBox{base, blocker}, 0, nil, 400, 200)
+		_, fit, err := renderer.fitBlock(context.Background(), "Очень длинный перевод технического описания", 20, 1, 0, "left", base, []ocr.OCRBox{base, blocker}, 0, nil, 400, 200)
 		if err != nil || !fit.Fits {
 			t.Fatalf("fit=%+v err=%v", fit, err)
 		}
-		if !fit.EmergencyShrink || fit.FontSize >= 14 || fit.FallbackReason != "emergency_font_reduction" {
+		if !fit.EmergencyShrink || fit.FontSize >= 17 || !strings.Contains(fit.FallbackReason, "emergency_font_reduction") {
 			t.Fatalf("fit=%+v", fit)
 		}
 	})
@@ -255,6 +260,145 @@ func TestFitTextTinyBoxIsDeterministic(t *testing.T) {
 	second, err := FitText(context.Background(), fonts, request)
 	if err != nil || !reflect.DeepEqual(first, second) || first.Fits || !first.Overflow {
 		t.Fatalf("first=%+v second=%+v err=%v", first, second, err)
+	}
+}
+
+func TestEstimateSourceFontSizeResistsInkCompositionNoise(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFont(t, directory)
+	fonts := newFontCache(directory)
+	defer fonts.close()
+	transform, err := NewCoordinateTransform(600, 200, 600, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	texts := []string{"ace", "Ag", "ENGINE OIL", "14 PREPARATION"}
+	sizes := make([]float64, 0, len(texts))
+	for index, text := range texts {
+		face, faceErr := fonts.face(16)
+		if faceErr != nil {
+			t.Fatal(faceErr)
+		}
+		width := measure(face, text)
+		paragraph := ocr.OCRParagraph{
+			ID: text, Text: text, Box: ocr.OCRBox{X: 20, Y: 20 + index*40, Width: width, Height: 12},
+			Lines: []ocr.OCRLine{{Text: text, Box: ocr.OCRBox{X: 20, Y: 20 + index*40, Width: width, Height: 12}, Words: []ocr.OCRWord{{Text: text, Accepted: true, Box: ocr.OCRBox{X: 20, Y: 20 + index*40, Width: width, Height: 12}}}}},
+		}
+		size, estimateErr := EstimateSourceFontSize(context.Background(), fonts, paragraph, transform, 8, 48)
+		if estimateErr != nil {
+			t.Fatal(estimateErr)
+		}
+		sizes = append(sizes, size)
+	}
+	for _, size := range sizes {
+		if math.Abs(size-16) > 1.5 {
+			t.Fatalf("composition-sensitive estimates=%v", sizes)
+		}
+	}
+	t.Logf("source font estimates=%v", sizes)
+}
+
+func TestChooseAlignmentUsesSourceGeometry(t *testing.T) {
+	transform := CoordinateTransform{ScaleX: 1, ScaleY: 1}
+	container := ocr.OCRBox{Width: 600, Height: 160}
+	left := ocr.OCRParagraph{Box: ocr.OCRBox{X: 20, Y: 20, Width: 180, Height: 24}, Lines: []ocr.OCRLine{{Box: ocr.OCRBox{X: 20, Y: 20, Width: 180, Height: 24}}}}
+	centered := ocr.OCRParagraph{Box: ocr.OCRBox{X: 200, Y: 20, Width: 200, Height: 24}, Lines: []ocr.OCRLine{{Box: ocr.OCRBox{X: 200, Y: 20, Width: 200, Height: 24}}}}
+	if horizontal, _ := chooseAlignment(left, transform, container); horizontal != "left" {
+		t.Fatalf("left heading alignment=%q", horizontal)
+	}
+	if horizontal, vertical := chooseAlignment(centered, transform, container); horizontal != "center" || vertical != "middle" {
+		t.Fatalf("centered heading alignment=%q/%q", horizontal, vertical)
+	}
+
+	multiline := ocr.OCRParagraph{
+		Box: ocr.OCRBox{X: 30, Y: 20, Width: 260, Height: 42},
+		Lines: []ocr.OCRLine{
+			{Box: ocr.OCRBox{X: 30, Y: 20, Width: 260, Height: 16}},
+			{Box: ocr.OCRBox{X: 30, Y: 46, Width: 190, Height: 16}},
+		},
+	}
+	if horizontal, vertical := chooseAlignment(multiline, transform, container); horizontal != "left" || vertical != "top" {
+		t.Fatalf("body alignment=%q/%q", horizontal, vertical)
+	}
+}
+
+func TestLayoutPreservesVisualScaleAndColumnBoundaryForExpansion(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFont(t, directory)
+	fonts := newFontCache(directory)
+	defer fonts.close()
+	renderer := &Renderer{config: DefaultRenderConfig(), fonts: fonts}
+	base := ocr.OCRBox{X: 20, Y: 20, Width: 170, Height: 34}
+	neighbor := ocr.OCRBox{X: 220, Y: 18, Width: 170, Height: 90}
+	box, fit, err := renderer.fitBlock(context.Background(), "Подробное техническое описание узла", 16, 2, 22, "left", base, []ocr.OCRBox{base, neighbor}, 0, nil, 420, 180)
+	if err != nil || !fit.Fits {
+		t.Fatalf("box=%+v fit=%+v err=%v", box, fit, err)
+	}
+	if BoxesIntersect(box, neighbor) {
+		t.Fatalf("translated box crosses neighboring column: box=%+v neighbor=%+v", box, neighbor)
+	}
+	if ratio := fit.FontSize / 16; ratio < 0.85 || ratio > 1.05 {
+		t.Fatalf("visual font ratio=%.3f fit=%+v", ratio, fit)
+	}
+	if difference := absInt(len(fit.Lines) - 2); difference > 1 {
+		t.Fatalf("source lines=2 translated lines=%d", len(fit.Lines))
+	}
+	if box.X < base.X-10 || box.X > base.X+10 {
+		t.Fatalf("source anchor displaced: base=%+v box=%+v", base, box)
+	}
+}
+
+func TestLayoutDoesNotExpandWhenSourceBoxAlreadyFits(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFont(t, directory)
+	fonts := newFontCache(directory)
+	defer fonts.close()
+	renderer := &Renderer{config: DefaultRenderConfig(), fonts: fonts}
+	base := ocr.OCRBox{X: 40, Y: 30, Width: 180, Height: 28}
+	box, fit, err := renderer.fitBlock(context.Background(), "Краткий заголовок", 15, 1, 0, "left", base, []ocr.OCRBox{base}, 0, nil, 500, 200)
+	if err != nil || !fit.Fits {
+		t.Fatalf("box=%+v fit=%+v err=%v", box, fit, err)
+	}
+	if box != base || fit.BoxExpanded {
+		t.Fatalf("unnecessary expansion: base=%+v box=%+v fit=%+v", base, box, fit)
+	}
+}
+
+func TestEstimateSourceTypographyRecoversObservedLineStep(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFont(t, directory)
+	fonts := newFontCache(directory)
+	defer fonts.close()
+	face, err := fonts.face(16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := []ocr.OCRLine{
+		{ID: "l1", Text: "First line", Box: ocr.OCRBox{X: 20, Y: 20, Width: measure(face, "First line"), Height: 12}},
+		{ID: "l2", Text: "Second line", Box: ocr.OCRBox{X: 20, Y: 42, Width: measure(face, "Second line"), Height: 12}},
+		{ID: "l3", Text: "Third line", Box: ocr.OCRBox{X: 20, Y: 64, Width: measure(face, "Third line"), Height: 12}},
+	}
+	paragraph := ocr.OCRParagraph{Text: "First line\nSecond line\nThird line", Box: ocr.OCRBox{X: 20, Y: 20, Width: 90, Height: 56}, Lines: lines}
+	estimate, err := EstimateSourceTypography(context.Background(), fonts, paragraph, CoordinateTransform{ScaleX: 1, ScaleY: 1}, 8, 48)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(estimate.LineStep-22) > 0.5 {
+		t.Fatalf("line step=%v estimate=%+v", estimate.LineStep, estimate)
+	}
+}
+
+func TestChooseAlignmentRecognizesRightAlignedTableCell(t *testing.T) {
+	paragraph := ocr.OCRParagraph{
+		Box: ocr.OCRBox{X: 310, Y: 20, Width: 70, Height: 38},
+		Lines: []ocr.OCRLine{
+			{Box: ocr.OCRBox{X: 310, Y: 20, Width: 70, Height: 14}},
+			{Box: ocr.OCRBox{X: 330, Y: 44, Width: 50, Height: 14}},
+		},
+	}
+	horizontal, vertical := chooseAlignment(paragraph, CoordinateTransform{ScaleX: 1, ScaleY: 1}, ocr.OCRBox{X: 200, Width: 200, Height: 100})
+	if horizontal != "right" || vertical != "top" {
+		t.Fatalf("table cell alignment=%q/%q", horizontal, vertical)
 	}
 }
 

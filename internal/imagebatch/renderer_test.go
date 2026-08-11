@@ -125,6 +125,46 @@ func TestRendererRejectsUnsupportedScriptsBeforeCleanup(t *testing.T) {
 	}
 }
 
+func TestPrepareIncludesTypographyAndLayoutDiagnostics(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFont(t, directory)
+	renderer, err := NewRenderer(directory, DefaultRenderConfig(), &fakeInpaintEngine{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer renderer.Close()
+	source := solidNRGBA(420, 180, color.NRGBA{R: 245, G: 245, B: 245, A: 255})
+	wordOne := ocr.OCRWord{ID: "p1-b1-par1-l1-w1", Text: "Engine", Accepted: true, Box: ocr.OCRBox{X: 20, Y: 20, Width: 54, Height: 14}}
+	wordTwo := ocr.OCRWord{ID: "p1-b1-par1-l1-w2", Text: "oil", Accepted: true, Box: ocr.OCRBox{X: 82, Y: 20, Width: 18, Height: 14}}
+	wordThree := ocr.OCRWord{ID: "p1-b1-par1-l2-w1", Text: "level", Accepted: true, Box: ocr.OCRBox{X: 20, Y: 44, Width: 38, Height: 14}}
+	for _, word := range []ocr.OCRWord{wordOne, wordTwo, wordThree} {
+		drawSyntheticWord(source, word.Box)
+	}
+	paragraph := ocr.OCRParagraph{
+		ID: "p1-b1-par1", Text: "Engine oil\nlevel", Box: ocr.OCRBox{X: 20, Y: 20, Width: 80, Height: 38},
+		Lines: []ocr.OCRLine{
+			{ID: "p1-b1-par1-l1", Text: "Engine oil", Box: ocr.OCRBox{X: 20, Y: 20, Width: 80, Height: 14}, Words: []ocr.OCRWord{wordOne, wordTwo}},
+			{ID: "p1-b1-par1-l2", Text: "level", Box: ocr.OCRBox{X: 20, Y: 44, Width: 38, Height: 14}, Words: []ocr.OCRWord{wordThree}},
+		},
+	}
+	page := ocr.OCRPage{Image: ocr.OCRImageInfo{Width: 420, Height: 180}, Paragraphs: []ocr.OCRParagraph{paragraph}}
+	translation := TranslationDocument{Blocks: []TranslatedBlock{{ID: paragraph.ID, TranslatedText: "Уровень моторного масла", Status: "translated"}}}
+	document, err := renderer.Prepare(context.Background(), source, page, translation)
+	if err != nil || len(document.Blocks) != 1 {
+		t.Fatalf("document=%+v err=%v", document, err)
+	}
+	block := document.Blocks[0]
+	if len(block.SourceWords) != 3 || len(block.SourceLines) != 2 || len(block.SourceLineHeights) != 2 || len(block.SourceLineWidths) != 2 || len(block.SourceLineGaps) != 1 {
+		t.Fatalf("source diagnostics=%+v", block)
+	}
+	if len(block.FontEstimate.IndividualEstimates) != 2 || block.FontEstimate.LineStep != 24 || block.TranslatedLineCount != len(block.Lines) {
+		t.Fatalf("font/layout diagnostics=%+v", block)
+	}
+	if block.FontReductionRatio <= 0 || block.ExpansionRatio < 0 || block.LayoutScore < 0 {
+		t.Fatalf("layout ratios=%+v", block)
+	}
+}
+
 func TestAtomicPNGAndJPEGEncodingPreservesDimensionsAndExistingFile(t *testing.T) {
 	directory := t.TempDir()
 	source := solidNRGBA(32, 24, color.NRGBA{R: 120, G: 130, B: 140, A: 200})

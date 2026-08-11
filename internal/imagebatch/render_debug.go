@@ -115,9 +115,17 @@ func writeLayoutDebug(ctx context.Context, rendered *image.NRGBA, document Rende
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		drawNRGBABox(canvas, block.SourceBox, color.NRGBA{R: 255, G: 48, B: 48, A: 255}, 1)
+		// Green=source words, magenta=source lines, red=source paragraph,
+		// blue=final translated text container.
+		for _, word := range block.SourceWords {
+			drawNRGBABox(canvas, word.Box, color.NRGBA{R: 32, G: 210, B: 96, A: 255}, 1)
+		}
+		for _, line := range block.SourceLines {
+			drawNRGBABox(canvas, line.Box, color.NRGBA{R: 220, G: 64, B: 220, A: 255}, 1)
+		}
+		drawNRGBABox(canvas, block.SourceBox, color.NRGBA{R: 255, G: 48, B: 48, A: 255}, 2)
 		drawNRGBABox(canvas, block.CleanupBox, color.NRGBA{R: 255, G: 190, B: 32, A: 255}, 2)
-		drawNRGBABox(canvas, block.TextBox, color.NRGBA{R: 32, G: 128, B: 255, A: 255}, 1)
+		drawNRGBABox(canvas, block.TextBox, color.NRGBA{R: 32, G: 128, B: 255, A: 255}, 2)
 		flags := ""
 		if block.BoxExpanded {
 			flags += "-E"
@@ -125,7 +133,7 @@ func writeLayoutDebug(ctx context.Context, rendered *image.NRGBA, document Rende
 		if block.FontReduced {
 			flags += "-R"
 		}
-		label := fmt.Sprintf("%s-P%.0f-F%.0f-L%d%s", block.ID, block.PreferredFontSize, block.FontSize, len(block.Lines), flags)
+		label := fmt.Sprintf("%s-P%.0f-F%.0f-L%d-S%.0f%s", block.ID, block.PreferredFontSize, block.FontSize, len(block.Lines), block.LayoutScore, flags)
 		drawNRGBALabel(canvas, block.TextBox.X+2, block.TextBox.Y+2, label, color.NRGBA{R: 32, G: 128, B: 255, A: 255})
 	}
 	return atomicEncodeGoImage(ctx, canvas, path, ".png", jpegQuality)

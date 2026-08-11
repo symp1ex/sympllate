@@ -167,6 +167,12 @@ func projectAcceptedWords(words []OCRWord, pass ocrPass, imageWidth, imageHeight
 		if !hasRenderableProjectedGeometry(word.Box) {
 			continue
 		}
+		// Tile PSM 11 block/paragraph identifiers are local to the tile and
+		// cannot safely replace the full-page Tesseract segmentation. Mark tile-
+		// only words for spatial fallback; matched words inherit the full-pass
+		// identifiers in mergeOCRWords.
+		word.ID = ""
+		word.Page, word.Block, word.Paragraph, word.Line, word.Word = 0, 0, 0, 0, 0
 		result = append(result, word)
 	}
 	return result
@@ -215,6 +221,10 @@ func mergeOCRWords(base, additions []OCRWord) []OCRWord {
 			continue
 		}
 		if candidate.Confidence > result[match].Confidence {
+			existing := result[match]
+			candidate.ID = existing.ID
+			candidate.Page, candidate.Block, candidate.Paragraph = existing.Page, existing.Block, existing.Paragraph
+			candidate.Line, candidate.Word = existing.Line, existing.Word
 			result[match] = candidate
 		}
 	}
@@ -239,38 +249,29 @@ func normalizedOCRText(value string) string {
 }
 
 func rebuildOCRPage(words []OCRWord, image OCRImageInfo) OCRPage {
-	accepted := make([]OCRWord, 0, len(words))
+	structured := make([]OCRWord, 0, len(words))
+	fallback := make([]OCRWord, 0)
 	rejected := make([]OCRWord, 0)
 	for _, word := range words {
 		if word.Accepted {
-			accepted = append(accepted, word)
+			if hasOCRStructure(word) {
+				structured = append(structured, word)
+			} else {
+				fallback = append(fallback, word)
+			}
 		} else {
 			rejected = append(rejected, word)
 		}
 	}
-	lines := spatialLines(accepted)
-	paragraphGroups := spatialParagraphs(lines)
-	page := OCRPage{SchemaVersion: 1, Image: image, Words: make([]OCRWord, 0, len(words)), Paragraphs: make([]OCRParagraph, 0, len(paragraphGroups))}
-	for paragraphIndex, paragraphLines := range paragraphGroups {
-		block := paragraphIndex + 1
-		paragraph := OCRParagraph{ID: fmt.Sprintf("p1-b%d-par1", block), Page: 1, Block: block, Paragraph: 1}
-		for lineIndex, lineWords := range paragraphLines {
-			lineNumber := lineIndex + 1
-			line := OCRLine{ID: fmt.Sprintf("p1-b%d-par1-l%d", block, lineNumber), Page: 1, Block: block, Paragraph: 1, Line: lineNumber}
-			for wordIndex := range lineWords {
-				word := lineWords[wordIndex]
-				word.Page, word.Block, word.Paragraph, word.Line, word.Word = 1, block, 1, lineNumber, wordIndex+1
-				word.ID = fmt.Sprintf("p1-b%d-par1-l%d-w%d", block, lineNumber, wordIndex+1)
-				line.Words = append(line.Words, word)
-				page.Words = append(page.Words, word)
-			}
-			line.Text, line.Confidence, line.Box = joinWords(line.Words), averageConfidence(line.Words), unionWordBoxes(line.Words)
-			paragraph.Lines = append(paragraph.Lines, line)
+	paragraphs := groupWords(structured)
+	fallback = attachFallbackWords(paragraphs, fallback)
+	paragraphs = append(paragraphs, buildSpatialParagraphs(fallback, nextOCRBlock(paragraphs))...)
+	page := OCRPage{SchemaVersion: 1, Image: image, Words: make([]OCRWord, 0, len(words)), Paragraphs: paragraphs}
+	for paragraphIndex := range page.Paragraphs {
+		normalizeOCRParagraph(&page.Paragraphs[paragraphIndex])
+		for _, line := range page.Paragraphs[paragraphIndex].Lines {
+			page.Words = append(page.Words, line.Words...)
 		}
-		paragraph.Text = joinLines(paragraph.Lines)
-		paragraph.Confidence = averageLineConfidence(paragraph.Lines)
-		paragraph.Box = unionLineBoxes(paragraph.Lines)
-		page.Paragraphs = append(page.Paragraphs, paragraph)
 	}
 	sort.SliceStable(rejected, func(i, j int) bool { return lessSpatialWord(rejected[i], rejected[j]) })
 	for index := range rejected {
@@ -281,6 +282,78 @@ func rebuildOCRPage(words []OCRWord, image OCRImageInfo) OCRPage {
 	return page
 }
 
+func hasOCRStructure(word OCRWord) bool {
+	return word.Page > 0 && word.Block > 0 && word.Paragraph > 0 && word.Line > 0
+}
+
+func attachFallbackWords(paragraphs []OCRParagraph, words []OCRWord) []OCRWord {
+	unassigned := make([]OCRWord, 0)
+	for _, word := range words {
+		bestParagraph, bestLine, bestScore := -1, -1, math.MaxInt
+		for paragraphIndex := range paragraphs {
+			for lineIndex := range paragraphs[paragraphIndex].Lines {
+				box := paragraphs[paragraphIndex].Lines[lineIndex].Box
+				if !sameSpatialLine(box, word.Box) {
+					continue
+				}
+				score := abs((box.Y+box.Height/2)-(word.Box.Y+word.Box.Height/2)) + horizontalGap(box, word.Box)
+				if score < bestScore {
+					bestParagraph, bestLine, bestScore = paragraphIndex, lineIndex, score
+				}
+			}
+		}
+		if bestParagraph < 0 {
+			unassigned = append(unassigned, word)
+			continue
+		}
+		line := &paragraphs[bestParagraph].Lines[bestLine]
+		word.Page, word.Block, word.Paragraph, word.Line = line.Page, line.Block, line.Paragraph, line.Line
+		line.Words = append(line.Words, word)
+	}
+	return unassigned
+}
+
+func nextOCRBlock(paragraphs []OCRParagraph) int {
+	block := 1
+	for _, paragraph := range paragraphs {
+		block = maximum(block, paragraph.Block+1)
+	}
+	return block
+}
+
+func buildSpatialParagraphs(words []OCRWord, firstBlock int) []OCRParagraph {
+	groups := spatialParagraphs(spatialLines(words))
+	result := make([]OCRParagraph, 0, len(groups))
+	for paragraphIndex, lines := range groups {
+		block := firstBlock + paragraphIndex
+		paragraph := OCRParagraph{Page: 1, Block: block, Paragraph: 1}
+		for lineIndex, words := range lines {
+			paragraph.Lines = append(paragraph.Lines, OCRLine{Page: 1, Block: block, Paragraph: 1, Line: lineIndex + 1, Words: words})
+		}
+		result = append(result, paragraph)
+	}
+	return result
+}
+
+func normalizeOCRParagraph(paragraph *OCRParagraph) {
+	paragraph.ID = fmt.Sprintf("p%d-b%d-par%d", paragraph.Page, paragraph.Block, paragraph.Paragraph)
+	for lineIndex := range paragraph.Lines {
+		line := &paragraph.Lines[lineIndex]
+		sort.SliceStable(line.Words, func(i, j int) bool { return line.Words[i].Box.X < line.Words[j].Box.X })
+		line.ID = fmt.Sprintf("p%d-b%d-par%d-l%d", line.Page, line.Block, line.Paragraph, line.Line)
+		for wordIndex := range line.Words {
+			line.Words[wordIndex].Page, line.Words[wordIndex].Block = line.Page, line.Block
+			line.Words[wordIndex].Paragraph, line.Words[wordIndex].Line = line.Paragraph, line.Line
+			line.Words[wordIndex].Word = wordIndex + 1
+			line.Words[wordIndex].ID = fmt.Sprintf("%s-w%d", line.ID, wordIndex+1)
+		}
+		line.Text, line.Confidence, line.Box = joinWords(line.Words), averageConfidence(line.Words), unionWordBoxes(line.Words)
+	}
+	paragraph.Text = joinLines(paragraph.Lines)
+	paragraph.Confidence = averageLineConfidence(paragraph.Lines)
+	paragraph.Box = unionLineBoxes(paragraph.Lines)
+}
+
 func spatialLines(words []OCRWord) [][]OCRWord {
 	sort.SliceStable(words, func(i, j int) bool { return lessSpatialWord(words[i], words[j]) })
 	lines := make([][]OCRWord, 0)
@@ -288,7 +361,7 @@ func spatialLines(words []OCRWord) [][]OCRWord {
 		best := -1
 		for index := len(lines) - 1; index >= 0; index-- {
 			box := unionWordBoxes(lines[index])
-			if verticalAffinity(box, word.Box) {
+			if sameSpatialLine(box, word.Box) {
 				best = index
 				break
 			}
@@ -320,25 +393,59 @@ func spatialLines(words []OCRWord) [][]OCRWord {
 	return lines
 }
 
+func sameSpatialLine(left, right OCRBox) bool {
+	if !verticalAffinity(left, right) {
+		return false
+	}
+	return horizontalGap(left, right) <= maximum(left.Height, right.Height)*6
+}
+
+func horizontalGap(left, right OCRBox) int {
+	if left.X+left.Width < right.X {
+		return right.X - (left.X + left.Width)
+	}
+	if right.X+right.Width < left.X {
+		return left.X - (right.X + right.Width)
+	}
+	return 0
+}
+
 func spatialParagraphs(lines [][]OCRWord) [][][]OCRWord {
 	result := make([][][]OCRWord, 0)
 	for _, line := range lines {
-		if len(result) == 0 {
+		best, bestScore := -1, math.MaxFloat64
+		for index := range result {
+			previous := result[index][len(result[index])-1]
+			if score, ok := spatialParagraphAffinity(unionWordBoxes(previous), unionWordBoxes(line)); ok && score < bestScore {
+				best, bestScore = index, score
+			}
+		}
+		if best < 0 {
 			result = append(result, [][]OCRWord{line})
 			continue
 		}
-		previous := result[len(result)-1][len(result[len(result)-1])-1]
-		previousBox, currentBox := unionWordBoxes(previous), unionWordBoxes(line)
-		gap := currentBox.Y - (previousBox.Y + previousBox.Height)
-		horizontalOverlap := overlapLength(previousBox.X, previousBox.X+previousBox.Width, currentBox.X, currentBox.X+currentBox.Width)
-		aligned := horizontalOverlap > 0 || abs(previousBox.X-currentBox.X) <= maximum(previousBox.Height, currentBox.Height)*2
-		if aligned && gap <= maximum(previousBox.Height, currentBox.Height)*2 {
-			result[len(result)-1] = append(result[len(result)-1], line)
-		} else {
-			result = append(result, [][]OCRWord{line})
-		}
+		result[best] = append(result[best], line)
 	}
 	return result
+}
+
+func spatialParagraphAffinity(previous, current OCRBox) (float64, bool) {
+	height := maximum(previous.Height, current.Height)
+	minimumHeight := minimum(previous.Height, current.Height)
+	if height <= 0 || minimumHeight <= 0 || float64(height)/float64(minimumHeight) > 1.45 {
+		return 0, false
+	}
+	gap := current.Y - (previous.Y + previous.Height)
+	if gap < -minimumHeight/2 || float64(gap)/float64(height) > 0.85 {
+		return 0, false
+	}
+	overlap := overlapLength(previous.X, previous.X+previous.Width, current.X, current.X+current.Width)
+	overlapRatio := float64(overlap) / float64(maximum(1, minimum(previous.Width, current.Width)))
+	leftDifference := abs(previous.X - current.X)
+	if overlapRatio < 0.25 && leftDifference > height {
+		return 0, false
+	}
+	return float64(maximum(0, gap))/float64(height) + float64(leftDifference)/float64(height*4) - overlapRatio*0.25, true
 }
 
 func verticalAffinity(left, right OCRBox) bool {
