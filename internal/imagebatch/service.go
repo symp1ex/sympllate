@@ -158,7 +158,7 @@ func (s *Service) Start(request StartImageBatchRequest) (string, error) {
 	s.wg.Add(1)
 	s.mu.Unlock()
 	releaseBusy = false
-	s.logf("image batch started: id=%s kind=%s files=%d source=%s target=%s output=%s debug=%t", id, selection.Kind, len(selection.Files), request.Source, request.Target, filepath.Base(layout.Root), request.Debug)
+	s.logf("image batch started: id=%s kind=%s files=%d source=%s target=%s output=%s debug=%t fill_word_boxes=%t", id, selection.Kind, len(selection.Files), request.Source, request.Target, filepath.Base(layout.Root), request.Debug, request.FillWordBoxes)
 	go func() { defer s.wg.Done(); s.run(jobContext, job) }()
 	return id, nil
 }
@@ -418,6 +418,7 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 
 	s.updateStage(job, "clean_background")
 	cleanupStarted := s.now()
+	renderDocument.FillWordBoxes = job.request.FillWordBoxes
 	cleaned, renderDocument, cleanupStats, err := s.renderer.Clean(ctx, prepared.Image, renderDocument)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {

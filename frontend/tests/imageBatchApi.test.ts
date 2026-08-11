@@ -26,16 +26,18 @@ test('batch polling does not update after cancellation', async () => {
 
 test('batch selection, start, and cancel use their dedicated bindings', async () => {
   const calls: string[] = []
+  let startRequest: unknown
   Object.defineProperty(globalThis, 'window', { configurable: true, value: {
     SelectBatchImageFiles: async () => { calls.push('files'); return { id: 'files-1', kind: 'files', displayName: 'images', fileCount: 2 } },
     SelectBatchImageDirectory: async () => { calls.push('directory'); return { id: 'dir-1', kind: 'directory', displayName: 'pages', fileCount: 10 } },
-    StartImageBatch: async () => { calls.push('start'); return 'batch-1' },
+    StartImageBatch: async (request: unknown) => { startRequest = request; calls.push('start'); return 'batch-1' },
     CancelImageBatch: async () => { calls.push('cancel') },
     OpenImageBatchWindow: async () => { calls.push('open-window') },
   } })
   assert.equal((await selectBatchImageFiles()).fileCount, 2)
   assert.equal((await selectBatchImageDirectory()).fileCount, 10)
-  assert.equal(await startImageBatch({ selectionId: 'dir-1', source: 'auto', target: 'ru', debug: false }), 'batch-1')
+  assert.equal(await startImageBatch({ selectionId: 'dir-1', source: 'auto', target: 'ru', debug: false, fillWordBoxes: true }), 'batch-1')
+  assert.deepEqual(startRequest, { selectionId: 'dir-1', source: 'auto', target: 'ru', debug: false, fillWordBoxes: true })
   await cancelImageBatch('batch-1')
   await openImageBatchWindow()
   assert.deepEqual(calls, ['files', 'directory', 'start', 'cancel', 'open-window'])

@@ -282,7 +282,9 @@ textarea[readonly] { background: rgba(12, 18, 27, 0.56); }
 .batch-heading-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .batch-heading-row h2 { margin: 0; color: var(--text); font-size: 16px; font-weight: 600; }
 .batch-heading-row p { margin: 4px 0 0; color: var(--text-muted); font-size: 12px; }
+.batch-options { display: grid; justify-items: end; gap: 7px; }
 .batch-debug { display: flex; align-items: center; gap: 7px; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.batch-debug input { accent-color: var(--accent); }
 .batch-picker-row { display: flex; align-items: center; gap: 9px; margin-top: 13px; }
 .batch-selection { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 12px; }
 .batch-language-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) auto; align-items: end; gap: 12px; margin-top: 12px; }
@@ -421,5 +423,6 @@ textarea[readonly] { background: rgba(12, 18, 27, 0.56); }
   .settings-window { padding: 10px; }
   .settings-block { padding: 16px; }
   .batch-heading-row, .batch-picker-row { align-items: stretch; flex-direction: column; }
+  .batch-options { justify-items: start; }
   .batch-language-row { grid-template-columns: 1fr; }
 }

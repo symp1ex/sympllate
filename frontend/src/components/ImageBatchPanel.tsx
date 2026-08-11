@@ -17,6 +17,7 @@ export function ImageBatchPanel({ languages, defaultTarget, disabled, onBusyChan
   const [source, setSource] = useState('auto')
   const [target, setTarget] = useState(defaultTarget)
   const [debug, setDebug] = useState(false)
+  const [fillWordBoxes, setFillWordBoxes] = useState(false)
   const [selecting, setSelecting] = useState(false)
   const [jobID, setJobID] = useState('')
   const [status, setStatus] = useState<ImageBatchStatus | null>(null)
@@ -66,7 +67,7 @@ export function ImageBatchPanel({ languages, defaultTarget, disabled, onBusyChan
     if (!selection || disabled || selecting || jobID) return
     setError('')
     try {
-      const id = await startImageBatch({ selectionId: selection.id, source, target, debug })
+      const id = await startImageBatch({ selectionId: selection.id, source, target, debug, fillWordBoxes })
       if (!mounted.current) return
       setStatus({ id, state: 'pending', total: selection.fileCount, processed: 0, translated: 0, rendered: 0, partial: 0, warnings: 0, noText: 0, failed: 0 })
       setJobID(id)
@@ -89,7 +90,13 @@ export function ImageBatchPanel({ languages, defaultTarget, disabled, onBusyChan
     <section className="batch-panel" aria-labelledby="batch-heading">
       <div className="batch-heading-row">
         <div><h2 id="batch-heading">Batch image translation</h2><p>OCR and translate PNG/JPEG files without changing the originals.</p></div>
-        <label className="batch-debug"><input type="checkbox" checked={debug} onChange={(event) => setDebug(event.target.checked)} disabled={active || disabled} /> OCR debug images</label>
+        <div className="batch-options">
+          <label className="batch-debug"><input type="checkbox" checked={debug} onChange={(event) => setDebug(event.target.checked)} disabled={active || disabled} /> OCR debug images</label>
+          <label className="batch-debug" title="Erase each exact OCR word rectangle instead of using the safer glyph-shaped mask.">
+            <input type="checkbox" checked={fillWordBoxes} onChange={(event) => setFillWordBoxes(event.target.checked)} disabled={active || disabled} />
+            Fill entire OCR word boxes
+          </label>
+        </div>
       </div>
       <div className="batch-picker-row">
         <button type="button" onClick={() => void choose('files')} disabled={active || disabled || selecting}>Select images</button>

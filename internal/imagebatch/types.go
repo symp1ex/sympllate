@@ -23,10 +23,11 @@ type BatchSelection struct {
 }
 
 type StartImageBatchRequest struct {
-	SelectionID string `json:"selectionId"`
-	Source      string `json:"source"`
-	Target      string `json:"target"`
-	Debug       bool   `json:"debug"`
+	SelectionID   string `json:"selectionId"`
+	Source        string `json:"source"`
+	Target        string `json:"target"`
+	Debug         bool   `json:"debug"`
+	FillWordBoxes bool   `json:"fillWordBoxes"`
 }
 
 type ImageBatchStatus struct {

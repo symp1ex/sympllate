@@ -80,6 +80,7 @@ type RenderDocument struct {
 	ImageWidth    int                  `json:"imageWidth"`
 	ImageHeight   int                  `json:"imageHeight"`
 	Transform     CoordinateTransform  `json:"coordinateTransform"`
+	FillWordBoxes bool                 `json:"fillWordBoxes,omitempty"`
 	Blocks        []RenderBlock        `json:"blocks"`
 	SkippedBlocks []SkippedRenderBlock `json:"skippedBlocks"`
 	Warnings      []RenderWarning      `json:"warnings"`

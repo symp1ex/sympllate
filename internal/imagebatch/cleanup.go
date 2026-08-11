@@ -35,6 +35,7 @@ const (
 // tolerances. Ratios are relative to OCR text height so the same defaults work
 // for small UI labels and high-resolution scans.
 type cleanupMaskConfig struct {
+	FillWordBoxes               bool    // Test mode: erase the exact OCR word rectangle after graphics protection.
 	HorizontalPaddingMin        int     // Minimum word search padding on the x axis.
 	HorizontalPaddingMax        int     // Maximum word search padding on the x axis.
 	VerticalPaddingMin          int     // Minimum word search padding on the y axis.
@@ -53,6 +54,7 @@ type cleanupMaskConfig struct {
 	SuspiciousCleanupAreaRatio  float64 // Diagnostic threshold; does not expand or approve cleanup.
 	MaxCleanupAreaRatio         float64 // Hard cap; exceeding it disables dilation or rejects cleanup.
 	WordMaxCleanupAreaRatio     float64 // Word-local cap measured against the padded search region.
+	FilledWordMaxAreaRatio      float64 // Word-local cap when the exact OCR rectangle is explicitly requested.
 	WordMaxHoleAreaHeightRatio  float64 // Largest enclosed word-mask hole relative to squared text height.
 }
 
@@ -63,7 +65,7 @@ var defaultCleanupMaskConfig = cleanupMaskConfig{
 	LineAspectRatio: 6, HorizontalLengthHeightRatio: 2.5, VerticalLengthHeightRatio: 0.8,
 	MaxComponentHeightRatio: 1.35, MaxComponentAreaHeightRatio: 2,
 	SuspiciousCleanupAreaRatio: 0.30, MaxCleanupAreaRatio: 0.45,
-	WordMaxCleanupAreaRatio: 0.72, WordMaxHoleAreaHeightRatio: 0.45,
+	WordMaxCleanupAreaRatio: 0.72, FilledWordMaxAreaRatio: 0.95, WordMaxHoleAreaHeightRatio: 0.45,
 }
 
 var (
@@ -181,6 +183,8 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 	filtered.Blocks = make([]RenderBlock, 0, len(document.Blocks))
 	filtered.SkippedBlocks = append([]SkippedRenderBlock(nil), document.SkippedBlocks...)
 	filtered.Warnings = append([]RenderWarning(nil), document.Warnings...)
+	maskConfig := defaultCleanupMaskConfig
+	maskConfig.FillWordBoxes = document.FillWordBoxes
 	for _, block := range document.Blocks {
 		if err := ctx.Err(); err != nil {
 			return nil, filtered, stats, err
@@ -188,7 +192,7 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 		if block.CleanupMode != CleanupSolid && block.CleanupMode != CleanupNeural {
 			return nil, filtered, stats, fmt.Errorf("block %s has unknown cleanup mode %q", block.ID, block.CleanupMode)
 		}
-		built, err := buildSafeTextMask(ctx, source, block, defaultCleanupMaskConfig)
+		built, err := buildSafeTextMask(ctx, source, block, maskConfig)
 		mergeMask(stats.Diagnostics.OCRRegions, built.regionMask)
 		mergeMask(stats.Diagnostics.CandidateMask, built.candidateMask)
 		mergeMask(stats.Diagnostics.StrictTextCoreMask, built.strictTextCoreMask)
@@ -448,6 +452,11 @@ func buildSafeTextMask(ctx context.Context, source *image.NRGBA, block RenderBlo
 		mergeMask(grown, strictCore)
 		mergeMask(grown, fringe)
 		mask := dilateMaskConstrained(grown, cleanupDilationRadius(region, config), allowed, localProtected)
+		if config.FillWordBoxes && region.Level == "word" {
+			wordBoxMask := image.NewGray(searchBounds)
+			fillMaskRectangle(wordBoxMask, ocrRectangle(box))
+			mergeMask(mask, subtractMask(wordBoxMask, localProtected))
+		}
 		if region.Level == "word" {
 			mask = fillEnclosedWordMaskHoles(mask, allowed, localProtected, textHeight, config.WordMaxHoleAreaHeightRatio)
 		}
@@ -457,6 +466,11 @@ func buildSafeTextMask(ctx context.Context, source *image.NRGBA, block RenderBlo
 		if float64(finalPixels)/float64(searchArea) > areaLimit {
 			result.conservativeFallback = true
 			mask = subtractMask(grown, localProtected)
+			if config.FillWordBoxes && region.Level == "word" {
+				wordBoxMask := image.NewGray(searchBounds)
+				fillMaskRectangle(wordBoxMask, ocrRectangle(box))
+				mergeMask(mask, subtractMask(wordBoxMask, localProtected))
+			}
 			if region.Level == "word" {
 				mask = fillEnclosedWordMaskHoles(mask, allowed, localProtected, textHeight, config.WordMaxHoleAreaHeightRatio)
 			}
@@ -548,6 +562,9 @@ func cleanupFringeDistance(region CleanupRegion, config cleanupMaskConfig) int {
 func cleanupAreaLimit(region CleanupRegion, config cleanupMaskConfig) float64 {
 	switch region.Level {
 	case "word":
+		if config.FillWordBoxes {
+			return config.FilledWordMaxAreaRatio
+		}
 		return config.WordMaxCleanupAreaRatio
 	case "line":
 		return min(config.WordMaxCleanupAreaRatio, config.MaxCleanupAreaRatio+0.05)
