@@ -1,6 +1,9 @@
 package ocr
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRebuildOCRPagePreservesTesseractParagraphs(t *testing.T) {
 	words := []OCRWord{
@@ -90,11 +93,77 @@ func TestPaddleColumnAwareReadingOrder(t *testing.T) {
 	}
 }
 
+func TestPaddleParagraphsDoNotAttachEmbeddedUILabelToProse(t *testing.T) {
+	words := []OCRWord{
+		testAdaptiveWord("How to Service Charge and Goverment Tax in Syrve", 113, 117, 902, 18, 0, 0, 0, 0),
+		testAdaptiveWord("To allocate sales tax to separate accounts...", 113, 154, 620, 16, 0, 0, 0, 0),
+		testAdaptiveWord("You must add a tax category...", 113, 181, 560, 16, 0, 0, 0, 0),
+		testAdaptiveWord("Enter the Tax name and the VAT rate and click save.", 113, 208, 690, 16, 0, 0, 0, 0),
+		testAdaptiveWord("The resulting tax amount is shown in the final receipt.", 113, 235, 690, 16, 0, 0, 0, 0),
+		testAdaptiveWord("Review each configured menu item before saving.", 113, 262, 620, 16, 0, 0, 0, 0),
+		testAdaptiveWord("Click Save to apply the tax category.", 113, 286, 540, 18, 0, 0, 0, 0),
+		testAdaptiveWord("Back Office", 113, 306, 102, 16, 0, 0, 0, 0),
+		testAdaptiveWord("Search by menu", 284, 319, 128, 15, 0, 0, 0, 0),
+		testAdaptiveWord("Cash Management", 113, 338, 168, 16, 0, 0, 0, 0),
+	}
+	paragraphs := buildPaddleParagraphs(words)
+	prose := findAdaptiveParagraphContaining(t, paragraphs, "How to Service")
+	if strings.Contains(prose.Text, "Search by menu") {
+		t.Fatalf("UI label attached to prose paragraph: %+v", prose)
+	}
+	if prose.Box.Y+prose.Box.Height >= 306 {
+		t.Fatalf("prose paragraph swallowed embedded UI area: %+v", prose.Box)
+	}
+	ui := findAdaptiveParagraphContaining(t, paragraphs, "Search by menu")
+	if adaptiveBoxIntersectionArea(prose.Box, ui.Box) > 0 {
+		t.Fatalf("prose and UI paragraphs overlap: prose=%+v ui=%+v", prose.Box, ui.Box)
+	}
+}
+
+func TestPaddleParagraphsKeepNormalRaggedBodyTogether(t *testing.T) {
+	words := []OCRWord{
+		testAdaptiveWord("Inspect the connector before powering the unit", 40, 40, 360, 14, 0, 0, 0, 0),
+		testAdaptiveWord("and verify that the indicator turns green", 40, 60, 310, 14, 0, 0, 0, 0),
+		testAdaptiveWord("after the startup sequence completes.", 40, 80, 260, 14, 0, 0, 0, 0),
+	}
+	paragraphs := buildPaddleParagraphs(words)
+	if len(paragraphs) != 1 || len(paragraphs[0].Lines) != 3 {
+		t.Fatalf("ragged body split unexpectedly: %+v", paragraphs)
+	}
+}
+
+func TestPaddleUIGridCellsRemainSeparateParagraphs(t *testing.T) {
+	words := []OCRWord{
+		testAdaptiveWord("Name", 20, 20, 55, 14, 0, 0, 0, 0), testAdaptiveWord("Value", 140, 20, 62, 14, 0, 0, 0, 0), testAdaptiveWord("Status", 260, 20, 70, 14, 0, 0, 0, 0),
+		testAdaptiveWord("Tax", 20, 42, 45, 14, 0, 0, 0, 0), testAdaptiveWord("20%", 140, 42, 42, 14, 0, 0, 0, 0), testAdaptiveWord("Active", 260, 42, 68, 14, 0, 0, 0, 0),
+	}
+	paragraphs := buildPaddleParagraphs(words)
+	if len(paragraphs) != 3 {
+		t.Fatalf("grid columns merged unexpectedly: %+v", paragraphs)
+	}
+	for _, paragraph := range paragraphs {
+		if len(paragraph.Lines) != 2 || paragraph.Box.Width > 80 {
+			t.Fatalf("grid paragraph shape=%+v", paragraph)
+		}
+	}
+}
+
 func testAdaptiveWord(text string, x, y, width, height, page, block, paragraph, line int) OCRWord {
 	return OCRWord{
 		Text: text, Confidence: 90, Box: OCRBox{X: x, Y: y, Width: width, Height: height}, Accepted: true,
 		Page: page, Block: block, Paragraph: paragraph, Line: line, Word: 1,
 	}
+}
+
+func findAdaptiveParagraphContaining(t *testing.T, paragraphs []OCRParagraph, text string) OCRParagraph {
+	t.Helper()
+	for _, paragraph := range paragraphs {
+		if strings.Contains(paragraph.Text, text) {
+			return paragraph
+		}
+	}
+	t.Fatalf("paragraph containing %q not found in %+v", text, paragraphs)
+	return OCRParagraph{}
 }
 
 func adaptiveParagraphLengths(paragraphs [][][]OCRWord) []int {
@@ -103,4 +172,10 @@ func adaptiveParagraphLengths(paragraphs [][][]OCRWord) []int {
 		result[index] = len(paragraphs[index])
 	}
 	return result
+}
+
+func adaptiveBoxIntersectionArea(left, right OCRBox) int {
+	width := overlapLength(left.X, left.X+left.Width, right.X, right.X+right.Width)
+	height := overlapLength(left.Y, left.Y+left.Height, right.Y, right.Y+right.Height)
+	return width * height
 }

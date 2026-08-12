@@ -117,29 +117,30 @@ type OCRStageDuration struct {
 // Invocation mode is deliberately logged rather than stored here: it must not
 // make otherwise identical single and batch OCRPage values differ.
 type OCRDiagnostics struct {
-	Profile                string                     `json:"profile,omitempty"`
-	RequestedSource        string                     `json:"requestedSource,omitempty"`
-	ResolvedOCRLanguage    string                     `json:"resolvedOCRLanguage,omitempty"`
-	DetectorModel          string                     `json:"detectorModel,omitempty"`
-	RecognizerModel        string                     `json:"recognizerModel,omitempty"`
-	RecognizerModels       []string                   `json:"recognizerModels,omitempty"`
-	Dictionary             string                     `json:"dictionary,omitempty"`
-	Dictionaries           []string                   `json:"dictionaries,omitempty"`
-	InputWidth             int                        `json:"inputWidth,omitempty"`
-	InputHeight            int                        `json:"inputHeight,omitempty"`
-	Preprocess             []OCRPreprocessDiagnostics `json:"preprocess,omitempty"`
-	Tiles                  int                        `json:"tiles"`
-	DetectorCandidates     int                        `json:"detectorCandidates"`
-	RecognizedCandidates   int                        `json:"recognizedCandidates"`
-	AcceptedTextCandidates int                        `json:"acceptedTextCandidates"`
-	CleanupSafeCandidates  int                        `json:"cleanupSafeCandidates"`
-	MergeDuplicates        int                        `json:"mergeDuplicates"`
-	FinalLines             int                        `json:"finalLines"`
-	FinalParagraphs        int                        `json:"finalParagraphs"`
-	AverageConfidence      float64                    `json:"averageConfidence"`
-	MinimumConfidence      float64                    `json:"minimumConfidence"`
-	Durations              []OCRStageDuration         `json:"durations,omitempty"`
-	Regions                []OCRRegionDiagnostic      `json:"regions,omitempty"`
+	Profile                string                        `json:"profile,omitempty"`
+	RequestedSource        string                        `json:"requestedSource,omitempty"`
+	ResolvedOCRLanguage    string                        `json:"resolvedOCRLanguage,omitempty"`
+	DetectorModel          string                        `json:"detectorModel,omitempty"`
+	RecognizerModel        string                        `json:"recognizerModel,omitempty"`
+	RecognizerModels       []string                      `json:"recognizerModels,omitempty"`
+	Dictionary             string                        `json:"dictionary,omitempty"`
+	Dictionaries           []string                      `json:"dictionaries,omitempty"`
+	InputWidth             int                           `json:"inputWidth,omitempty"`
+	InputHeight            int                           `json:"inputHeight,omitempty"`
+	Preprocess             []OCRPreprocessDiagnostics    `json:"preprocess,omitempty"`
+	Tiles                  int                           `json:"tiles"`
+	DetectorCandidates     int                           `json:"detectorCandidates"`
+	RecognizedCandidates   int                           `json:"recognizedCandidates"`
+	AcceptedTextCandidates int                           `json:"acceptedTextCandidates"`
+	CleanupSafeCandidates  int                           `json:"cleanupSafeCandidates"`
+	MergeDuplicates        int                           `json:"mergeDuplicates"`
+	FinalLines             int                           `json:"finalLines"`
+	FinalParagraphs        int                           `json:"finalParagraphs"`
+	AverageConfidence      float64                       `json:"averageConfidence"`
+	MinimumConfidence      float64                       `json:"minimumConfidence"`
+	Durations              []OCRStageDuration            `json:"durations,omitempty"`
+	Regions                []OCRRegionDiagnostic         `json:"regions,omitempty"`
+	ParagraphMerges        []OCRParagraphMergeDiagnostic `json:"paragraphMerges,omitempty"`
 }
 
 type OCRRegionDiagnostic struct {
@@ -153,6 +154,21 @@ type OCRRegionDiagnostic struct {
 	Recognized           bool       `json:"recognized"`
 	TextAccepted         bool       `json:"textAccepted"`
 	CleanupSafe          bool       `json:"cleanupSafe"`
+}
+
+type OCRParagraphMergeDiagnostic struct {
+	PreviousText      string  `json:"previousText,omitempty"`
+	CurrentText       string  `json:"currentText,omitempty"`
+	PreviousBox       OCRBox  `json:"previousBox"`
+	CurrentBox        OCRBox  `json:"currentBox"`
+	TentativeBox      OCRBox  `json:"tentativeBox,omitempty"`
+	ForeignText       string  `json:"foreignText,omitempty"`
+	ForeignBox        OCRBox  `json:"foreignBox,omitempty"`
+	Reason            string  `json:"reason"`
+	IntersectionRatio float64 `json:"intersectionRatio,omitempty"`
+	LeftEdgeDelta     int     `json:"leftEdgeDelta,omitempty"`
+	VerticalGap       int     `json:"verticalGap,omitempty"`
+	LineHeightRatio   float64 `json:"lineHeightRatio,omitempty"`
 }
 
 type tsvKey struct{ page, block, paragraph, line int }

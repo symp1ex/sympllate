@@ -284,7 +284,7 @@ func (e *PaddleEngine) recognizePage(ctx context.Context, validated translation.
 		diagnostics.MinimumConfidence = minimumConfidence * 100
 	}
 	groupStarted := time.Now()
-	page := OCRPage{SchemaVersion: 1, Image: OCRImageInfo{Width: validated.Width, Height: validated.Height, MediaType: validated.MediaType}, Words: words, Paragraphs: buildPaddleParagraphs(words)}
+	page := OCRPage{SchemaVersion: 1, Image: OCRImageInfo{Width: validated.Width, Height: validated.Height, MediaType: validated.MediaType}, Words: words, Paragraphs: buildPaddleParagraphsWithDiagnostics(words, &diagnostics.ParagraphMerges)}
 	for paragraphIndex := range page.Paragraphs {
 		for _, line := range page.Paragraphs[paragraphIndex].Lines {
 			for wordIndex := range line.Words {
@@ -450,8 +450,10 @@ func mergePaddleRegions(regions []paddleRegion) ([]paddleRegion, int) {
 
 func normalizedTextContains(left, right string) bool {
 	left, right = normalizedOCRText(left), normalizedOCRText(right)
-	if left == "" || right == "" { return false }
-	return strings.Contains(left,right) || strings.Contains(right,left)
+	if left == "" || right == "" {
+		return false
+	}
+	return strings.Contains(left, right) || strings.Contains(right, left)
 }
 
 func scriptCompatibility(text, name string) float64 {

@@ -186,6 +186,48 @@ func TestSmallOCRBoxOverlapDoesNotSkipRender(t *testing.T) {
 	}
 }
 
+func TestSeparatedEmbeddedUIAndProseDoNotSkipAsOverlappingOCRBox(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFont(t, directory)
+	renderer, err := NewRenderer(directory, DefaultRenderConfig(), &fakeInpaintEngine{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer renderer.Close()
+	source := solidNRGBA(1120, 760, color.NRGBA{R: 248, G: 248, B: 248, A: 255})
+	prose := ocr.OCRParagraph{
+		ID: "prose", Text: "How to Service Charge and Goverment Tax in Syrve\nTo allocate sales tax to separate accounts...", Confidence: 99,
+		Box: ocr.OCRBox{X: 113, Y: 117, Width: 902, Height: 53},
+		Lines: []ocr.OCRLine{
+			{Text: "How to Service Charge and Goverment Tax in Syrve", Box: ocr.OCRBox{X: 113, Y: 117, Width: 902, Height: 18}, Words: []ocr.OCRWord{{Text: "How to Service Charge and Goverment Tax in Syrve", Accepted: true, Box: ocr.OCRBox{X: 113, Y: 117, Width: 902, Height: 18}}}},
+			{Text: "To allocate sales tax to separate accounts...", Box: ocr.OCRBox{X: 113, Y: 154, Width: 620, Height: 16}, Words: []ocr.OCRWord{{Text: "To allocate sales tax to separate accounts...", Accepted: true, Box: ocr.OCRBox{X: 113, Y: 154, Width: 620, Height: 16}}}},
+		},
+	}
+	ui := ocr.OCRParagraph{
+		ID: "ui", Text: "Search by menu\nBack Office\nCash Management", Confidence: 98,
+		Box: ocr.OCRBox{X: 113, Y: 306, Width: 299, Height: 48},
+		Lines: []ocr.OCRLine{
+			{Text: "Back Office", Box: ocr.OCRBox{X: 113, Y: 306, Width: 102, Height: 16}, Words: []ocr.OCRWord{{Text: "Back Office", Accepted: true, Box: ocr.OCRBox{X: 113, Y: 306, Width: 102, Height: 16}}}},
+			{Text: "Search by menu", Box: ocr.OCRBox{X: 284, Y: 321, Width: 128, Height: 15}, Words: []ocr.OCRWord{{Text: "Search by menu", Accepted: true, Box: ocr.OCRBox{X: 284, Y: 321, Width: 128, Height: 15}}}},
+			{Text: "Cash Management", Box: ocr.OCRBox{X: 113, Y: 338, Width: 168, Height: 16}, Words: []ocr.OCRWord{{Text: "Cash Management", Accepted: true, Box: ocr.OCRBox{X: 113, Y: 338, Width: 168, Height: 16}}}},
+		},
+	}
+	page := ocr.OCRPage{Image: ocr.OCRImageInfo{Width: 1120, Height: 760}, Paragraphs: []ocr.OCRParagraph{prose, ui}}
+	translation := TranslationDocument{Blocks: []TranslatedBlock{
+		{ID: "prose", TranslatedText: "Configure tax and service charge", Status: "translated"},
+		{ID: "ui", TranslatedText: "Search by menu\nBack Office\nCash Management", Status: "translated"},
+	}}
+	document, err := renderer.Prepare(context.Background(), source, page, translation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, skipped := range document.SkippedBlocks {
+		if skipped.ID == "prose" && skipped.Reason == "overlapping_ocr_box" {
+			t.Fatalf("prose skipped by overlap guard after layout separation: %+v", document)
+		}
+	}
+}
+
 func TestCleanupUnsafeOCRTextRemainsDiagnosedWithoutDestructiveCleanup(t *testing.T) {
 	directory := t.TempDir()
 	writeTestFont(t, directory)
