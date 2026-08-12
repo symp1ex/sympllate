@@ -33,7 +33,7 @@ import (
 )
 
 var errRestartRequested = errors.New("application restart requested")
-var version = "0.3.9.3"
+var version = "0.3.9.4"
 
 func main() {
 	if err := run(); errors.Is(err, errRestartRequested) {
@@ -47,7 +47,7 @@ func main() {
 	}
 }
 
-func run() error {
+func run() (runErr error) {
 	configPath, err := config.ExecutablePath()
 	if err != nil {
 		return err
@@ -72,6 +72,21 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	var startupWindow *window.StartupWindow
+	if startupUIRequired(selectedProvider) {
+		startupWindow = window.NewStartupWindow(cancel)
+		if err := startupWindow.Start(); err != nil {
+			startupWindow.Close()
+			if startupWindow.WasClosedByUser() && errors.Is(ctx.Err(), context.Canceled) {
+				return nil
+			}
+			return fmt.Errorf("create startup window: %w", err)
+		}
+		defer func(startup *window.StartupWindow) {
+			startup.Close()
+			runErr = startupError(runErr, startup.WasClosedByUser())
+		}(startupWindow)
+	}
 	var translator app.Translator
 	var localRuntime *localmodel.Runtime
 	var instanceLock *localmodel.InstanceLock
@@ -93,7 +108,7 @@ func run() error {
 			MaxInputCharacters: cfg.Limits.MaxInputCharacters,
 		}, applicationLogger.Writer())
 		if err != nil {
-			return fmt.Errorf("start local provider: %w", err)
+			return startupError(fmt.Errorf("start local provider: %w", err), startupWindow != nil && startupWindow.WasClosedByUser())
 		}
 		translator = localRuntime.Client()
 		applicationLogger.Printf("translation provider selected: local model=%s", filepath.Base(localLayout.ModelPath))
@@ -110,6 +125,9 @@ func run() error {
 			_ = localRuntime.Close()
 		}
 	}()
+	if startupWasCancelled(startupWindow) {
+		return nil
+	}
 
 	showCombination, err := hotkeys.Parse(cfg.Hotkeys.ShowTranslation)
 	if err != nil {
@@ -138,10 +156,19 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure local LaMa inpainting: %w", err)
 	}
+	if startupWasCancelled(startupWindow) {
+		_ = inpaintEngine.Close()
+		return nil
+	}
 	batchService, err := imagebatch.NewService(ctx, filepath.Dir(configPath), ocr.New(filepath.Dir(configPath), ocr.DefaultTimeout), completer, cfg.Limits.MaxInputCharacters, renderConfig, inpaintEngine, applicationLogger)
 	if err != nil {
 		_ = inpaintEngine.Close()
 		return fmt.Errorf("configure image batch service: %w", err)
+	}
+	if startupWasCancelled(startupWindow) {
+		batchService.Close()
+		batchService.Wait()
+		return nil
 	}
 	clip := clipboard.New(applicationLogger)
 	popup := window.NewPopup(cfg, html, service, clip)
@@ -150,12 +177,25 @@ func run() error {
 		batchService.Wait()
 		return err
 	}
+	if startupWasCancelled(startupWindow) {
+		popup.Close()
+		batchService.Close()
+		batchService.Wait()
+		return nil
+	}
 	batchWindow := window.NewImageBatchWindow(cfg, html, service, batchService, clip, popup)
 	if err := batchWindow.Start(); err != nil {
 		batchService.Close()
 		batchService.Wait()
 		popup.Close()
 		return err
+	}
+	if startupWasCancelled(startupWindow) {
+		batchWindow.Close()
+		popup.Close()
+		batchService.Close()
+		batchService.Wait()
+		return nil
 	}
 	targets := window.NewOriginTargetManager()
 	controller := app.NewHotkeyController(ctx, cfg, service, detector, clip, targets, popup, applicationLogger)
@@ -168,6 +208,15 @@ func run() error {
 		batchService.Close()
 		batchService.Wait()
 		return err
+	}
+	if startupWasCancelled(startupWindow) {
+		hotkeyManager.Close()
+		controller.Close()
+		batchWindow.Close()
+		popup.Close()
+		batchService.Close()
+		batchService.Wait()
+		return nil
 	}
 	applicationLogger.Printf("global hotkeys registered: show=%s replace=%s", showCombination.Display, replaceCombination.Display)
 
@@ -208,10 +257,20 @@ func run() error {
 		})
 	}
 	defer cleanup()
+	if startupWasCancelled(startupWindow) {
+		return nil
+	}
 	if err := systemTray.Start(); err != nil {
 		return fmt.Errorf("start system tray: %w", err)
 	}
 	applicationLogger.Printf("system tray started")
+	if startupWindow != nil {
+		startupWindow.Close()
+		if startupWindow.WasClosedByUser() {
+			return nil
+		}
+		startupWindow = nil
+	}
 	restart := false
 	select {
 	case <-systemTray.Quit():
@@ -225,6 +284,21 @@ func run() error {
 		return errRestartRequested
 	}
 	return nil
+}
+
+func startupUIRequired(selectedProvider string) bool {
+	return selectedProvider == config.ProviderLocal
+}
+
+func startupWasCancelled(startupWindow *window.StartupWindow) bool {
+	return startupWindow != nil && startupWindow.WasClosedByUser()
+}
+
+func startupError(err error, userClosed bool) error {
+	if userClosed && errors.Is(err, context.Canceled) {
+		return nil
+	}
+	return err
 }
 
 func restartApplication() error {

@@ -79,6 +79,7 @@ type chromeOptions struct {
 	minHeight            int32
 	titleBarHeight       int32
 	titleBarButtonsWidth int32
+	resizable            bool
 	onClose              func()
 }
 
@@ -107,6 +108,25 @@ var (
 )
 
 func applyWindowChrome(w webview.WebView, minWidth, minHeight int, onClose func()) error {
+	return applyWindowChromeWithOptions(w, chromeOptions{
+		minWidth:             int32(minWidth),
+		minHeight:            int32(minHeight),
+		titleBarHeight:       52,
+		titleBarButtonsWidth: 158,
+		resizable:            true,
+		onClose:              onClose,
+	})
+}
+
+func applyFixedWindowChrome(w webview.WebView, titleBarHeight, titleBarButtonsWidth int, onClose func()) error {
+	return applyWindowChromeWithOptions(w, chromeOptions{
+		titleBarHeight:       int32(titleBarHeight),
+		titleBarButtonsWidth: int32(titleBarButtonsWidth),
+		onClose:              onClose,
+	})
+}
+
+func applyWindowChromeWithOptions(w webview.WebView, options chromeOptions) error {
 	chromeOnce.Do(func() {
 		chromeWindowProc = syscall.NewCallback(windowChromeProc)
 	})
@@ -116,13 +136,7 @@ func applyWindowChrome(w webview.WebView, minWidth, minHeight int, onClose func(
 		return errors.New("failed to apply custom frame: window HWND is empty")
 	}
 
-	chromeWindows.Store(hwnd, chromeOptions{
-		minWidth:             int32(minWidth),
-		minHeight:            int32(minHeight),
-		titleBarHeight:       52,
-		titleBarButtonsWidth: 158,
-		onClose:              onClose,
-	})
+	chromeWindows.Store(hwnd, options)
 
 	oldProc, _, _ := chromeGetWindowLongPtr.Call(hwnd, chromeGWLPWndProc)
 	if oldProc == 0 {
@@ -135,12 +149,14 @@ func applyWindowChrome(w webview.WebView, minWidth, minHeight int, onClose func(
 	style, _, _ := chromeGetWindowLongPtr.Call(hwnd, chromeGWLStyle)
 	style |= chromeWSCaption |
 		chromeWSSysMenu |
-		chromeWSMinimizeBox |
-		chromeWSMaximizeBox |
-		chromeWSThickFrame |
 		chromeWSVisible |
 		chromeWSClipSiblings |
 		chromeWSClipChildren
+	if options.resizable {
+		style |= chromeWSMinimizeBox | chromeWSMaximizeBox | chromeWSThickFrame
+	} else {
+		style &^= chromeWSMinimizeBox | chromeWSMaximizeBox | chromeWSThickFrame
+	}
 	style &^= chromeWSPopup
 	chromeSetWindowLongPtr.Call(hwnd, chromeGWLStyle, style)
 	chromeSetWindowPos.Call(
@@ -295,28 +311,30 @@ func hitTestWindowChrome(hwnd, lParam uintptr, options chromeOptions) uintptr {
 	y := int32(int16(uint16((lParam >> 16) & 0xffff)))
 	const resizeBorder int32 = 8
 
-	left := x >= rect.Left && x < rect.Left+resizeBorder
-	right := x <= rect.Right && x > rect.Right-resizeBorder
-	top := y >= rect.Top && y < rect.Top+resizeBorder
-	bottom := y <= rect.Bottom && y > rect.Bottom-resizeBorder
+	if options.resizable {
+		left := x >= rect.Left && x < rect.Left+resizeBorder
+		right := x <= rect.Right && x > rect.Right-resizeBorder
+		top := y >= rect.Top && y < rect.Top+resizeBorder
+		bottom := y <= rect.Bottom && y > rect.Bottom-resizeBorder
 
-	switch {
-	case top && left:
-		return chromeHTTopLeft
-	case top && right:
-		return chromeHTTopRight
-	case bottom && left:
-		return chromeHTBottomLeft
-	case bottom && right:
-		return chromeHTBottomRight
-	case left:
-		return chromeHTLeft
-	case right:
-		return chromeHTRight
-	case top:
-		return chromeHTTop
-	case bottom:
-		return chromeHTBottom
+		switch {
+		case top && left:
+			return chromeHTTopLeft
+		case top && right:
+			return chromeHTTopRight
+		case bottom && left:
+			return chromeHTBottomLeft
+		case bottom && right:
+			return chromeHTBottomRight
+		case left:
+			return chromeHTLeft
+		case right:
+			return chromeHTRight
+		case top:
+			return chromeHTTop
+		case bottom:
+			return chromeHTBottom
+		}
 	}
 
 	if options.titleBarHeight > 0 &&
