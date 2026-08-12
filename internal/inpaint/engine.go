@@ -10,14 +10,14 @@ import (
 	"sync"
 	"time"
 
+	sharedort "github.com/sympllate/translator/internal/onnxruntime"
 	ort "github.com/yalue/onnxruntime_go"
 )
 
 const (
-	runtimeVersion = "1.26.0"
-	modelSize      = 512
-	runtimeName    = "onnxruntime.dll"
-	modelName      = "inpainting_lama.onnx"
+	modelSize   = 512
+	runtimeName = sharedort.DLLName
+	modelName   = "inpainting_lama.onnx"
 )
 
 type Timings struct {
@@ -55,7 +55,7 @@ type runtimeEngine struct {
 	imageData    []float32
 	maskData     []float32
 	outputData   []float32
-	environment  bool
+	environment  *sharedort.Lease
 	closed       bool
 }
 
@@ -101,31 +101,22 @@ func NewEngine(executableDir string) (Engine, error) {
 	if executableDir == "" {
 		return nil, errors.New("inpaint executable directory is empty")
 	}
-	runtimePath := filepath.Join(executableDir, "bin", "inpaint", runtimeName)
 	modelPath := filepath.Join(executableDir, "bin", "inpaint", modelName)
-	if err := requireRegularFile(runtimePath); err != nil {
-		return nil, fmt.Errorf("ONNX Runtime DLL %q is unavailable: %w", runtimePath, err)
+	if err := requireRegularFile(sharedort.DLLPath(executableDir)); err != nil {
+		return nil, fmt.Errorf("ONNX Runtime DLL %q is unavailable: %w", sharedort.DLLPath(executableDir), err)
 	}
 	if err := requireRegularFile(modelPath); err != nil {
 		return nil, fmt.Errorf("LaMa model %q is unavailable: %w", modelPath, err)
 	}
-	if ort.IsInitialized() {
-		return nil, errors.New("ONNX Runtime environment is already initialized")
+	lease, err := sharedort.Acquire(executableDir)
+	if err != nil {
+		return nil, err
 	}
-
-	ort.SetSharedLibraryPath(runtimePath)
-	if err := ort.InitializeEnvironment(ort.WithLogLevelError()); err != nil {
-		return nil, fmt.Errorf("initialize ONNX Runtime from %q: %w", runtimePath, err)
-	}
-	engine := &runtimeEngine{gate: make(chan struct{}, 1), environment: true}
+	engine := &runtimeEngine{gate: make(chan struct{}, 1), environment: lease}
 	engine.gate <- struct{}{}
 	fail := func(err error) (Engine, error) {
 		return nil, errors.Join(err, engine.destroyResources())
 	}
-	if version := ort.GetVersion(); version != runtimeVersion {
-		return fail(fmt.Errorf("unsupported ONNX Runtime version %q from %q; expected %s", version, runtimePath, runtimeVersion))
-	}
-
 	imageTensor, err := ort.NewEmptyTensor[float32](ort.NewShape(1, 3, modelSize, modelSize))
 	if err != nil {
 		return fail(fmt.Errorf("create LaMa image tensor: %w", err))
@@ -245,9 +236,9 @@ func (e *runtimeEngine) destroyResources() error {
 	}
 	e.outputTensor, e.maskTensor, e.imageTensor = nil, nil, nil
 	e.outputData, e.maskData, e.imageData = nil, nil, nil
-	if e.environment {
-		errs = append(errs, ort.DestroyEnvironment())
-		e.environment = false
+	if e.environment != nil {
+		errs = append(errs, e.environment.Close())
+		e.environment = nil
 	}
 	return errors.Join(errs...)
 }

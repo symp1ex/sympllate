@@ -165,6 +165,48 @@ func TestPrepareIncludesTypographyAndLayoutDiagnostics(t *testing.T) {
 	}
 }
 
+func TestSmallOCRBoxOverlapDoesNotSkipRender(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFont(t, directory)
+	renderer, err := NewRenderer(directory, DefaultRenderConfig(), &fakeInpaintEngine{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer renderer.Close()
+	source := solidNRGBA(320, 120, color.NRGBA{R: 245, G: 245, B: 245, A: 255})
+	paragraphs := []ocr.OCRParagraph{
+		{ID: "one", Text: "First", Confidence: 91, Box: ocr.OCRBox{X: 10, Y: 20, Width: 100, Height: 30}, Lines: []ocr.OCRLine{{Text: "First"}}},
+		{ID: "two", Text: "Second", Confidence: 90, Box: ocr.OCRBox{X: 108, Y: 20, Width: 100, Height: 30}, Lines: []ocr.OCRLine{{Text: "Second"}}},
+	}
+	page := ocr.OCRPage{Image: ocr.OCRImageInfo{Width: 320, Height: 120}, Paragraphs: paragraphs}
+	translation := TranslationDocument{Blocks: []TranslatedBlock{{ID: "one", TranslatedText: "Первый", Status: "translated"}, {ID: "two", TranslatedText: "Второй", Status: "translated"}}}
+	document, err := renderer.Prepare(context.Background(), source, page, translation)
+	if err != nil || len(document.Blocks) != 2 || len(document.SkippedBlocks) != 0 {
+		t.Fatalf("document=%+v err=%v", document, err)
+	}
+}
+
+func TestCleanupUnsafeOCRTextRemainsDiagnosedWithoutDestructiveCleanup(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFont(t, directory)
+	renderer, err := NewRenderer(directory, DefaultRenderConfig(), &fakeInpaintEngine{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer renderer.Close()
+	source := solidNRGBA(240, 100, color.NRGBA{R: 245, G: 245, B: 245, A: 255})
+	word := ocr.OCRWord{Text: "uncertain", Accepted: true, TextAccepted: true, RecognizerConfidence: 42, CleanupSafe: false, Box: ocr.OCRBox{X: 20, Y: 20, Width: 80, Height: 20}}
+	paragraph := ocr.OCRParagraph{ID: "one", Text: "uncertain", Confidence: 42, Box: word.Box, Lines: []ocr.OCRLine{{Text: "uncertain", Box: word.Box, Words: []ocr.OCRWord{word}}}}
+	document, err := renderer.Prepare(context.Background(), source, ocr.OCRPage{Image: ocr.OCRImageInfo{Width: 240, Height: 100}, Paragraphs: []ocr.OCRParagraph{paragraph}}, TranslationDocument{Blocks: []TranslatedBlock{{ID: "one", TranslatedText: "неуверенный", Status: "translated"}}})
+	if err != nil || len(document.Blocks) != 1 || document.Blocks[0].CleanupSafe {
+		t.Fatalf("document=%+v err=%v", document, err)
+	}
+	_, filtered, _, err := renderer.Clean(context.Background(), source, document)
+	if err != nil || len(filtered.Blocks) != 0 || len(filtered.SkippedBlocks) != 1 || filtered.SkippedBlocks[0].Reason != "cleanup_unsafe" || filtered.SkippedBlocks[0].SourceText != "uncertain" || filtered.SkippedBlocks[0].TranslationText != "неуверенный" {
+		t.Fatalf("filtered=%+v err=%v", filtered, err)
+	}
+}
+
 func TestAtomicPNGAndJPEGEncodingPreservesDimensionsAndExistingFile(t *testing.T) {
 	directory := t.TempDir()
 	source := solidNRGBA(32, 24, color.NRGBA{R: 120, G: 130, B: 140, A: 200})

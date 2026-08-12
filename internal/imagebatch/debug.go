@@ -9,12 +9,17 @@ import (
 	"image/draw"
 	_ "image/jpeg"
 	"image/png"
+	"math"
 	"strings"
 
 	"github.com/sympllate/translator/internal/ocr"
 )
 
 func renderDebugImage(ctx context.Context, imageData []byte, page ocr.OCRPage, outputPath string) error {
+	return renderOCRDebugImage(ctx, imageData, page, outputPath, "grouped")
+}
+
+func renderOCRDebugImage(ctx context.Context, imageData []byte, page ocr.OCRPage, outputPath, view string) error {
 	source, _, err := image.Decode(bytes.NewReader(imageData))
 	if err != nil {
 		return fmt.Errorf("decode debug image: %w", err)
@@ -24,24 +29,82 @@ func renderDebugImage(ctx context.Context, imageData []byte, page ocr.OCRPage, o
 	paragraphColor := color.RGBA{R: 255, G: 32, B: 32, A: 255}
 	lineColor := color.RGBA{R: 32, G: 128, B: 255, A: 255}
 	wordColor := color.RGBA{R: 32, G: 200, B: 96, A: 255}
-	for _, paragraph := range page.Paragraphs {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		drawBox(canvas, paragraph.Box, paragraphColor, 2)
-		for _, line := range paragraph.Lines {
-			drawBox(canvas, line.Box, lineColor, 1)
-			for _, word := range line.Words {
-				drawBox(canvas, word.Box, wordColor, 1)
+	if view == "detector" || view == "recognized" {
+		for _, region := range page.Diagnostics.Regions {
+			if view == "recognized" && !region.Recognized {
+				continue
 			}
+			value := paragraphColor
+			if region.CleanupSafe {
+				value = wordColor
+			} else if region.TextAccepted {
+				value = lineColor
+			}
+			drawPolygon(canvas, region.Polygon, value, 2)
+			label := fmt.Sprintf("%.0f", region.DetectorConfidence)
+			if view == "recognized" {
+				label = fmt.Sprintf("%.0f", region.RecognizerConfidence)
+			}
+			drawLabel(canvas, region.Box.X+2, region.Box.Y+2, label, value)
 		}
-		drawLabel(canvas, paragraph.Box.X+2, paragraph.Box.Y+2, paragraph.ID, paragraphColor)
+	} else {
+		for _, paragraph := range page.Paragraphs {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			drawBox(canvas, paragraph.Box, paragraphColor, 2)
+			for _, line := range paragraph.Lines {
+				drawBox(canvas, line.Box, lineColor, 1)
+				for _, word := range line.Words {
+					drawBox(canvas, word.Box, wordColor, 1)
+				}
+			}
+			drawLabel(canvas, paragraph.Box.X+2, paragraph.Box.Y+2, paragraph.ID, paragraphColor)
+		}
 	}
 	var encoded bytes.Buffer
 	if err := png.Encode(&encoded, canvas); err != nil {
 		return fmt.Errorf("encode debug image: %w", err)
 	}
 	return atomicWriteBytes(outputPath, encoded.Bytes())
+}
+
+func drawPolygon(target *image.RGBA, polygon ocr.OCRPolygon, value color.RGBA, thickness int) {
+	for index, point := range polygon {
+		next := polygon[(index+1)%len(polygon)]
+		drawLine(target, int(math.Round(point.X)), int(math.Round(point.Y)), int(math.Round(next.X)), int(math.Round(next.Y)), value, thickness)
+	}
+}
+
+func drawLine(target *image.RGBA, x0, y0, x1, y1 int, value color.RGBA, thickness int) {
+	dx, dy := absInt(x1-x0), -absInt(y1-y0)
+	sx, sy := -1, -1
+	if x0 < x1 {
+		sx = 1
+	}
+	if y0 < y1 {
+		sy = 1
+	}
+	err := dx + dy
+	for {
+		for oy := 0; oy < thickness; oy++ {
+			for ox := 0; ox < thickness; ox++ {
+				setRGBA(target, x0+ox, y0+oy, value)
+			}
+		}
+		if x0 == x1 && y0 == y1 {
+			break
+		}
+		twice := 2 * err
+		if twice >= dy {
+			err += dy
+			x0 += sx
+		}
+		if twice <= dx {
+			err += dx
+			y0 += sy
+		}
+	}
 }
 
 func drawBox(target *image.RGBA, box ocr.OCRBox, value color.RGBA, thickness int) {

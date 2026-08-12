@@ -3,6 +3,7 @@
 package localmodel
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -11,7 +12,18 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/sympllate/translator/internal/translation"
 )
+
+type configuredImageExtractor struct{}
+
+func (configuredImageExtractor) Capability() translation.ImageCapability {
+	return translation.ImageCapability{Supported: true}
+}
+func (configuredImageExtractor) Recognize(context.Context, translation.ValidatedImage, string) (string, error) {
+	return "configured", nil
+}
 
 func TestWaitForReady(t *testing.T) {
 	t.Parallel()
@@ -82,5 +94,18 @@ func TestRuntimeCloseIsIdempotent(t *testing.T) {
 	}
 	if process.stops.Load() != 1 {
 		t.Fatalf("Stop calls = %d, want 1", process.stops.Load())
+	}
+}
+
+func TestRuntimeUsesConfiguredImageExtractor(t *testing.T) {
+	t.Parallel()
+	process := &fakeProcess{done: make(chan struct{})}
+	runtime := newRuntime(process)
+	runtime.client = NewClientWithImageTextExtractor("http://127.0.0.1", "key", 10, 0, 100, time.Second, configuredImageExtractor{})
+	if !runtime.client.ImageCapability().Supported {
+		t.Fatal("configured OCR extractor was not attached to local image client")
+	}
+	if err := runtime.Close(); err != nil {
+		t.Fatal(err)
 	}
 }

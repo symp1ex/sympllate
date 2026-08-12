@@ -192,6 +192,12 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 		if block.CleanupMode != CleanupSolid && block.CleanupMode != CleanupNeural {
 			return nil, filtered, stats, fmt.Errorf("block %s has unknown cleanup mode %q", block.ID, block.CleanupMode)
 		}
+		if block.CleanupSafetyKnown && !block.CleanupSafe {
+			filtered.SkippedBlocks = append(filtered.SkippedBlocks, SkippedRenderBlock{ID: block.ID, Stage: "cleanup", Reason: "cleanup_unsafe", SourceText: block.SourceText, SourcePolygon: block.SourcePolygon, SourceBox: block.SourceBox, TranslationText: block.TranslatedText})
+			filtered.Warnings = warningsWithoutBlock(filtered.Warnings, block.ID)
+			filtered.Warnings = append(filtered.Warnings, RenderWarning{Code: "cleanup_unsafe", BlockID: block.ID})
+			continue
+		}
 		built, err := buildSafeTextMask(ctx, source, block, maskConfig)
 		mergeMask(stats.Diagnostics.OCRRegions, built.regionMask)
 		mergeMask(stats.Diagnostics.CandidateMask, built.candidateMask)
@@ -206,7 +212,7 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 			if code == "" {
 				return nil, filtered, stats, fmt.Errorf("build text mask for block %s: %w", block.ID, err)
 			}
-			filtered.SkippedBlocks = append(filtered.SkippedBlocks, SkippedRenderBlock{ID: block.ID, Reason: code})
+			filtered.SkippedBlocks = append(filtered.SkippedBlocks, SkippedRenderBlock{ID: block.ID, Stage: "cleanup", Reason: code, SourceText: block.SourceText, SourcePolygon: block.SourcePolygon, SourceBox: block.SourceBox, TranslationText: block.TranslatedText})
 			filtered.Warnings = warningsWithoutBlock(filtered.Warnings, block.ID)
 			filtered.Warnings = append(filtered.Warnings, RenderWarning{Code: code, BlockID: block.ID})
 			continue
@@ -214,7 +220,7 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 		mask := subtractMask(built.mask, claimed)
 		finalPixels := countMask(mask)
 		if finalPixels == 0 {
-			filtered.SkippedBlocks = append(filtered.SkippedBlocks, SkippedRenderBlock{ID: block.ID, Reason: textMaskOverlapCode})
+			filtered.SkippedBlocks = append(filtered.SkippedBlocks, SkippedRenderBlock{ID: block.ID, Stage: "cleanup", Reason: textMaskOverlapCode, SourceText: block.SourceText, SourcePolygon: block.SourcePolygon, SourceBox: block.SourceBox, TranslationText: block.TranslatedText})
 			filtered.Warnings = warningsWithoutBlock(filtered.Warnings, block.ID)
 			filtered.Warnings = append(filtered.Warnings, RenderWarning{Code: textMaskOverlapCode, BlockID: block.ID})
 			continue

@@ -117,19 +117,30 @@ type JobSummary struct {
 }
 
 type JobFileReport struct {
-	SourceID        string               `json:"sourceId"`
-	SourceFile      string               `json:"sourceFile"`
-	OutputName      string               `json:"outputName,omitempty"`
-	Status          string               `json:"status"`
-	OCRPath         string               `json:"ocrPath,omitempty"`
-	TranslationPath string               `json:"translationPath,omitempty"`
-	OutputFile      string               `json:"outputFile,omitempty"`
-	DebugPath       string               `json:"debugPath,omitempty"`
-	TotalBlocks     int                  `json:"totalBlocks"`
-	RenderedBlocks  int                  `json:"renderedBlocks"`
-	SkippedBlocks   []SkippedRenderBlock `json:"skippedBlocks,omitempty"`
-	Warnings        []RenderWarning      `json:"warnings,omitempty"`
-	DurationsMillis map[string]int64     `json:"durationsMs,omitempty"`
-	DurationMillis  int64                `json:"durationMillis"`
-	ErrorStage      string               `json:"errorStage,omitempty"`
+	SourceID           string                    `json:"sourceId"`
+	SourceFile         string                    `json:"sourceFile"`
+	OutputName         string                    `json:"outputName,omitempty"`
+	Status             string                    `json:"status"`
+	OCRPath            string                    `json:"ocrPath,omitempty"`
+	TranslationPath    string                    `json:"translationPath,omitempty"`
+	OutputFile         string                    `json:"outputFile,omitempty"`
+	DebugPath          string                    `json:"debugPath,omitempty"`
+	TotalBlocks        int                       `json:"totalBlocks"`
+	RenderedBlocks     int                       `json:"renderedBlocks"`
+	SkippedBlocks      []SkippedRenderBlock      `json:"skippedBlocks,omitempty"`
+	Warnings           []RenderWarning           `json:"warnings,omitempty"`
+	DurationsMillis    map[string]int64          `json:"durationsMs,omitempty"`
+	DurationMillis     int64                     `json:"durationMillis"`
+	ErrorStage         string                    `json:"errorStage,omitempty"`
+	OCRDiagnostics     ocr.OCRDiagnostics        `json:"ocrDiagnostics"`
+	LayoutDiagnostics  LayoutDiagnostics         `json:"layoutDiagnostics"`
+	CleanupDiagnostics CleanupDiagnosticsSummary `json:"cleanupDiagnostics"`
+	DetectedRegions    int                       `json:"detectedRegions"`
+	RecognizedRegions  int                       `json:"recognizedRegions"`
+	AcceptedOCRRegions int                       `json:"acceptedOCRRegions"`
+	OCRParagraphs      int                       `json:"ocrParagraphs"`
+	OCRLines           int                       `json:"ocrLines"`
+	OCRWords           int                       `json:"ocrWords"`
+	TranslatedBlocks   int                       `json:"translatedBlocks"`
+	RenderableBlocks   int                       `json:"renderableBlocks"`
 }

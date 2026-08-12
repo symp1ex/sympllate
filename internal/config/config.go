@@ -16,6 +16,7 @@ import (
 
 type Config struct {
 	Provider               SelectSetting    `json:"provider"`
+	OCRBackend             SelectSetting    `json:"ocrBackend"`
 	LocalModel             LocalModelConfig `json:"localModel,omitempty"`
 	Ollama                 OllamaConfig     `json:"ollama"`
 	Hotkeys                HotkeyConfig     `json:"hotkeys"`
@@ -31,9 +32,11 @@ type Config struct {
 var Cfg = Default()
 
 const (
-	ProviderAuto   = "auto"
-	ProviderOllama = "ollama"
-	ProviderLocal  = "local"
+	ProviderAuto        = "auto"
+	ProviderOllama      = "ollama"
+	ProviderLocal       = "local"
+	OCRBackendTesseract = "tesseract"
+	OCRBackendPaddleOCR = "paddleocr"
 
 	LogLevelDebug   = "debug"
 	LogLevelInfo    = "info"
@@ -134,6 +137,7 @@ func Default() Config {
 	languages := supportedTargetLanguages()
 	return Config{
 		Provider:               newSelectSetting(ProviderAuto, []string{ProviderAuto, ProviderOllama, ProviderLocal}),
+		OCRBackend:             newSelectSetting(OCRBackendTesseract, []string{OCRBackendTesseract, OCRBackendPaddleOCR}),
 		LocalModel:             LocalModelConfig{ModelFile: "", StartupTimeoutSeconds: 180, FitTargetMiB: 1024},
 		Ollama:                 OllamaConfig{BaseURL: "http://127.0.0.1:11434", Model: "translategemma:latest", TimeoutSeconds: 120, KeepAlive: "10m", NumCtx: 2048, NumPredict: 1024, Temperature: 0},
 		Hotkeys:                HotkeyConfig{ShowTranslation: "Ctrl+Win+X", ReplaceSelection: "Ctrl+Win+R"},
@@ -278,6 +282,21 @@ func (c Config) Validate() error {
 		case ProviderAuto, ProviderOllama, ProviderLocal:
 		default:
 			return fmt.Errorf("provider.list contains unknown value %q", provider)
+		}
+	}
+	if err := validateSelectSetting("ocrBackend", c.OCRBackend); err != nil {
+		return err
+	}
+	switch c.OCRBackend.Active {
+	case OCRBackendTesseract, OCRBackendPaddleOCR:
+	default:
+		return errors.New("ocrBackend.active must be tesseract or paddleocr")
+	}
+	for _, backend := range c.OCRBackend.List {
+		switch backend {
+		case OCRBackendTesseract, OCRBackendPaddleOCR:
+		default:
+			return fmt.Errorf("ocrBackend.list contains unknown value %q", backend)
 		}
 	}
 	if c.Provider.Active == ProviderAuto || c.Provider.Active == ProviderLocal {

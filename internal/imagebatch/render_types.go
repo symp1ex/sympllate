@@ -75,15 +75,28 @@ func newRenderColor(value color.NRGBA) RenderColor {
 func (c RenderColor) NRGBA() color.NRGBA { return color.NRGBA{R: c.R, G: c.G, B: c.B, A: c.A} }
 
 type RenderDocument struct {
-	SchemaVersion int                  `json:"schemaVersion"`
-	SourceFile    string               `json:"sourceFile"`
-	ImageWidth    int                  `json:"imageWidth"`
-	ImageHeight   int                  `json:"imageHeight"`
-	Transform     CoordinateTransform  `json:"coordinateTransform"`
-	FillWordBoxes bool                 `json:"fillWordBoxes,omitempty"`
-	Blocks        []RenderBlock        `json:"blocks"`
-	SkippedBlocks []SkippedRenderBlock `json:"skippedBlocks"`
-	Warnings      []RenderWarning      `json:"warnings"`
+	SchemaVersion      int                       `json:"schemaVersion"`
+	SourceFile         string                    `json:"sourceFile"`
+	ImageWidth         int                       `json:"imageWidth"`
+	ImageHeight        int                       `json:"imageHeight"`
+	Transform          CoordinateTransform       `json:"coordinateTransform"`
+	FillWordBoxes      bool                      `json:"fillWordBoxes,omitempty"`
+	Blocks             []RenderBlock             `json:"blocks"`
+	SkippedBlocks      []SkippedRenderBlock      `json:"skippedBlocks"`
+	Warnings           []RenderWarning           `json:"warnings"`
+	LayoutDiagnostics  LayoutDiagnostics         `json:"layoutDiagnostics"`
+	CleanupDiagnostics CleanupDiagnosticsSummary `json:"cleanupDiagnostics"`
+}
+
+type LayoutDiagnostics struct {
+	TranslatedBlocks int `json:"translatedBlocks"`
+	RenderableBlocks int `json:"renderableBlocks"`
+	SkippedBlocks    int `json:"skippedBlocks"`
+}
+
+type CleanupDiagnosticsSummary struct {
+	SafeBlocks   int `json:"safeBlocks"`
+	UnsafeBlocks int `json:"unsafeBlocks"`
 }
 
 type RenderBlock struct {
@@ -91,6 +104,7 @@ type RenderBlock struct {
 	SourceText          string             `json:"sourceText"`
 	TranslatedText      string             `json:"translatedText"`
 	SourceBox           ocr.OCRBox         `json:"sourceBox"`
+	SourcePolygon       ocr.OCRPolygon     `json:"sourcePolygon,omitempty"`
 	CleanupBox          ocr.OCRBox         `json:"cleanupBox"`
 	CleanupRegions      []CleanupRegion    `json:"cleanupRegions,omitempty"`
 	TextBox             ocr.OCRBox         `json:"textBox"`
@@ -103,6 +117,8 @@ type RenderBlock struct {
 	Background          RenderColor        `json:"background"`
 	Foreground          RenderColor        `json:"foreground"`
 	CleanupMode         CleanupMode        `json:"cleanupMode"`
+	CleanupSafe         bool               `json:"cleanupSafe"`
+	CleanupSafetyKnown  bool               `json:"cleanupSafetyKnown,omitempty"`
 	FontSize            float64            `json:"fontSize"`
 	PreferredFontSize   float64            `json:"preferredFontSize"`
 	MinimumFontSize     float64            `json:"minimumFontSize"`
@@ -191,8 +207,14 @@ const (
 )
 
 type SkippedRenderBlock struct {
-	ID     string `json:"id"`
-	Reason string `json:"reason"`
+	ID              string         `json:"id"`
+	Stage           string         `json:"stage,omitempty"`
+	Reason          string         `json:"reason"`
+	SourceText      string         `json:"sourceText,omitempty"`
+	OCRConfidence   float64        `json:"ocrConfidence,omitempty"`
+	SourcePolygon   ocr.OCRPolygon `json:"sourcePolygon,omitempty"`
+	SourceBox       ocr.OCRBox     `json:"sourceBox,omitempty"`
+	TranslationText string         `json:"translationText,omitempty"`
 }
 
 type RenderWarning struct {

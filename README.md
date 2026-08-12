@@ -20,12 +20,16 @@ Sympllate/
 ├── translator.exe
 ├── config.json
 ├── bin/                     # если переданы оба inpaint-пути
-│   └── inpaint/
-│       ├── onnxruntime.dll
-│       └── inpainting_lama.onnx
+│   ├── inpaint/
+│   │   └── inpainting_lama.onnx
+│   └── OCR/
+│       ├── det.onnx + det.yml
+│       └── *_rec.onnx + *_rec.yml
 ├── models/
 │   └── <model>.gguf
 └── runtime/
+    ├── onnx/
+    │   └── onnxruntime.dll
     └── llama/
         ├── llama-server.exe
         └── DLL и остальные файлы одной версии llama.cpp
@@ -67,6 +71,8 @@ Portable из заранее подготовленных локальных р�
 Если `-InpaintModelPath` и `-OnnxRuntimePath` не указаны, каталог `bin\inpaint` не создаётся. Указать только один из этих параметров нельзя.
 
 ## Перевод изображений
+
+OCR backend выбирается через `ocrBackend.active`: `tesseract` (значение по умолчанию и для старых config) либо `paddleocr`. PaddleOCR выполняет локальный PP-OCRv5 detector и language-specific recognizer через общую CPU ONNX Runtime 1.26.0; Python, сервер и сетевые загрузки не используются. Модели располагаются в `bin\OCR`, а общая DLL для PaddleOCR и LaMa — в `runtime\onnx\onnxruntime.dll`.
 
 Одиночное изображение PNG или JPEG можно вставить через `Ctrl+V` либо передать Drag-and-Drop. Для local provider перед Tesseract создаётся временный OCR PNG через `bin\ffmpeg\ffmpeg.exe`: изображение масштабируется Lanczos с сохранением aspect ratio, переводится в luma/grayscale и получает умеренное повышение контраста и резкости без агрессивного threshold. После этого распознанный текст переводится той же TranslateGemma. Ollama image provider этот pipeline не использует: исходное изображение по-прежнему передаётся непосредственно vision-модели Ollama, без Tesseract.
 

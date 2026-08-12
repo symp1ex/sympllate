@@ -335,6 +335,65 @@ func buildSpatialParagraphs(words []OCRWord, firstBlock int) []OCRParagraph {
 	return result
 }
 
+// buildPaddleParagraphs treats each DB detector quad as a text line. Unlike a
+// Tesseract TSV word, a Paddle region must not be joined horizontally with an
+// adjacent table cell before paragraph reconstruction.
+func buildPaddleParagraphs(words []OCRWord) []OCRParagraph {
+	lines := make([][]OCRWord, 0, len(words))
+	for _, word := range words {
+		lines = append(lines, []OCRWord{word})
+	}
+	groups := spatialParagraphs(lines)
+	result := make([]OCRParagraph, 0, len(groups))
+	for paragraphIndex, group := range groups {
+		block := paragraphIndex + 1
+		paragraph := OCRParagraph{Page: 1, Block: block, Paragraph: 1}
+		for lineIndex, lineWords := range group {
+			paragraph.Lines = append(paragraph.Lines, OCRLine{Page: 1, Block: block, Paragraph: 1, Line: lineIndex + 1, Words: lineWords})
+		}
+		normalizeOCRParagraph(&paragraph)
+		result = append(result, paragraph)
+	}
+	return columnAwareParagraphOrder(result)
+}
+
+func columnAwareParagraphOrder(paragraphs []OCRParagraph) []OCRParagraph {
+	if len(paragraphs) < 2 {
+		return paragraphs
+	}
+	medianWidth := make([]int, 0, len(paragraphs))
+	pageRight := 0
+	for _, paragraph := range paragraphs {
+		medianWidth = append(medianWidth, paragraph.Box.Width)
+		pageRight = maximum(pageRight, paragraph.Box.X+paragraph.Box.Width)
+	}
+	sort.Ints(medianWidth)
+	typical := medianWidth[len(medianWidth)/2]
+	columnGap := maximum(typical, pageRight/8)
+	sort.SliceStable(paragraphs, func(i, j int) bool {
+		left, right := paragraphs[i].Box, paragraphs[j].Box
+		if abs(left.X-right.X) >= columnGap {
+			return left.X < right.X
+		}
+		if left.Y != right.Y {
+			return left.Y < right.Y
+		}
+		return left.X < right.X
+	})
+	for index := range paragraphs {
+		block := index + 1
+		paragraphs[index].Block = block
+		paragraphs[index].Paragraph = 1
+		for lineIndex := range paragraphs[index].Lines {
+			paragraphs[index].Lines[lineIndex].Block = block
+			paragraphs[index].Lines[lineIndex].Paragraph = 1
+			paragraphs[index].Lines[lineIndex].Line = lineIndex + 1
+		}
+		normalizeOCRParagraph(&paragraphs[index])
+	}
+	return paragraphs
+}
+
 func normalizeOCRParagraph(paragraph *OCRParagraph) {
 	paragraph.ID = fmt.Sprintf("p%d-b%d-par%d", paragraph.Page, paragraph.Block, paragraph.Paragraph)
 	for lineIndex := range paragraph.Lines {

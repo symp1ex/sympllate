@@ -24,6 +24,9 @@ func TestLoadValidConfig(t *testing.T) {
 	if cfg.Provider.Active != ProviderOllama {
 		t.Fatalf("legacy config provider = %q, want ollama", cfg.Provider.Active)
 	}
+	if cfg.OCRBackend.Active != OCRBackendTesseract {
+		t.Fatalf("legacy config OCR backend = %q, want tesseract", cfg.OCRBackend.Active)
+	}
 	if len(cfg.Provider.List) == 0 || len(cfg.DefaultLanguagePair.First.List) == 0 {
 		t.Fatal("legacy select values were not populated with default options")
 	}
@@ -42,6 +45,23 @@ func TestValidateProviders(t *testing.T) {
 	cfg.Provider.Active = "unexpected"
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "provider") {
 		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
+func TestOCRBackendDefaultsAndValidation(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	if cfg.OCRBackend.Active != OCRBackendTesseract || strings.Join(cfg.OCRBackend.List, ",") != "tesseract,paddleocr" {
+		t.Fatalf("OCR backend = %+v", cfg.OCRBackend)
+	}
+	cfg.OCRBackend.Active = "unknown"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "ocrBackend") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cfg = Default()
+	cfg.OCRBackend.List = append(cfg.OCRBackend.List, "unknown")
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "ocrBackend.list") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

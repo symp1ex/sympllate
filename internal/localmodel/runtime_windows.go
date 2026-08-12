@@ -17,8 +17,6 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
-
-	"github.com/sympllate/translator/internal/ocr"
 )
 
 type RuntimeConfig struct {
@@ -31,6 +29,7 @@ type RuntimeConfig struct {
 	Temperature        float64
 	FitTargetMiB       int
 	MaxInputCharacters int
+	ImageTextExtractor ImageTextExtractor
 }
 
 type managedProcess interface {
@@ -84,12 +83,8 @@ func startWith(ctx context.Context, cfg RuntimeConfig, output io.Writer, starter
 		}
 		return nil, fmt.Errorf("llama-server is not ready: %w", err)
 	}
-	var extractor ImageTextExtractor
-	if cfg.ExecutableDir != "" {
-		extractor = ocr.New(cfg.ExecutableDir, ocr.DefaultTimeout)
-	}
 	runtime.client = NewClientWithImageTextExtractor(
-		baseURL, apiKey, cfg.NumPredict, cfg.Temperature, cfg.MaxInputCharacters, cfg.RequestTimeout, extractor,
+		baseURL, apiKey, cfg.NumPredict, cfg.Temperature, cfg.MaxInputCharacters, cfg.RequestTimeout, cfg.ImageTextExtractor,
 	)
 	return runtime, nil
 }

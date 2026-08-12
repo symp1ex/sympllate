@@ -258,7 +258,7 @@ func TestCleanSkipsLowConfidenceMaskBeforeCleanupAndDraw(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(filtered.Blocks) != 1 || filtered.Blocks[0].ID != "good" || len(filtered.SkippedBlocks) != 1 || filtered.SkippedBlocks[0] != (SkippedRenderBlock{ID: "bad", Reason: textMaskLowConfidenceCode}) {
+	if len(filtered.Blocks) != 1 || filtered.Blocks[0].ID != "good" || len(filtered.SkippedBlocks) != 1 || filtered.SkippedBlocks[0].ID != "bad" || filtered.SkippedBlocks[0].Stage != "cleanup" || filtered.SkippedBlocks[0].Reason != textMaskLowConfidenceCode {
 		t.Fatalf("filtered=%+v", filtered)
 	}
 	if len(filtered.Warnings) != 1 || filtered.Warnings[0] != (RenderWarning{Code: textMaskLowConfidenceCode, BlockID: "bad"}) {

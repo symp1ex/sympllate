@@ -33,7 +33,7 @@ import (
 )
 
 var errRestartRequested = errors.New("application restart requested")
-var version = "0.3.9.4"
+var version = "0.3.10.0"
 
 func main() {
 	if err := run(); errors.Is(err, errRestartRequested) {
@@ -67,8 +67,19 @@ func run() (runErr error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	executableDir := filepath.Dir(configPath)
+	ocrEngine, err := ocr.NewBackend(executableDir, cfg.OCRBackend.Active, ocr.DefaultTimeout, applicationLogger)
+	if err != nil {
+		return fmt.Errorf("configure OCR backend %q: %w", cfg.OCRBackend.Active, err)
+	}
+	defer func() {
+		if err := ocrEngine.Close(); err != nil {
+			applicationLogger.Printf("OCR backend shutdown failed: %v", err)
+		}
+	}()
+	applicationLogger.Printf("OCR backend selected: %s", cfg.OCRBackend.Active)
 
-	selectedProvider, localLayout, err := localmodel.SelectProvider(cfg.Provider.Active, filepath.Dir(configPath), cfg.LocalModel)
+	selectedProvider, localLayout, err := localmodel.SelectProvider(cfg.Provider.Active, executableDir, cfg.LocalModel)
 	if err != nil {
 		return err
 	}
@@ -98,7 +109,7 @@ func run() (runErr error) {
 		defer instanceLock.Close()
 		localRuntime, err = localmodel.Start(ctx, localmodel.RuntimeConfig{
 			Layout:             localLayout,
-			ExecutableDir:      filepath.Dir(configPath),
+			ExecutableDir:      executableDir,
 			StartupTimeout:     time.Duration(cfg.LocalModel.StartupTimeoutSeconds) * time.Second,
 			RequestTimeout:     time.Duration(cfg.Ollama.TimeoutSeconds) * time.Second,
 			NumCtx:             cfg.Ollama.NumCtx,
@@ -106,6 +117,7 @@ func run() (runErr error) {
 			Temperature:        cfg.Ollama.Temperature,
 			FitTargetMiB:       cfg.LocalModel.FitTargetMiB,
 			MaxInputCharacters: cfg.Limits.MaxInputCharacters,
+			ImageTextExtractor: ocrEngine,
 		}, applicationLogger.Writer())
 		if err != nil {
 			return startupError(fmt.Errorf("start local provider: %w", err), startupWindow != nil && startupWindow.WasClosedByUser())
@@ -152,7 +164,7 @@ func run() (runErr error) {
 	renderConfig.MaximumFontSize = cfg.ImageBatch.MaximumFontSize
 	renderConfig.LineSpacing = cfg.ImageBatch.LineSpacing
 	renderConfig.JPEGQuality = cfg.ImageBatch.JPEGQuality
-	inpaintEngine, err := inpaint.NewEngine(filepath.Dir(configPath))
+	inpaintEngine, err := inpaint.NewEngine(executableDir)
 	if err != nil {
 		return fmt.Errorf("configure local LaMa inpainting: %w", err)
 	}
@@ -160,8 +172,9 @@ func run() (runErr error) {
 		_ = inpaintEngine.Close()
 		return nil
 	}
-	batchService, err := imagebatch.NewService(ctx, filepath.Dir(configPath), ocr.New(filepath.Dir(configPath), ocr.DefaultTimeout), completer, cfg.Limits.MaxInputCharacters, renderConfig, inpaintEngine, applicationLogger)
+	batchService, err := imagebatch.NewService(ctx, executableDir, ocrEngine, completer, cfg.Limits.MaxInputCharacters, renderConfig, inpaintEngine, applicationLogger)
 	if err != nil {
+		_ = ocrEngine.Close()
 		_ = inpaintEngine.Close()
 		return fmt.Errorf("configure image batch service: %w", err)
 	}
@@ -242,6 +255,9 @@ func run() (runErr error) {
 			controller.Close()
 			service.Wait()
 			batchService.Wait()
+			if err := ocrEngine.Close(); err != nil {
+				applicationLogger.Printf("OCR backend shutdown failed: %v", err)
+			}
 			popup.Close()
 			if localRuntime != nil {
 				if err := localRuntime.Close(); err != nil {

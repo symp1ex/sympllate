@@ -60,7 +60,7 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 	}
 	for _, block := range translation.Blocks {
 		if _, ok := paragraphIDs[block.ID]; !ok {
-			document.SkippedBlocks = append(document.SkippedBlocks, SkippedRenderBlock{ID: block.ID, Reason: "unknown_block_id"})
+			document.SkippedBlocks = append(document.SkippedBlocks, SkippedRenderBlock{ID: block.ID, Stage: "layout", Reason: "unknown_block_id", SourceText: block.SourceText, OCRConfidence: block.Confidence, SourceBox: block.Box, TranslationText: block.TranslatedText})
 			continue
 		}
 		translated[block.ID] = block
@@ -89,7 +89,7 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 			reason = "empty_translation"
 		case sourceBoxes[index].Width <= 0 || sourceBoxes[index].Height <= 0:
 			reason = "invalid_or_outside_box"
-		case intersectsOther(sourceBoxes[index], sourceBoxes, index):
+		case hasAmbiguousOverlap(sourceBoxes[index], sourceBoxes, index):
 			reason = "overlapping_ocr_box"
 		}
 		if reason == "" {
@@ -102,7 +102,7 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 			}
 		}
 		if reason != "" {
-			document.SkippedBlocks = append(document.SkippedBlocks, SkippedRenderBlock{ID: paragraph.ID, Reason: reason})
+			document.SkippedBlocks = append(document.SkippedBlocks, skippedRenderBlock("layout", reason, paragraph, block, sourceBoxes[index]))
 			continue
 		}
 		cleanup := ExpandBox(sourceBoxes[index], CleanupPadding{Horizontal: cleanupPaddingHorizontal, Vertical: cleanupPaddingVertical}, width, height)
@@ -129,7 +129,7 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 			return RenderDocument{}, fmt.Errorf("layout block %s: %w", paragraph.ID, err)
 		}
 		if !fit.Fits {
-			document.SkippedBlocks = append(document.SkippedBlocks, SkippedRenderBlock{ID: paragraph.ID, Reason: "text_does_not_fit_safely"})
+			document.SkippedBlocks = append(document.SkippedBlocks, skippedRenderBlock("layout", "text_does_not_fit_safely", paragraph, block, sourceBoxes[index]))
 			continue
 		}
 		warnings := make([]string, 0, 1)
@@ -147,15 +147,22 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 		}
 		lineLayouts := positionTextLines(fit, textBox, alignment, verticalAlignment, r.config.HorizontalTextPadding, r.config.VerticalTextPadding)
 		cleanupRegions := cleanupRegionsFor(paragraph, transform, width, height)
+		cleanupSafe := paragraphCleanupSafe(paragraph)
+		if !cleanupSafe {
+			cleanupRegions = nil
+			document.CleanupDiagnostics.UnsafeBlocks++
+		} else {
+			document.CleanupDiagnostics.SafeBlocks++
+		}
 		sourceWords, sourceLines, sourceHeights, sourceWidths, sourceGaps := sourceLayoutDiagnostics(paragraph, transform)
 		document.Blocks = append(document.Blocks, RenderBlock{
 			ID: paragraph.ID, SourceText: paragraph.Text, TranslatedText: block.TranslatedText,
-			SourceBox: sourceBoxes[index], CleanupBox: cleanup, CleanupRegions: cleanupRegions, TextBox: textBox,
+			SourceBox: sourceBoxes[index], SourcePolygon: paragraphPolygon(paragraph), CleanupBox: cleanup, CleanupRegions: cleanupRegions, TextBox: textBox,
 			SourceWords: sourceWords, SourceLines: sourceLines, SourceLineHeights: sourceHeights, SourceLineWidths: sourceWidths, SourceLineGaps: sourceGaps,
 			FontEstimate: fontEstimate,
 			Background:   newRenderColor(background.Color), Foreground: newRenderColor(foreground),
-			CleanupMode: cleanupModeFor(background),
-			FontSize:    fit.FontSize, PreferredFontSize: preferredFontSize,
+			CleanupMode: cleanupModeFor(background), CleanupSafe: cleanupSafe, CleanupSafetyKnown: true,
+			FontSize: fit.FontSize, PreferredFontSize: preferredFontSize,
 			MinimumFontSize: math.Max(r.config.MinimumFontSize, preferredFontSize*r.config.Layout.PreferredShrinkRatio),
 			MaximumFontSize: math.Min(r.config.MaximumFontSize, preferredFontSize*r.config.Layout.MaximumUpscaleRatio),
 			LineSpacing:     r.config.LineSpacing, Lines: fit.Lines, LineLayouts: lineLayouts,
@@ -169,14 +176,41 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 		})
 		activeTextBoxes = append(activeTextBoxes, textBox)
 	}
+	document.LayoutDiagnostics = LayoutDiagnostics{TranslatedBlocks: len(translation.Blocks), RenderableBlocks: len(document.Blocks), SkippedBlocks: len(document.SkippedBlocks)}
 	return document, nil
+}
+
+func skippedRenderBlock(stage, reason string, paragraph ocr.OCRParagraph, block TranslatedBlock, box ocr.OCRBox) SkippedRenderBlock {
+	return SkippedRenderBlock{ID: paragraph.ID, Stage: stage, Reason: reason, SourceText: paragraph.Text, OCRConfidence: paragraph.Confidence, SourcePolygon: paragraphPolygon(paragraph), SourceBox: box, TranslationText: block.TranslatedText}
+}
+
+func paragraphPolygon(paragraph ocr.OCRParagraph) ocr.OCRPolygon {
+	for _, line := range paragraph.Lines {
+		for _, word := range line.Words {
+			if word.Polygon != (ocr.OCRPolygon{}) {
+				return word.Polygon
+			}
+		}
+	}
+	return ocr.OCRPolygon{}
+}
+
+func paragraphCleanupSafe(paragraph ocr.OCRParagraph) bool {
+	for _, line := range paragraph.Lines {
+		for _, word := range line.Words {
+			if !word.CleanupSafe && word.RecognizerConfidence > 0 {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func cleanupRegionsFor(paragraph ocr.OCRParagraph, transform CoordinateTransform, width, height int) []CleanupRegion {
 	regions := make([]CleanupRegion, 0)
 	for _, line := range paragraph.Lines {
 		for _, word := range line.Words {
-			if !word.Accepted {
+			if !word.Accepted || (!word.CleanupSafe && word.RecognizerConfidence > 0) {
 				continue
 			}
 			regions = appendCleanupRegion(regions, "word", word.Box, transform, width, height)
@@ -236,7 +270,7 @@ type layoutCandidate struct {
 }
 
 func (r *Renderer) fitBlock(ctx context.Context, text string, preferredFontSize float64, sourceLines int, sourceLineStep float64, alignment string, base ocr.OCRBox, occupied []ocr.OCRBox, own int, active []ocr.OCRBox, width, height int) (ocr.OCRBox, TextFitResult, error) {
-	if intersectsAny(base, active) {
+	if hasAmbiguousOverlap(base, active, -1) {
 		return base, TextFitResult{}, nil
 	}
 	preferredFontSize = math.Max(r.config.MinimumFontSize, math.Min(r.config.MaximumFontSize, preferredFontSize))
@@ -291,7 +325,7 @@ func (r *Renderer) layoutCandidates(text string, preferred float64, sourceLines 
 		if box == base || box.Width <= 0 || box.Height <= 0 {
 			continue
 		}
-		if _, ok := seen[box]; ok || intersectsOther(box, occupied, own) || intersectsAny(box, active) {
+		if _, ok := seen[box]; ok || hasAmbiguousOverlap(box, occupied, own) || hasAmbiguousOverlap(box, active, -1) {
 			continue
 		}
 		seen[box] = struct{}{}
@@ -580,6 +614,31 @@ func intersectsOther(candidate ocr.OCRBox, boxes []ocr.OCRBox, own int) bool {
 		}
 	}
 	return false
+}
+
+func hasAmbiguousOverlap(candidate ocr.OCRBox, boxes []ocr.OCRBox, own int) bool {
+	for index, other := range boxes {
+		if index == own {
+			continue
+		}
+		intersection := boxIntersectionArea(candidate, other)
+		smaller := min(candidate.Width*candidate.Height, other.Width*other.Height)
+		if smaller <= 0 || intersection == 0 {
+			continue
+		}
+		ratio := float64(intersection) / float64(smaller)
+		contained := ratio >= .85
+		if contained || ratio >= .35 {
+			return true
+		}
+	}
+	return false
+}
+
+func boxIntersectionArea(left, right ocr.OCRBox) int {
+	width := overlapPixels(left.X, left.X+left.Width, right.X, right.X+right.Width)
+	height := overlapPixels(left.Y, left.Y+left.Height, right.Y, right.Y+right.Height)
+	return width * height
 }
 
 func intersectsAny(candidate ocr.OCRBox, boxes []ocr.OCRBox) bool {

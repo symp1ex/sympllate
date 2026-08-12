@@ -37,6 +37,7 @@ $env:CC = $gcc.Source
 $projectRoot = $PSScriptRoot
 $frontendRoot = Join-Path $projectRoot 'frontend'
 $distRoot = Join-Path $projectRoot 'dist'
+$bundledOCRSource = Join-Path $projectRoot 'dist\portable\bin\OCR'
 
 $inpaintModelProvided = $PSBoundParameters.ContainsKey('InpaintModelPath')
 $onnxRuntimeProvided = $PSBoundParameters.ContainsKey('OnnxRuntimePath')
@@ -96,10 +97,21 @@ New-Item -ItemType Directory -Force -Path $distRoot | Out-Null
 
 function New-CleanEditionDirectory([string]$Name) {
     $target = Join-Path $distRoot $Name
+    $preservedOCR = $null
+    if ($Name -eq 'portable' -and (Test-Path -LiteralPath $bundledOCRSource -PathType Container)) {
+        $preservedOCR = Join-Path ([IO.Path]::GetTempPath()) ('sympllate-ocr-' + [Guid]::NewGuid().ToString('N'))
+        Copy-Item -LiteralPath $bundledOCRSource -Destination $preservedOCR -Recurse -Force
+    }
     if (Test-Path -LiteralPath $target) {
         Remove-Item -LiteralPath $target -Recurse -Force
     }
     New-Item -ItemType Directory -Path $target | Out-Null
+    if ($null -ne $preservedOCR) {
+        $ocrParent = Join-Path $target 'bin'
+        New-Item -ItemType Directory -Path $ocrParent -Force | Out-Null
+        Copy-Item -LiteralPath $preservedOCR -Destination (Join-Path $ocrParent 'OCR') -Recurse -Force
+        Remove-Item -LiteralPath $preservedOCR -Recurse -Force
+    }
     return $target
 }
 
@@ -121,7 +133,21 @@ function Build-Translator([string]$OutputDirectory) {
         $inpaintDirectory = Join-Path $OutputDirectory 'bin\inpaint'
         New-Item -ItemType Directory -Path $inpaintDirectory -Force | Out-Null
         Copy-Item -LiteralPath $resolvedInpaintModel -Destination (Join-Path $inpaintDirectory 'inpainting_lama.onnx')
-        Copy-Item -LiteralPath $resolvedOnnxRuntime -Destination (Join-Path $inpaintDirectory 'onnxruntime.dll')
+        $onnxDirectory = Join-Path $OutputDirectory 'runtime\onnx'
+        New-Item -ItemType Directory -Path $onnxDirectory -Force | Out-Null
+        Copy-Item -LiteralPath $resolvedOnnxRuntime -Destination (Join-Path $onnxDirectory 'onnxruntime.dll')
+
+        if (Test-Path -LiteralPath $bundledOCRSource -PathType Container) {
+            $ocrTarget = Join-Path $OutputDirectory 'bin\OCR'
+            New-Item -ItemType Directory -Path $ocrTarget -Force | Out-Null
+            $resolvedOCRSource = (Resolve-Path -LiteralPath $bundledOCRSource).Path
+            $resolvedOCRTarget = (Resolve-Path -LiteralPath $ocrTarget).Path
+            if ($resolvedOCRSource -ne $resolvedOCRTarget) {
+                Get-ChildItem -LiteralPath $bundledOCRSource -File | Where-Object { $_.Extension -in @('.onnx', '.yml') } | ForEach-Object {
+                    Copy-Item -LiteralPath $_.FullName -Destination $ocrTarget
+                }
+            }
+        }
     }
 }
 

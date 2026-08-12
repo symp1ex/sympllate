@@ -35,14 +35,14 @@ func (f *fakeSessionRunner) Destroy() error { f.destroyed.Add(1); return nil }
 func TestNewEngineReportsMissingRuntimeAndModelPaths(t *testing.T) {
 	directory := t.TempDir()
 	_, err := NewEngine(directory)
-	if err == nil || !strings.Contains(err.Error(), filepath.Join("bin", "inpaint", runtimeName)) {
+	if err == nil || !strings.Contains(err.Error(), filepath.Join("runtime", "onnx", runtimeName)) {
 		t.Fatalf("runtime error=%v", err)
 	}
-	inpaintDirectory := filepath.Join(directory, "bin", "inpaint")
-	if err := os.MkdirAll(inpaintDirectory, 0o755); err != nil {
+	runtimeDirectory := filepath.Join(directory, "runtime", "onnx")
+	if err := os.MkdirAll(runtimeDirectory, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(inpaintDirectory, runtimeName), []byte("not loaded"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(runtimeDirectory, runtimeName), []byte("not loaded"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_, err = NewEngine(directory)

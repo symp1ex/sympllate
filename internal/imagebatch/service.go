@@ -279,7 +279,7 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 	report.OutputFile = relativeOutputPath(job.layout.Root, finalPath)
 	s.updateStage(job, "ocr")
 	ocrStarted := s.now()
-	page, err := s.ocr.RecognizeStructured(ctx, prepared.Validated, job.request.Source)
+	page, err := s.ocr.RecognizeStructured(ocr.WithInvocationMode(ctx, "batch"), prepared.Validated, job.request.Source)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 			return finish("cancelled", "ocr"), nil, true
@@ -293,6 +293,15 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 		return finish("failed", stage), nil, false
 	}
 	page.SourceFile = outputName
+	report.OCRDiagnostics = page.Diagnostics
+	report.DetectedRegions = page.Diagnostics.DetectorCandidates
+	report.RecognizedRegions = page.Diagnostics.RecognizedCandidates
+	report.AcceptedOCRRegions = page.Diagnostics.AcceptedTextCandidates
+	report.OCRParagraphs = len(page.Paragraphs)
+	report.OCRWords = len(page.Words)
+	for _, paragraph := range page.Paragraphs {
+		report.OCRLines += len(paragraph.Lines)
+	}
 	if err := atomicWriteJSON(ocrPath, page); err != nil {
 		s.fileFailed(job, report.SourceFile, "write_output", err)
 		return finish("failed", "write_output"), nil, false
@@ -382,6 +391,7 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 	}
 	s.logf("image batch translation completed: id=%s name=%s blocks=%d chunks=%d duration=%s", job.status.ID, report.SourceFile, len(document.Blocks), chunks, s.now().Sub(translationStarted))
 	report.TotalBlocks = len(page.Paragraphs)
+	report.TranslatedBlocks = len(document.Blocks)
 	s.updateStage(job, "layout_text")
 	layoutStarted := s.now()
 	renderDocument, err := s.renderer.Prepare(ctx, prepared.Image, page, document)
@@ -397,6 +407,9 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 		return finish("failed", stage), systemRenderError(stage, err), false
 	}
 	report.DurationsMillis["layout"] = s.now().Sub(layoutStarted).Milliseconds()
+	report.LayoutDiagnostics = renderDocument.LayoutDiagnostics
+	report.CleanupDiagnostics = renderDocument.CleanupDiagnostics
+	report.RenderableBlocks = len(renderDocument.Blocks)
 	s.logf("image layout completed: job=%s name=%s renderable=%d skipped=%d warnings=%d duration=%s", job.status.ID, report.SourceFile, len(renderDocument.Blocks), len(renderDocument.SkippedBlocks), len(renderDocument.Warnings), s.now().Sub(layoutStarted))
 
 	if len(renderDocument.Blocks) == 0 {
@@ -526,12 +539,19 @@ func (s *Service) renderDebug(ctx context.Context, job *batchJob, report *JobFil
 	}
 	stem := strings.TrimSuffix(report.OutputName, filepath.Ext(report.OutputName))
 	debugPath := filepath.Join(job.layout.Debug, stem+".ocr.png")
-	if err := renderDebugImage(ctx, data, page, debugPath); err != nil {
-		if !errors.Is(err, context.Canceled) {
-			s.addFileError(job, report.SourceFile, "debug_render", err, true)
-			s.logf("image batch debug render warning: id=%s name=%s error=%v", job.status.ID, report.SourceFile, err)
+	artifacts := []struct{ path, view string }{
+		{filepath.Join(job.layout.Debug, stem+".detector.png"), "detector"},
+		{filepath.Join(job.layout.Debug, stem+".recognized.png"), "recognized"},
+		{debugPath, "grouped"},
+	}
+	for _, artifact := range artifacts {
+		if err := renderOCRDebugImage(ctx, data, page, artifact.path, artifact.view); err != nil {
+			if !errors.Is(err, context.Canceled) {
+				s.addFileError(job, report.SourceFile, "debug_render", err, true)
+				s.logf("image batch debug render warning: id=%s name=%s view=%s error=%v", job.status.ID, report.SourceFile, artifact.view, err)
+			}
+			continue
 		}
-		return
 	}
 	report.DebugPath = relativeOutputPath(job.layout.Root, debugPath)
 }

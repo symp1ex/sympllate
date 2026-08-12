@@ -58,6 +58,9 @@ func (s *Service) renderDebugArtifacts(ctx context.Context, job *batchJob, repor
 		{"debug_layout", filepath.Join(job.layout.Debug, stem+".layout.png"), func() error {
 			return writeLayoutDebug(ctx, rendered, document, filepath.Join(job.layout.Debug, stem+".layout.png"), s.renderer.config.JPEGQuality)
 		}},
+		{"debug_render_candidates", filepath.Join(job.layout.Debug, stem+".render-candidates.png"), func() error {
+			return writeRenderCandidatesDebug(ctx, source, document, filepath.Join(job.layout.Debug, stem+".render-candidates.png"), s.renderer.config.JPEGQuality)
+		}},
 		{"debug_render_json", filepath.Join(job.layout.Debug, stem+".render.json"), func() error { return atomicWriteJSON(filepath.Join(job.layout.Debug, stem+".render.json"), document) }},
 	}
 	for _, operation := range operations {
@@ -66,6 +69,25 @@ func (s *Service) renderDebugArtifacts(ctx context.Context, job *batchJob, repor
 			s.logf("image batch debug output warning: id=%s name=%s stage=%s error=%v", job.status.ID, report.SourceFile, operation.stage, err)
 		}
 	}
+}
+
+func writeRenderCandidatesDebug(ctx context.Context, source *image.NRGBA, document RenderDocument, path string, jpegQuality int) error {
+	canvas := cloneNRGBA(source)
+	for _, block := range document.Blocks {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		drawNRGBABox(canvas, block.TextBox, color.NRGBA{R: 32, G: 210, B: 96, A: 255}, 2)
+		drawNRGBALabel(canvas, block.TextBox.X+2, block.TextBox.Y+2, block.ID, color.NRGBA{R: 32, G: 210, B: 96, A: 255})
+	}
+	for _, skipped := range document.SkippedBlocks {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		drawNRGBABox(canvas, skipped.SourceBox, color.NRGBA{R: 255, G: 48, B: 48, A: 255}, 2)
+		drawNRGBALabel(canvas, skipped.SourceBox.X+2, skipped.SourceBox.Y+2, skipped.ID+"-"+skipped.Reason, color.NRGBA{R: 255, G: 48, B: 48, A: 255})
+	}
+	return atomicEncodeGoImage(ctx, canvas, path, ".png", jpegQuality)
 }
 
 func cleanupMaskOrBlank(mask *image.Gray, bounds image.Rectangle) *image.Gray {

@@ -29,17 +29,36 @@ type OCRBox struct {
 	Height int `json:"height"`
 }
 
+type OCRPoint struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+// OCRPolygon preserves detector geometry in original-image coordinates. The
+// legacy integer Box remains available for renderers that cannot consume a
+// quadrilateral yet.
+type OCRPolygon [4]OCRPoint
+
 type OCRWord struct {
-	ID         string  `json:"id"`
-	Text       string  `json:"text"`
-	Confidence float64 `json:"confidence"`
-	Box        OCRBox  `json:"box"`
-	Accepted   bool    `json:"accepted"`
-	Page       int     `json:"page"`
-	Block      int     `json:"block"`
-	Paragraph  int     `json:"paragraph"`
-	Line       int     `json:"line"`
-	Word       int     `json:"word"`
+	ID                   string     `json:"id"`
+	Text                 string     `json:"text"`
+	Confidence           float64    `json:"confidence"`
+	Box                  OCRBox     `json:"box"`
+	Accepted             bool       `json:"accepted"`
+	Polygon              OCRPolygon `json:"polygon,omitempty"`
+	DetectorConfidence   float64    `json:"detectorConfidence,omitempty"`
+	RecognizerConfidence float64    `json:"recognizerConfidence,omitempty"`
+	Detected             bool       `json:"detected,omitempty"`
+	Recognized           bool       `json:"recognized,omitempty"`
+	TextAccepted         bool       `json:"textAccepted,omitempty"`
+	CleanupSafe          bool       `json:"cleanupSafe,omitempty"`
+	Recognizer           string     `json:"recognizer,omitempty"`
+	GeometryLevel        string     `json:"geometryLevel,omitempty"`
+	Page                 int        `json:"page"`
+	Block                int        `json:"block"`
+	Paragraph            int        `json:"paragraph"`
+	Line                 int        `json:"line"`
+	Word                 int        `json:"word"`
 }
 
 type OCRLine struct {
@@ -77,6 +96,63 @@ type OCRPage struct {
 	Image         OCRImageInfo   `json:"image"`
 	Words         []OCRWord      `json:"words"`
 	Paragraphs    []OCRParagraph `json:"paragraphs"`
+	Diagnostics   OCRDiagnostics `json:"ocrDiagnostics,omitempty"`
+}
+
+type OCRPreprocessDiagnostics struct {
+	Width       int     `json:"width"`
+	Height      int     `json:"height"`
+	ScaleX      float64 `json:"scaleX"`
+	ScaleY      float64 `json:"scaleY"`
+	PaddingLeft int     `json:"paddingLeft"`
+	PaddingTop  int     `json:"paddingTop"`
+}
+
+type OCRStageDuration struct {
+	Stage          string `json:"stage"`
+	DurationMillis int64  `json:"durationMillis"`
+}
+
+// OCRDiagnostics is additive so existing OCR JSON consumers remain valid.
+// Invocation mode is deliberately logged rather than stored here: it must not
+// make otherwise identical single and batch OCRPage values differ.
+type OCRDiagnostics struct {
+	Profile                string                     `json:"profile,omitempty"`
+	RequestedSource        string                     `json:"requestedSource,omitempty"`
+	ResolvedOCRLanguage    string                     `json:"resolvedOCRLanguage,omitempty"`
+	DetectorModel          string                     `json:"detectorModel,omitempty"`
+	RecognizerModel        string                     `json:"recognizerModel,omitempty"`
+	RecognizerModels       []string                   `json:"recognizerModels,omitempty"`
+	Dictionary             string                     `json:"dictionary,omitempty"`
+	Dictionaries           []string                   `json:"dictionaries,omitempty"`
+	InputWidth             int                        `json:"inputWidth,omitempty"`
+	InputHeight            int                        `json:"inputHeight,omitempty"`
+	Preprocess             []OCRPreprocessDiagnostics `json:"preprocess,omitempty"`
+	Tiles                  int                        `json:"tiles"`
+	DetectorCandidates     int                        `json:"detectorCandidates"`
+	RecognizedCandidates   int                        `json:"recognizedCandidates"`
+	AcceptedTextCandidates int                        `json:"acceptedTextCandidates"`
+	CleanupSafeCandidates  int                        `json:"cleanupSafeCandidates"`
+	MergeDuplicates        int                        `json:"mergeDuplicates"`
+	FinalLines             int                        `json:"finalLines"`
+	FinalParagraphs        int                        `json:"finalParagraphs"`
+	AverageConfidence      float64                    `json:"averageConfidence"`
+	MinimumConfidence      float64                    `json:"minimumConfidence"`
+	Durations              []OCRStageDuration         `json:"durations,omitempty"`
+	Regions                []OCRRegionDiagnostic      `json:"regions,omitempty"`
+}
+
+type OCRRegionDiagnostic struct {
+	Pass                 string     `json:"pass"`
+	Text                 string     `json:"text,omitempty"`
+	Recognizer           string     `json:"recognizer,omitempty"`
+	DetectorConfidence   float64    `json:"detectorConfidence"`
+	RecognizerConfidence float64    `json:"recognizerConfidence"`
+	Box                  OCRBox     `json:"box"`
+	Polygon              OCRPolygon `json:"polygon"`
+	Recognized           bool       `json:"recognized"`
+	TextAccepted         bool       `json:"textAccepted"`
+	CleanupSafe          bool       `json:"cleanupSafe"`
 }
 
 type tsvKey struct{ page, block, paragraph, line int }

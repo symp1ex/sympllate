@@ -63,6 +63,33 @@ func TestSpatialParagraphsDistinguishesLineGapFromParagraphBreak(t *testing.T) {
 	}
 }
 
+func TestPaddleTableCellsRemainSeparateParagraphs(t *testing.T) {
+	words := []OCRWord{
+		testAdaptiveWord("Torque", 20, 20, 80, 14, 0, 0, 0, 0), testAdaptiveWord("45 Nm", 180, 20, 55, 14, 0, 0, 0, 0),
+		testAdaptiveWord("Pressure", 20, 42, 90, 14, 0, 0, 0, 0), testAdaptiveWord("2.5 bar", 180, 42, 65, 14, 0, 0, 0, 0),
+	}
+	paragraphs := buildPaddleParagraphs(words)
+	if len(paragraphs) != 2 {
+		t.Fatalf("paragraphs=%+v", paragraphs)
+	}
+	for _, paragraph := range paragraphs {
+		if paragraph.Box.Width > 120 {
+			t.Fatalf("table cells merged into wide paragraph: %+v", paragraph)
+		}
+	}
+}
+
+func TestPaddleColumnAwareReadingOrder(t *testing.T) {
+	words := []OCRWord{
+		testAdaptiveWord("L1", 20, 20, 60, 12, 0, 0, 0, 0), testAdaptiveWord("R1", 240, 20, 60, 12, 0, 0, 0, 0),
+		testAdaptiveWord("L2", 20, 40, 60, 12, 0, 0, 0, 0), testAdaptiveWord("R2", 240, 40, 60, 12, 0, 0, 0, 0),
+	}
+	paragraphs := buildPaddleParagraphs(words)
+	if len(paragraphs) != 2 || paragraphs[0].Text != "L1\nL2" || paragraphs[1].Text != "R1\nR2" {
+		t.Fatalf("order=%+v", paragraphs)
+	}
+}
+
 func testAdaptiveWord(text string, x, y, width, height, page, block, paragraph, line int) OCRWord {
 	return OCRWord{
 		Text: text, Confidence: 90, Box: OCRBox{X: x, Y: y, Width: width, Height: height}, Accepted: true,

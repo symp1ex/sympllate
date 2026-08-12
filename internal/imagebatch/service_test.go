@@ -224,7 +224,7 @@ func TestBatchMaskRejectionFiltersCleanupAndDrawAndReportsPartial(t *testing.T) 
 	var report JobReport
 	readJSON(t, filepath.Join(status.OutputDirectory, "job.json"), &report)
 	file := report.Files[0]
-	if file.Status != "partial" || file.RenderedBlocks != 1 || len(file.SkippedBlocks) != 1 || file.SkippedBlocks[0] != (SkippedRenderBlock{ID: "p1-b1-par1", Reason: textMaskLowConfidenceCode}) {
+	if file.Status != "partial" || file.RenderedBlocks != 1 || len(file.SkippedBlocks) != 1 || file.SkippedBlocks[0].ID != "p1-b1-par1" || file.SkippedBlocks[0].Stage != "cleanup" || file.SkippedBlocks[0].Reason != textMaskLowConfidenceCode {
 		t.Fatalf("file=%+v", file)
 	}
 	if len(file.Warnings) != 1 || file.Warnings[0] != (RenderWarning{Code: textMaskLowConfidenceCode, BlockID: "p1-b1-par1"}) {
