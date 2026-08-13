@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet('Lite', 'Portable', 'All')]
     [string]$Edition = 'Lite',

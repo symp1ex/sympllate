@@ -145,6 +145,7 @@ func (e *Engine) RecognizeStructured(ctx context.Context, image translation.Vali
 		}
 	}
 	page := rebuildOCRPage(words, OCRImageInfo{Width: image.Width, Height: image.Height, MediaType: image.MediaType})
+	page.Diagnostics.Backend = "tesseract"
 	return page, nil
 }
 

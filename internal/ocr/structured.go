@@ -117,6 +117,7 @@ type OCRStageDuration struct {
 // Invocation mode is deliberately logged rather than stored here: it must not
 // make otherwise identical single and batch OCRPage values differ.
 type OCRDiagnostics struct {
+	Backend                string                        `json:"backend,omitempty"`
 	Profile                string                        `json:"profile,omitempty"`
 	RequestedSource        string                        `json:"requestedSource,omitempty"`
 	ResolvedOCRLanguage    string                        `json:"resolvedOCRLanguage,omitempty"`

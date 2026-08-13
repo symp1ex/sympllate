@@ -80,6 +80,9 @@ type RenderDocument struct {
 	ImageWidth         int                       `json:"imageWidth"`
 	ImageHeight        int                       `json:"imageHeight"`
 	Transform          CoordinateTransform       `json:"coordinateTransform"`
+	OCRBackend         string                    `json:"ocrBackend,omitempty"`
+	SourceGeometries   []SourceTextGeometry      `json:"sourceGeometries,omitempty"`
+	Collisions         []CollisionDiagnostic     `json:"collisions,omitempty"`
 	FillWordBoxes      bool                      `json:"fillWordBoxes,omitempty"`
 	Blocks             []RenderBlock             `json:"blocks"`
 	SkippedBlocks      []SkippedRenderBlock      `json:"skippedBlocks"`
@@ -95,8 +98,9 @@ type LayoutDiagnostics struct {
 }
 
 type CleanupDiagnosticsSummary struct {
-	SafeBlocks   int `json:"safeBlocks"`
-	UnsafeBlocks int `json:"unsafeBlocks"`
+	SafeBlocks                 int `json:"safeBlocks"`
+	UnsafeBlocks               int `json:"unsafeBlocks"`
+	ConservativeFallbackBlocks int `json:"conservativeFallbackBlocks,omitempty"`
 }
 
 type RenderBlock struct {
@@ -105,6 +109,7 @@ type RenderBlock struct {
 	TranslatedText      string             `json:"translatedText"`
 	SourceBox           ocr.OCRBox         `json:"sourceBox"`
 	SourcePolygon       ocr.OCRPolygon     `json:"sourcePolygon,omitempty"`
+	SourceGeometry      SourceTextGeometry `json:"sourceGeometry,omitempty"`
 	CleanupBox          ocr.OCRBox         `json:"cleanupBox"`
 	CleanupRegions      []CleanupRegion    `json:"cleanupRegions,omitempty"`
 	TextBox             ocr.OCRBox         `json:"textBox"`
@@ -207,14 +212,41 @@ const (
 )
 
 type SkippedRenderBlock struct {
-	ID              string         `json:"id"`
-	Stage           string         `json:"stage,omitempty"`
-	Reason          string         `json:"reason"`
-	SourceText      string         `json:"sourceText,omitempty"`
-	OCRConfidence   float64        `json:"ocrConfidence,omitempty"`
-	SourcePolygon   ocr.OCRPolygon `json:"sourcePolygon,omitempty"`
-	SourceBox       ocr.OCRBox     `json:"sourceBox,omitempty"`
-	TranslationText string         `json:"translationText,omitempty"`
+	ID                     string         `json:"id"`
+	Stage                  string         `json:"stage,omitempty"`
+	Reason                 string         `json:"reason"`
+	SourceText             string         `json:"sourceText,omitempty"`
+	OCRConfidence          float64        `json:"ocrConfidence,omitempty"`
+	SourcePolygon          ocr.OCRPolygon `json:"sourcePolygon,omitempty"`
+	SourceBox              ocr.OCRBox     `json:"sourceBox,omitempty"`
+	TranslationText        string         `json:"translationText,omitempty"`
+	ConflictingBlockID     string         `json:"conflictingBlockId,omitempty"`
+	ParagraphOverlapRatio  float64        `json:"paragraphOverlapRatio,omitempty"`
+	TextRegionOverlapRatio float64        `json:"textRegionOverlapRatio,omitempty"`
+	CollisionClass         string         `json:"collisionClass,omitempty"`
+	Decision               string         `json:"decision,omitempty"`
+}
+
+// SourceTextGeometry describes OCR ink independently from the paragraph union
+// rectangle and from the translated-text layout box. Bounds is only a broad-
+// phase index; Regions and Polygons are the protected source-text footprint.
+type SourceTextGeometry struct {
+	ID          string           `json:"id,omitempty"`
+	Bounds      ocr.OCRBox       `json:"bounds"`
+	Regions     []ocr.OCRBox     `json:"regions"`
+	LineRegions []ocr.OCRBox     `json:"lineRegions,omitempty"`
+	Polygons    []ocr.OCRPolygon `json:"polygons,omitempty"`
+	Level       string           `json:"level"`
+}
+
+type CollisionDiagnostic struct {
+	BlockID                string     `json:"blockId"`
+	ConflictingBlockID     string     `json:"conflictingBlockId"`
+	ParagraphIntersection  ocr.OCRBox `json:"paragraphIntersection,omitempty"`
+	ParagraphOverlapRatio  float64    `json:"paragraphOverlapRatio"`
+	TextRegionOverlapRatio float64    `json:"textRegionOverlapRatio"`
+	CollisionClass         string     `json:"collisionClass"`
+	Decision               string     `json:"decision"`
 }
 
 type RenderWarning struct {

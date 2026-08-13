@@ -148,6 +148,34 @@ func TestPaddleUIGridCellsRemainSeparateParagraphs(t *testing.T) {
 	}
 }
 
+func TestPaddleTaxAndServiceTabsAndControlsRemainIndependent(t *testing.T) {
+	words := []OCRWord{
+		testAdaptiveWord("How to configure tax and service charge", 30, 20, 410, 18, 0, 0, 0, 0),
+		testAdaptiveWord("Open Back Office and select a tax category", 30, 46, 390, 16, 0, 0, 0, 0),
+		testAdaptiveWord("Tax categories", 30, 92, 115, 16, 0, 0, 0, 0),
+		testAdaptiveWord("Service charges", 175, 92, 135, 16, 0, 0, 0, 0),
+		testAdaptiveWord("Search by menu", 350, 92, 125, 16, 0, 0, 0, 0),
+		testAdaptiveWord("Name", 30, 132, 55, 15, 0, 0, 0, 0),
+		testAdaptiveWord("VAT rate", 220, 132, 72, 15, 0, 0, 0, 0),
+		testAdaptiveWord("Enabled", 390, 132, 68, 15, 0, 0, 0, 0),
+		testAdaptiveWord("Restaurant tax", 30, 156, 120, 15, 0, 0, 0, 0),
+		testAdaptiveWord("20%", 220, 156, 38, 15, 0, 0, 0, 0),
+		testAdaptiveWord("Active", 390, 156, 55, 15, 0, 0, 0, 0),
+	}
+	paragraphs := buildPaddleParagraphs(words)
+	for _, labels := range [][]string{{"Tax categories", "Service charges"}, {"Service charges", "Search by menu"}, {"Restaurant tax", "20%"}, {"20%", "Active"}} {
+		for _, paragraph := range paragraphs {
+			if strings.Contains(paragraph.Text, labels[0]) && strings.Contains(paragraph.Text, labels[1]) {
+				t.Fatalf("independent TAX/Service controls merged: labels=%v paragraph=%+v", labels, paragraph)
+			}
+		}
+	}
+	prose := findAdaptiveParagraphContaining(t, paragraphs, "How to configure")
+	if len(prose.Lines) != 2 {
+		t.Fatalf("normal prose grouping regressed: %+v", prose)
+	}
+}
+
 func testAdaptiveWord(text string, x, y, width, height, page, block, paragraph, line int) OCRWord {
 	return OCRWord{
 		Text: text, Confidence: 90, Box: OCRBox{X: x, Y: y, Width: width, Height: height}, Accepted: true,

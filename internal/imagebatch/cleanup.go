@@ -192,12 +192,7 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 		if block.CleanupMode != CleanupSolid && block.CleanupMode != CleanupNeural {
 			return nil, filtered, stats, fmt.Errorf("block %s has unknown cleanup mode %q", block.ID, block.CleanupMode)
 		}
-		if block.CleanupSafetyKnown && !block.CleanupSafe {
-			filtered.SkippedBlocks = append(filtered.SkippedBlocks, SkippedRenderBlock{ID: block.ID, Stage: "cleanup", Reason: "cleanup_unsafe", SourceText: block.SourceText, SourcePolygon: block.SourcePolygon, SourceBox: block.SourceBox, TranslationText: block.TranslatedText})
-			filtered.Warnings = warningsWithoutBlock(filtered.Warnings, block.ID)
-			filtered.Warnings = append(filtered.Warnings, RenderWarning{Code: "cleanup_unsafe", BlockID: block.ID})
-			continue
-		}
+		ocrCleanupUnsafe := block.CleanupSafetyKnown && !block.CleanupSafe
 		built, err := buildSafeTextMask(ctx, source, block, maskConfig)
 		mergeMask(stats.Diagnostics.OCRRegions, built.regionMask)
 		mergeMask(stats.Diagnostics.CandidateMask, built.candidateMask)
@@ -211,6 +206,24 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 			code := textMaskRejectionCode(err)
 			if code == "" {
 				return nil, filtered, stats, fmt.Errorf("build text mask for block %s: %w", block.ID, err)
+			}
+			if code == textMaskLowConfidenceCode {
+				if mask, ok := conservativeSolidRegionMask(source.Bounds(), block, document.SourceGeometries, claimed); ok {
+					mergeMask(claimed, mask)
+					mergeMask(stats.Diagnostics.FinalCleanupMask, mask)
+					finalPixels := countMask(mask)
+					stats.Blocks[len(stats.Blocks)-1].FinalCleanupPixels = finalPixels
+					stats.Blocks[len(stats.Blocks)-1].ConservativeFallback = true
+					stats.UniformRegions++
+					filtered.Blocks = append(filtered.Blocks, block)
+					filtered.Warnings = append(filtered.Warnings, RenderWarning{Code: "cleanup_solid_region_fallback", BlockID: block.ID})
+					filtered.CleanupDiagnostics.ConservativeFallbackBlocks++
+					solid = append(solid, blockCleanup{block: block, mask: mask})
+					continue
+				}
+			}
+			if ocrCleanupUnsafe {
+				code = "cleanup_unsafe"
 			}
 			filtered.SkippedBlocks = append(filtered.SkippedBlocks, SkippedRenderBlock{ID: block.ID, Stage: "cleanup", Reason: code, SourceText: block.SourceText, SourcePolygon: block.SourcePolygon, SourceBox: block.SourceBox, TranslationText: block.TranslatedText})
 			filtered.Warnings = warningsWithoutBlock(filtered.Warnings, block.ID)
@@ -277,6 +290,29 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 		stats.CleanupPixelRatio = float64(stats.FinalCleanupPixels) / float64(stats.OCRRegionPixels)
 	}
 	return target, filtered, stats, nil
+}
+
+func conservativeSolidRegionMask(bounds image.Rectangle, block RenderBlock, geometries []SourceTextGeometry, claimed *image.Gray) (*image.Gray, bool) {
+	if block.CleanupMode != CleanupSolid || block.SourceGeometry.Level != "word" || len(block.CleanupRegions) == 0 {
+		return nil, false
+	}
+	mask := image.NewGray(bounds)
+	for _, region := range block.CleanupRegions {
+		if region.Level != "word" || region.Box.Width <= 0 || region.Box.Height <= 0 {
+			return nil, false
+		}
+		for _, geometry := range geometries {
+			if geometry.ID == block.ID {
+				continue
+			}
+			if intersectsAny(region.Box, geometry.Regions) {
+				return nil, false
+			}
+		}
+		fillMaskRectangle(mask, ocrRectangle(region.Box).Intersect(bounds))
+	}
+	mask = subtractMask(mask, claimed)
+	return mask, countMask(mask) > 0
 }
 
 func warningsWithoutBlock(warnings []RenderWarning, blockID string) []RenderWarning {

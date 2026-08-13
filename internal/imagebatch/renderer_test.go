@@ -5,6 +5,7 @@ import (
 	"context"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -238,13 +239,39 @@ func TestCleanupUnsafeOCRTextRemainsDiagnosedWithoutDestructiveCleanup(t *testin
 	defer renderer.Close()
 	source := solidNRGBA(240, 100, color.NRGBA{R: 245, G: 245, B: 245, A: 255})
 	word := ocr.OCRWord{Text: "uncertain", Accepted: true, TextAccepted: true, RecognizerConfidence: 42, CleanupSafe: false, Box: ocr.OCRBox{X: 20, Y: 20, Width: 80, Height: 20}}
+	drawSyntheticWord(source, word.Box)
 	paragraph := ocr.OCRParagraph{ID: "one", Text: "uncertain", Confidence: 42, Box: word.Box, Lines: []ocr.OCRLine{{Text: "uncertain", Box: word.Box, Words: []ocr.OCRWord{word}}}}
 	document, err := renderer.Prepare(context.Background(), source, ocr.OCRPage{Image: ocr.OCRImageInfo{Width: 240, Height: 100}, Paragraphs: []ocr.OCRParagraph{paragraph}}, TranslationDocument{Blocks: []TranslatedBlock{{ID: "one", TranslatedText: "неуверенный", Status: "translated"}}})
 	if err != nil || len(document.Blocks) != 1 || document.Blocks[0].CleanupSafe {
 		t.Fatalf("document=%+v err=%v", document, err)
 	}
 	_, filtered, _, err := renderer.Clean(context.Background(), source, document)
-	if err != nil || len(filtered.Blocks) != 0 || len(filtered.SkippedBlocks) != 1 || filtered.SkippedBlocks[0].Reason != "cleanup_unsafe" || filtered.SkippedBlocks[0].SourceText != "uncertain" || filtered.SkippedBlocks[0].TranslationText != "неуверенный" {
+	if err != nil || len(filtered.Blocks) != 1 || len(filtered.SkippedBlocks) != 0 {
+		t.Fatalf("filtered=%+v err=%v", filtered, err)
+	}
+}
+
+func TestCleanupUnsafeDoesNotSolidFillNonUniformBackground(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFont(t, directory)
+	renderer, err := NewRenderer(directory, DefaultRenderConfig(), &fakeInpaintEngine{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer renderer.Close()
+	source := solidNRGBA(240, 100, color.NRGBA{R: 245, G: 245, B: 245, A: 255})
+	word := ocr.OCRWord{Text: "uncertain", Accepted: true, TextAccepted: true, RecognizerConfidence: 42, CleanupSafe: false, Box: ocr.OCRBox{X: 20, Y: 20, Width: 80, Height: 20}}
+	drawSyntheticWord(source, word.Box)
+	paragraph := ocr.OCRParagraph{ID: "one", Text: "uncertain", Confidence: 42, Box: word.Box, Lines: []ocr.OCRLine{{Text: "uncertain", Box: word.Box, Words: []ocr.OCRWord{word}}}}
+	document, err := renderer.Prepare(context.Background(), source, ocr.OCRPage{Image: ocr.OCRImageInfo{Width: 240, Height: 100}, Paragraphs: []ocr.OCRParagraph{paragraph}}, TranslationDocument{Blocks: []TranslatedBlock{{ID: "one", TranslatedText: "translation", Status: "translated"}}})
+	if err != nil || len(document.Blocks) != 1 {
+		t.Fatalf("document=%+v err=%v", document, err)
+	}
+	document.Blocks[0].CleanupMode = CleanupNeural
+	document.Blocks[0].Foreground = document.Blocks[0].Background
+	draw.Draw(source, source.Bounds(), image.NewUniform(document.Blocks[0].Background.NRGBA()), image.Point{}, draw.Src)
+	_, filtered, _, err := renderer.Clean(context.Background(), source, document)
+	if err != nil || len(filtered.Blocks) != 0 || len(filtered.SkippedBlocks) != 1 || filtered.SkippedBlocks[0].Reason != "cleanup_unsafe" {
 		t.Fatalf("filtered=%+v err=%v", filtered, err)
 	}
 }

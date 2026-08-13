@@ -293,6 +293,10 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 		return finish("failed", stage), nil, false
 	}
 	page.SourceFile = outputName
+	report.OCRBackend = page.Diagnostics.Backend
+	if job.report.OCRBackend == "" {
+		job.report.OCRBackend = page.Diagnostics.Backend
+	}
 	report.OCRDiagnostics = page.Diagnostics
 	report.DetectedRegions = page.Diagnostics.DetectorCandidates
 	report.RecognizedRegions = page.Diagnostics.RecognizedCandidates
@@ -409,6 +413,8 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 	report.DurationsMillis["layout"] = s.now().Sub(layoutStarted).Milliseconds()
 	report.LayoutDiagnostics = renderDocument.LayoutDiagnostics
 	report.CleanupDiagnostics = renderDocument.CleanupDiagnostics
+	report.SourceGeometries = renderDocument.SourceGeometries
+	report.Collisions = renderDocument.Collisions
 	report.RenderableBlocks = len(renderDocument.Blocks)
 	s.logf("image layout completed: job=%s name=%s renderable=%d skipped=%d warnings=%d duration=%s", job.status.ID, report.SourceFile, len(renderDocument.Blocks), len(renderDocument.SkippedBlocks), len(renderDocument.Warnings), s.now().Sub(layoutStarted))
 

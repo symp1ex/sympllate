@@ -199,6 +199,7 @@ func (e *PaddleEngine) recognizePage(ctx context.Context, validated translation.
 		return OCRPage{}, OCRDiagnostics{}, fmt.Errorf("decode PaddleOCR image: %w", err)
 	}
 	diagnostics := OCRDiagnostics{
+		Backend: "paddleocr",
 		Profile: profile.Name, RequestedSource: plan.Requested, ResolvedOCRLanguage: plan.Resolved,
 		DetectorModel: "det.onnx", RecognizerModels: make([]string, 0, len(plan.Names)),
 		Dictionaries: make([]string, 0, len(plan.Names)), InputWidth: validated.Width, InputHeight: validated.Height,

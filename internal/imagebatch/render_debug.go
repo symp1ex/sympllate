@@ -73,6 +73,15 @@ func (s *Service) renderDebugArtifacts(ctx context.Context, job *batchJob, repor
 
 func writeRenderCandidatesDebug(ctx context.Context, source *image.NRGBA, document RenderDocument, path string, jpegQuality int) error {
 	canvas := cloneNRGBA(source)
+	for _, geometry := range document.SourceGeometries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		drawNRGBABox(canvas, geometry.Bounds, color.NRGBA{R: 255, G: 190, B: 32, A: 255}, 1)
+		for _, region := range geometry.Regions {
+			drawNRGBABox(canvas, region, color.NRGBA{R: 180, G: 96, B: 255, A: 255}, 1)
+		}
+	}
 	for _, block := range document.Blocks {
 		if err := ctx.Err(); err != nil {
 			return err

@@ -93,6 +93,7 @@ type JobReport struct {
 	CompletedAt   *time.Time      `json:"completedAt,omitempty"`
 	Source        string          `json:"source"`
 	Target        string          `json:"target"`
+	OCRBackend    string          `json:"ocrBackend,omitempty"`
 	Error         string          `json:"error,omitempty"`
 	Selection     JobSelection    `json:"selection"`
 	Summary       JobSummary      `json:"summary"`
@@ -121,6 +122,7 @@ type JobFileReport struct {
 	SourceFile         string                    `json:"sourceFile"`
 	OutputName         string                    `json:"outputName,omitempty"`
 	Status             string                    `json:"status"`
+	OCRBackend         string                    `json:"ocrBackend,omitempty"`
 	OCRPath            string                    `json:"ocrPath,omitempty"`
 	TranslationPath    string                    `json:"translationPath,omitempty"`
 	OutputFile         string                    `json:"outputFile,omitempty"`
@@ -143,4 +145,6 @@ type JobFileReport struct {
 	OCRWords           int                       `json:"ocrWords"`
 	TranslatedBlocks   int                       `json:"translatedBlocks"`
 	RenderableBlocks   int                       `json:"renderableBlocks"`
+	SourceGeometries   []SourceTextGeometry      `json:"sourceGeometries,omitempty"`
+	Collisions         []CollisionDiagnostic     `json:"collisions,omitempty"`
 }
