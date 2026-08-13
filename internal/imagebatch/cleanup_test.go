@@ -213,7 +213,7 @@ func TestHybridCleanupRoutesUniformAndNeuralAndPreservesOutsideMask(t *testing.T
 	}
 }
 
-func TestUniformCleanupDoesNotInvokeInpaintAndNeuralErrorsAreReturned(t *testing.T) {
+func TestUniformCleanupDoesNotInvokeInpaintAndNeuralErrorsFallBackToDraw(t *testing.T) {
 	source := solidNRGBA(30, 20, color.NRGBA{R: 240, G: 240, B: 240, A: 255})
 	engine := &fakeInpaintEngine{}
 	renderer, _ := NewRenderer(t.TempDir(), DefaultRenderConfig(), engine)
@@ -229,12 +229,13 @@ func TestUniformCleanupDoesNotInvokeInpaintAndNeuralErrorsAreReturned(t *testing
 	}
 	engine.err = errors.New("inference failed")
 	block.CleanupMode = CleanupNeural
-	if _, _, _, err := renderer.Clean(context.Background(), source, RenderDocument{Blocks: []RenderBlock{block}}); err == nil || !errors.Is(err, engine.err) {
-		t.Fatalf("err=%v", err)
+	_, filtered, _, err := renderer.Clean(context.Background(), source, RenderDocument{Blocks: []RenderBlock{block}})
+	if err != nil || len(filtered.Blocks) != 1 || !hasWarning(filtered.Warnings, "cleanup_failed_rendered_anyway", "") {
+		t.Fatalf("filtered=%+v err=%v", filtered, err)
 	}
 }
 
-func TestCleanSkipsLowConfidenceMaskBeforeCleanupAndDraw(t *testing.T) {
+func TestCleanRendersLowConfidenceMaskBlockOverOriginal(t *testing.T) {
 	directory := t.TempDir()
 	writeTestFont(t, directory)
 	source := solidNRGBA(200, 80, color.NRGBA{R: 245, G: 245, B: 245, A: 255})
@@ -258,10 +259,10 @@ func TestCleanSkipsLowConfidenceMaskBeforeCleanupAndDraw(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(filtered.Blocks) != 1 || filtered.Blocks[0].ID != "good" || len(filtered.SkippedBlocks) != 1 || filtered.SkippedBlocks[0].ID != "bad" || filtered.SkippedBlocks[0].Stage != "cleanup" || filtered.SkippedBlocks[0].Reason != textMaskLowConfidenceCode {
+	if len(filtered.Blocks) != 2 || len(filtered.SkippedBlocks) != 0 || filtered.CleanupDiagnostics.FailedRenderedBlocks != 1 {
 		t.Fatalf("filtered=%+v", filtered)
 	}
-	if len(filtered.Warnings) != 1 || filtered.Warnings[0] != (RenderWarning{Code: textMaskLowConfidenceCode, BlockID: "bad"}) {
+	if !hasWarning(filtered.Warnings, "cleanup_failed_rendered_anyway", "bad") || !hasWarning(filtered.Warnings, "original_text_may_remain", "bad") {
 		t.Fatalf("warnings=%+v", filtered.Warnings)
 	}
 	if got := cleaned.NRGBAAt(20, 15); got != source.NRGBAAt(20, 15) {
@@ -274,12 +275,12 @@ func TestCleanSkipsLowConfidenceMaskBeforeCleanupAndDraw(t *testing.T) {
 	if bytes.Equal(beforeDraw, cleaned.Pix) {
 		t.Fatal("safe block was not drawn")
 	}
-	if got := cleaned.NRGBAAt(20, 15); got != source.NRGBAAt(20, 15) {
-		t.Fatalf("skipped block was drawn: got=%+v want=%+v", got, source.NRGBAAt(20, 15))
+	if bytes.Equal(beforeDraw, cleaned.Pix) {
+		t.Fatal("fallback block was not drawn")
 	}
 }
 
-func TestCleanClassifiesUnsafeMaskAsSkipped(t *testing.T) {
+func TestCleanClassifiesUnsafeMaskAsRenderedFallback(t *testing.T) {
 	source := solidNRGBA(40, 20, color.NRGBA{A: 255})
 	renderer, _ := NewRenderer(t.TempDir(), DefaultRenderConfig(), &fakeInpaintEngine{})
 	block := RenderBlock{
@@ -290,12 +291,21 @@ func TestCleanClassifiesUnsafeMaskAsSkipped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(filtered.Blocks) != 0 || len(filtered.SkippedBlocks) != 1 || filtered.SkippedBlocks[0].Reason != textMaskUnsafeCode || len(filtered.Warnings) != 1 || filtered.Warnings[0].Code != textMaskUnsafeCode {
+	if len(filtered.Blocks) != 1 || len(filtered.SkippedBlocks) != 0 || !hasWarning(filtered.Warnings, "cleanup_failed_rendered_anyway", "unsafe") {
 		t.Fatalf("filtered=%+v", filtered)
 	}
 	if !bytes.Equal(cleaned.Pix, source.Pix) {
 		t.Fatal("all-rejected cleanup changed the source")
 	}
+}
+
+func hasWarning(warnings []RenderWarning, code, blockID string) bool {
+	for _, warning := range warnings {
+		if warning.Code == code && warning.BlockID == blockID {
+			return true
+		}
+	}
+	return false
 }
 
 func gradientFixture(width, height int) *image.NRGBA {

@@ -413,8 +413,11 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 	report.DurationsMillis["layout"] = s.now().Sub(layoutStarted).Milliseconds()
 	report.LayoutDiagnostics = renderDocument.LayoutDiagnostics
 	report.CleanupDiagnostics = renderDocument.CleanupDiagnostics
+	report.PipelineMetrics = renderDocument.PipelineMetrics
 	report.SourceGeometries = renderDocument.SourceGeometries
 	report.Collisions = renderDocument.Collisions
+	report.DeduplicatedBlocks = renderDocument.DeduplicatedBlocks
+	report.BlockFates = renderDocument.BlockFates
 	report.RenderableBlocks = len(renderDocument.Blocks)
 	s.logf("image layout completed: job=%s name=%s renderable=%d skipped=%d warnings=%d duration=%s", job.status.ID, report.SourceFile, len(renderDocument.Blocks), len(renderDocument.SkippedBlocks), len(renderDocument.Warnings), s.now().Sub(layoutStarted))
 
@@ -448,6 +451,9 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 	}
 	report.DurationsMillis["cleanup"] = s.now().Sub(cleanupStarted).Milliseconds()
 	report.RenderedBlocks = len(renderDocument.Blocks)
+	report.PipelineMetrics = renderDocument.PipelineMetrics
+	report.BlockFates = renderDocument.BlockFates
+	report.CleanupDiagnostics = renderDocument.CleanupDiagnostics
 	report.SkippedBlocks = renderDocument.SkippedBlocks
 	report.Warnings = renderDocument.Warnings
 	s.logf(
@@ -488,6 +494,8 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 		s.fileFailed(job, report.SourceFile, "render_text", err)
 		return finish("failed", "render_text"), nil, false
 	}
+	markDocumentRendered(&renderDocument)
+	report.BlockFates = renderDocument.BlockFates
 	report.DurationsMillis["render"] = s.now().Sub(renderStarted).Milliseconds()
 	s.updateStage(job, "encode_output")
 	encodeStarted := s.now()
@@ -514,6 +522,13 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 	s.renderDebug(ctx, job, &report, prepared.Validated.Data, page)
 	s.renderDebugArtifacts(ctx, job, &report, prepared.Image, cleanedDebug, cleaned, renderDocument, cleanupStats)
 	return finish(status, ""), nil, false
+}
+
+func markDocumentRendered(document *RenderDocument) {
+	for index := range document.Blocks {
+		document.Blocks[index].Status = "rendered"
+		appendBlockFate(document, document.Blocks[index].ID, BlockFateEvent{Stage: "render", Decision: "rendered"})
+	}
 }
 
 func (s *Service) translateBlocksIndividually(ctx context.Context, source, target string, blocks []translation.TranslationBlock) ([]translation.TranslatedTextBlock, int, map[string]struct{}, error) {

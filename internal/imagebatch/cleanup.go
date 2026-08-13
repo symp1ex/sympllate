@@ -9,6 +9,7 @@ import (
 	"image/draw"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/sympllate/translator/internal/ocr"
@@ -216,8 +217,11 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 					stats.Blocks[len(stats.Blocks)-1].ConservativeFallback = true
 					stats.UniformRegions++
 					filtered.Blocks = append(filtered.Blocks, block)
-					filtered.Warnings = append(filtered.Warnings, RenderWarning{Code: "cleanup_solid_region_fallback", BlockID: block.ID})
+					blockIndex := len(filtered.Blocks) - 1
+					filtered.Blocks[blockIndex].Warning = appendWarningCode(filtered.Blocks[blockIndex].Warning, "cleanup_fallback_used")
+					filtered.Warnings = append(filtered.Warnings, RenderWarning{Code: "cleanup_fallback_used", BlockID: block.ID})
 					filtered.CleanupDiagnostics.ConservativeFallbackBlocks++
+					appendBlockFate(&filtered, block.ID, BlockFateEvent{Stage: "cleanup", Decision: "fallback", Reason: code, Strategy: "conservative_solid_region"})
 					solid = append(solid, blockCleanup{block: block, mask: mask})
 					continue
 				}
@@ -225,17 +229,23 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 			if ocrCleanupUnsafe {
 				code = "cleanup_unsafe"
 			}
-			filtered.SkippedBlocks = append(filtered.SkippedBlocks, SkippedRenderBlock{ID: block.ID, Stage: "cleanup", Reason: code, SourceText: block.SourceText, SourcePolygon: block.SourcePolygon, SourceBox: block.SourceBox, TranslationText: block.TranslatedText})
-			filtered.Warnings = warningsWithoutBlock(filtered.Warnings, block.ID)
-			filtered.Warnings = append(filtered.Warnings, RenderWarning{Code: code, BlockID: block.ID})
+			block.Warning = appendWarningCode(block.Warning, "cleanup_failed_rendered_anyway")
+			block.Status = "renderable_cleanup_fallback"
+			filtered.Blocks = append(filtered.Blocks, block)
+			filtered.Warnings = append(filtered.Warnings, RenderWarning{Code: code, BlockID: block.ID}, RenderWarning{Code: "cleanup_failed_rendered_anyway", BlockID: block.ID}, RenderWarning{Code: "original_text_may_remain", BlockID: block.ID})
+			filtered.CleanupDiagnostics.FailedRenderedBlocks++
+			appendBlockFate(&filtered, block.ID, BlockFateEvent{Stage: "cleanup", Decision: "rendered_anyway", Reason: code, Strategy: "draw_over_original"})
 			continue
 		}
 		mask := subtractMask(built.mask, claimed)
 		finalPixels := countMask(mask)
 		if finalPixels == 0 {
-			filtered.SkippedBlocks = append(filtered.SkippedBlocks, SkippedRenderBlock{ID: block.ID, Stage: "cleanup", Reason: textMaskOverlapCode, SourceText: block.SourceText, SourcePolygon: block.SourcePolygon, SourceBox: block.SourceBox, TranslationText: block.TranslatedText})
-			filtered.Warnings = warningsWithoutBlock(filtered.Warnings, block.ID)
-			filtered.Warnings = append(filtered.Warnings, RenderWarning{Code: textMaskOverlapCode, BlockID: block.ID})
+			block.Warning = appendWarningCode(block.Warning, "cleanup_failed_rendered_anyway")
+			block.Status = "renderable_cleanup_fallback"
+			filtered.Blocks = append(filtered.Blocks, block)
+			filtered.Warnings = append(filtered.Warnings, RenderWarning{Code: textMaskOverlapCode, BlockID: block.ID}, RenderWarning{Code: "cleanup_failed_rendered_anyway", BlockID: block.ID}, RenderWarning{Code: "original_text_may_remain", BlockID: block.ID})
+			filtered.CleanupDiagnostics.FailedRenderedBlocks++
+			appendBlockFate(&filtered, block.ID, BlockFateEvent{Stage: "cleanup", Decision: "rendered_anyway", Reason: textMaskOverlapCode, Strategy: "draw_over_original"})
 			continue
 		}
 		mergeMask(claimed, mask)
@@ -246,6 +256,7 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 			stats.SuspiciousBlocks++
 		}
 		filtered.Blocks = append(filtered.Blocks, block)
+		appendBlockFate(&filtered, block.ID, BlockFateEvent{Stage: "cleanup", Decision: "cleaned", Strategy: string(block.CleanupMode)})
 		if block.CleanupMode == CleanupSolid {
 			stats.UniformRegions++
 			solid = append(solid, blockCleanup{block: block, mask: mask})
@@ -269,7 +280,13 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 		mask := clusterMask(regions, cluster, cropBounds)
 		result, err := r.inpainter.Inpaint(ctx, crop, mask)
 		if err != nil {
-			return nil, filtered, stats, fmt.Errorf("LaMa cleanup crop %v: %w", cropBounds, err)
+			if ctx.Err() != nil {
+				return nil, filtered, stats, ctx.Err()
+			}
+			// Neural cleanup is cosmetic. Preserve the original crop and proceed
+			// to Draw rather than losing every successfully translated block.
+			filtered.Warnings = append(filtered.Warnings, RenderWarning{Code: "cleanup_failed_rendered_anyway"}, RenderWarning{Code: "original_text_may_remain"})
+			continue
 		}
 		stats.Preprocessing += result.Timings.Preprocessing
 		stats.Inference += result.Timings.Inference
@@ -289,7 +306,22 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 	if stats.OCRRegionPixels > 0 {
 		stats.CleanupPixelRatio = float64(stats.FinalCleanupPixels) / float64(stats.OCRRegionPixels)
 	}
+	filtered.PipelineMetrics.RenderedBlocks = len(filtered.Blocks)
+	filtered.PipelineMetrics.FallbackRenderedBlocks += filtered.CleanupDiagnostics.ConservativeFallbackBlocks + filtered.CleanupDiagnostics.FailedRenderedBlocks
+	filtered.PipelineMetrics.HardFailedBlocks = max(0, filtered.PipelineMetrics.TranslatedBlocks-len(filtered.Blocks)-filtered.PipelineMetrics.DeduplicatedBlocks)
 	return target, filtered, stats, nil
+}
+
+func appendWarningCode(existing, code string) string {
+	if existing == "" {
+		return code
+	}
+	for _, current := range strings.Split(existing, ",") {
+		if current == code {
+			return existing
+		}
+	}
+	return existing + "," + code
 }
 
 func conservativeSolidRegionMask(bounds image.Rectangle, block RenderBlock, geometries []SourceTextGeometry, claimed *image.Gray) (*image.Gray, bool) {

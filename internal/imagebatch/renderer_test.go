@@ -271,7 +271,7 @@ func TestCleanupUnsafeDoesNotSolidFillNonUniformBackground(t *testing.T) {
 	document.Blocks[0].Foreground = document.Blocks[0].Background
 	draw.Draw(source, source.Bounds(), image.NewUniform(document.Blocks[0].Background.NRGBA()), image.Point{}, draw.Src)
 	_, filtered, _, err := renderer.Clean(context.Background(), source, document)
-	if err != nil || len(filtered.Blocks) != 0 || len(filtered.SkippedBlocks) != 1 || filtered.SkippedBlocks[0].Reason != "cleanup_unsafe" {
+	if err != nil || len(filtered.Blocks) != 1 || len(filtered.SkippedBlocks) != 0 || !hasWarning(filtered.Warnings, "cleanup_failed_rendered_anyway", "one") {
 		t.Fatalf("filtered=%+v err=%v", filtered, err)
 	}
 }

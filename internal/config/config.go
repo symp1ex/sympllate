@@ -147,7 +147,7 @@ func Default() Config {
 		Limits:                 LimitsConfig{MaxInputCharacters: 12000, ClipboardWaitMilliseconds: 800},
 		Updater:                UpdaterConfig{Enabled: true},
 		Logs:                   LogsConfig{LogLevel: newSelectSetting(LogLevelWarning, []string{LogLevelDebug, LogLevelInfo, LogLevelWarning, LogLevelError}), StoreDays: 2},
-		ImageBatch:             ImageBatchConfig{MinimumFontSize: 10, MaximumFontSize: 48, LineSpacing: 1.15, JPEGQuality: 92},
+		ImageBatch:             ImageBatchConfig{MinimumFontSize: 7, MaximumFontSize: 48, LineSpacing: 1.15, JPEGQuality: 92},
 	}
 }
 

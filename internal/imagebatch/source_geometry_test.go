@@ -25,7 +25,7 @@ func TestPrepareKeepsEmptySpaceParagraphAABBOverlap(t *testing.T) {
 	}
 }
 
-func TestPrepareResolvesRealCollisionWithoutSymmetricDoubleSkip(t *testing.T) {
+func TestPrepareKeepsSemanticallyIndependentOverlappingText(t *testing.T) {
 	paragraphs := []ocr.OCRParagraph{
 		geometryParagraph("preferred", 98, []ocr.OCRBox{{X: 20, Y: 20, Width: 120, Height: 24}}),
 		geometryParagraph("lower", 72, []ocr.OCRBox{{X: 35, Y: 22, Width: 110, Height: 24}}),
@@ -34,12 +34,11 @@ func TestPrepareResolvesRealCollisionWithoutSymmetricDoubleSkip(t *testing.T) {
 		{ID: "preferred", TranslatedText: "Primary", Status: "translated"},
 		{ID: "lower", TranslatedText: "Secondary", Status: "translated"},
 	})
-	if len(document.Blocks) != 1 || document.Blocks[0].ID != "preferred" || len(document.SkippedBlocks) != 1 {
+	if len(document.Blocks) != 2 || len(document.SkippedBlocks) != 0 {
 		t.Fatalf("blocks=%+v skipped=%+v", document.Blocks, document.SkippedBlocks)
 	}
-	skipped := document.SkippedBlocks[0]
-	if skipped.Reason != "overlapping_ocr_box" || skipped.ConflictingBlockID != "preferred" || skipped.CollisionClass != "ambiguous_destructive_overlap" {
-		t.Fatalf("skipped=%+v", skipped)
+	if len(document.Collisions) != 1 || document.Collisions[0].CollisionClass != "ambiguous_overlap" || document.Collisions[0].Decision != "kept_both" {
+		t.Fatalf("collisions=%+v", document.Collisions)
 	}
 }
 
@@ -55,8 +54,42 @@ func TestPrepareKeepsDuplicateWinnerDeterministically(t *testing.T) {
 		{ID: "weak", TranslatedText: "Weak", Status: "translated"},
 		{ID: "strong", TranslatedText: "Strong", Status: "translated"},
 	})
-	if len(document.Blocks) != 1 || document.Blocks[0].ID != "strong" || len(document.SkippedBlocks) != 1 || document.SkippedBlocks[0].Reason != "duplicate_ocr_detection" {
+	if len(document.Blocks) != 1 || document.Blocks[0].ID != "strong" || len(document.SkippedBlocks) != 0 || len(document.DeduplicatedBlocks) != 1 || document.DeduplicatedBlocks[0].DuplicateOf != "strong" {
 		t.Fatalf("blocks=%+v skipped=%+v", document.Blocks, document.SkippedBlocks)
+	}
+}
+
+func TestContainedFragmentCannotBeatCompleteParagraphOnConfidence(t *testing.T) {
+	large := geometryParagraph("paragraph", 99.33, []ocr.OCRBox{{X: 10, Y: 10, Width: 280, Height: 22}})
+	large.Text = "the engine serial number equally qualified service facility"
+	large.Lines[0].Text = large.Text
+	large.Lines[0].Words[0].Text = large.Text
+	fragment := geometryParagraph("fragment", 99.99, []ocr.OCRBox{{X: 130, Y: 10, Width: 48, Height: 22}})
+	fragment.Text, fragment.Lines[0].Text, fragment.Lines[0].Words[0].Text = "equally", "equally", "equally"
+	document := prepareGeometryDocument(t, []ocr.OCRParagraph{large, fragment}, []TranslatedBlock{
+		{ID: "paragraph", TranslatedText: "полный перевод абзаца", Status: "translated"},
+		{ID: "fragment", TranslatedText: "равно", Status: "translated"},
+	})
+	if len(document.Blocks) != 1 || document.Blocks[0].ID != "paragraph" || len(document.DeduplicatedBlocks) != 1 || document.DeduplicatedBlocks[0].DuplicateOf != "paragraph" {
+		t.Fatalf("document=%+v", document)
+	}
+	if document.PipelineMetrics.HardFailedBlocks != 0 || document.PipelineMetrics.DeduplicatedBlocks != 1 {
+		t.Fatalf("metrics=%+v", document.PipelineMetrics)
+	}
+}
+
+func TestPartialContinuationTrimsRepeatedTranslatedPhrase(t *testing.T) {
+	first := geometryParagraph("first", 96, []ocr.OCRBox{{X: 10, Y: 10, Width: 190, Height: 20}})
+	second := geometryParagraph("second", 95, []ocr.OCRBox{{X: 150, Y: 11, Width: 160, Height: 20}})
+	first.Text, first.Lines[0].Text, first.Lines[0].Words[0].Text = "the equipment on which the engine is used", "the equipment on which the engine is used", "the equipment on which the engine is used"
+	second.Text, second.Lines[0].Text, second.Lines[0].Words[0].Text = "the engine is used refer to specification", "the engine is used refer to specification", "the engine is used refer to specification"
+	candidates := []renderCandidate{
+		{index: 0, paragraph: first, translation: TranslatedBlock{TranslatedText: "оборудование на котором используется двигатель"}, geometry: SourceTextGeometry{Bounds: first.Box, Regions: []ocr.OCRBox{first.Box}}},
+		{index: 1, paragraph: second, translation: TranslatedBlock{TranslatedText: "используется двигатель см спецификацию"}, geometry: SourceTextGeometry{Bounds: second.Box, Regions: []ocr.OCRBox{second.Box}}},
+	}
+	normalized := normalizeCandidateContinuations(candidates)
+	if !normalized[1] || candidates[1].translation.TranslatedText != "см спецификацию" {
+		t.Fatalf("candidate=%+v normalized=%v", candidates[1], normalized)
 	}
 }
 

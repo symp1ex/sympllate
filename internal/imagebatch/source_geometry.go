@@ -23,6 +23,70 @@ type collisionResolution struct {
 	diagnostic CollisionDiagnostic
 }
 
+// normalizeCandidateContinuations preserves both independently useful blocks
+// while removing a phrase repeated at the end of one translated block and the
+// beginning of the next. This is intentionally stricter than duplicate
+// detection: source and target must both have a multi-token sequence overlap.
+func normalizeCandidateContinuations(candidates []renderCandidate) map[int]bool {
+	normalized := make(map[int]bool)
+	for left := range candidates {
+		for right := left + 1; right < len(candidates); right++ {
+			first, second := &candidates[left], &candidates[right]
+			if sourceGeometryOverlapRatio(first.geometry, second.geometry) == 0 && !baselineCompatible(first.geometry.Bounds, second.geometry.Bounds) {
+				continue
+			}
+			if boxReadingOrder(second.geometry.Bounds, first.geometry.Bounds) {
+				first, second = second, first
+			}
+			sourceOverlap := suffixPrefixTokenOverlap(first.paragraph.Text, second.paragraph.Text)
+			if sourceOverlap < 2 {
+				continue
+			}
+			firstSourceTokens, secondSourceTokens := collisionTokens(first.paragraph.Text), collisionTokens(second.paragraph.Text)
+			if float64(sourceOverlap)/float64(max(1, min(len(firstSourceTokens), len(secondSourceTokens)))) < .35 {
+				continue
+			}
+			targetOverlap := suffixPrefixTokenOverlap(first.translation.TranslatedText, second.translation.TranslatedText)
+			if targetOverlap < 2 {
+				continue
+			}
+			fields := strings.Fields(second.translation.TranslatedText)
+			if targetOverlap >= len(fields) {
+				continue
+			}
+			second.translation.TranslatedText = strings.Join(fields[targetOverlap:], " ")
+			normalized[second.index] = true
+		}
+	}
+	return normalized
+}
+
+func suffixPrefixTokenOverlap(left, right string) int {
+	a, b := collisionTokens(left), collisionTokens(right)
+	limit := min(len(a), len(b))
+	for size := limit; size >= 1; size-- {
+		match := true
+		for index := 0; index < size; index++ {
+			if a[len(a)-size+index] != b[index] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return size
+		}
+	}
+	return 0
+}
+
+func boxReadingOrder(left, right ocr.OCRBox) bool {
+	lineHeight := max(1, min(left.Height, right.Height))
+	if absInt((left.Y+left.Height/2)-(right.Y+right.Height/2)) <= lineHeight/2 {
+		return left.X < right.X
+	}
+	return left.Y < right.Y
+}
+
 func sourceTextGeometry(paragraph ocr.OCRParagraph, transform CoordinateTransform, width, height int) SourceTextGeometry {
 	geometry := SourceTextGeometry{ID: paragraph.ID, Bounds: ClampBox(TransformBox(paragraph.Box, transform), width, height)}
 	for _, line := range paragraph.Lines {
@@ -129,7 +193,17 @@ func resolveSourceCollisions(candidates []renderCandidate) (map[int]collisionRes
 func classifySourceCollision(left, right renderCandidate) (CollisionDiagnostic, bool) {
 	paragraphArea := boxIntersectionArea(left.geometry.Bounds, right.geometry.Bounds)
 	diagnostic := CollisionDiagnostic{BlockID: left.paragraph.ID, ConflictingBlockID: right.paragraph.ID, CollisionClass: "no_intersection", Decision: "kept_both"}
+	leftText, rightText := normalizedCollisionText(left.paragraph.Text), normalizedCollisionText(right.paragraph.Text)
+	textSimilarity := collisionTextSimilarity(left.paragraph.Text, right.paragraph.Text)
+	translationSimilarity := collisionTextSimilarity(left.translation.TranslatedText, right.translation.TranslatedText)
 	if paragraphArea == 0 {
+		// Paddle full-page and tiled passes can produce nearly adjacent quads for
+		// the same physical line after projection. Only collapse these when both
+		// source and translated text agree and their baselines/centres are close.
+		if textSimilarity >= .94 && translationSimilarity >= .9 && baselineCompatible(left.geometry.Bounds, right.geometry.Bounds) && normalizedCenterDistance(left.geometry.Bounds, right.geometry.Bounds) <= 1.25 {
+			diagnostic.CollisionClass = "duplicate"
+			return diagnostic, true
+		}
 		return diagnostic, false
 	}
 	diagnostic.ParagraphIntersection = boxIntersection(left.geometry.Bounds, right.geometry.Bounds)
@@ -140,18 +214,29 @@ func classifySourceCollision(left, right renderCandidate) (CollisionDiagnostic, 
 		diagnostic.Decision = "kept_both"
 		return diagnostic, false
 	}
-	leftText, rightText := normalizedCollisionText(left.paragraph.Text), normalizedCollisionText(right.paragraph.Text)
-	if leftText == rightText && diagnostic.TextRegionOverlapRatio >= materialSourceTextOverlap {
+	paragraphIoU := boxIoU(left.geometry.Bounds, right.geometry.Bounds)
+	if leftText == rightText && (diagnostic.TextRegionOverlapRatio >= .2 || paragraphIoU >= .15 || normalizedCenterDistance(left.geometry.Bounds, right.geometry.Bounds) <= .8) {
 		diagnostic.CollisionClass = "duplicate"
 		return diagnostic, true
 	}
-	if (strings.Contains(leftText, rightText) || strings.Contains(rightText, leftText)) && diagnostic.TextRegionOverlapRatio >= .7 {
+	shorterRatio := float64(min(len([]rune(leftText)), len([]rune(rightText)))) / float64(max(1, max(len([]rune(leftText)), len([]rune(rightText)))))
+	containedText := strings.Contains(leftText, rightText) || strings.Contains(rightText, leftText)
+	if containedText && meaningfulTextLength(left.paragraph.Text) >= 3 && meaningfulTextLength(right.paragraph.Text) >= 3 &&
+		(shorterRatio >= .2 || diagnostic.ParagraphOverlapRatio >= .9) &&
+		(diagnostic.TextRegionOverlapRatio >= .45 || diagnostic.ParagraphOverlapRatio >= .72) {
 		diagnostic.CollisionClass = "contained_fragment"
 		return diagnostic, true
 	}
-	if diagnostic.TextRegionOverlapRatio >= materialSourceTextOverlap {
-		diagnostic.CollisionClass = "ambiguous_destructive_overlap"
+	if textSimilarity >= .86 && translationSimilarity >= .82 && (diagnostic.TextRegionOverlapRatio >= materialSourceTextOverlap || paragraphIoU >= .3) {
+		diagnostic.CollisionClass = "duplicate"
 		return diagnostic, true
+	}
+	// Geometry by itself is not enough evidence to discard translated text.
+	// Independent labels, table cells, and crossing paragraph AABBs are common.
+	if diagnostic.TextRegionOverlapRatio >= materialSourceTextOverlap {
+		diagnostic.CollisionClass = "ambiguous_overlap"
+		diagnostic.Decision = "kept_both"
+		return diagnostic, false
 	}
 	diagnostic.CollisionClass = "neighboring_independent_text"
 	diagnostic.Decision = "kept_both"
@@ -159,9 +244,27 @@ func classifySourceCollision(left, right renderCandidate) (CollisionDiagnostic, 
 }
 
 func betterRenderCandidate(left, right renderCandidate) bool {
+	// Semantic completeness and source coverage deliberately precede OCR
+	// confidence. A high-confidence word inside a complete paragraph must not
+	// suppress the paragraph.
+	leftContent, rightContent := meaningfulTextLength(left.paragraph.Text), meaningfulTextLength(right.paragraph.Text)
+	if leftContent != rightContent {
+		return leftContent > rightContent
+	}
+	leftTokens, rightTokens := meaningfulTokenCount(left.paragraph.Text), meaningfulTokenCount(right.paragraph.Text)
+	if leftTokens != rightTokens {
+		return leftTokens > rightTokens
+	}
 	leftAccepted, rightAccepted := acceptedWordCount(left.paragraph), acceptedWordCount(right.paragraph)
 	if (leftAccepted > 0) != (rightAccepted > 0) {
 		return leftAccepted > 0
+	}
+	leftArea, rightArea := sourceCoverageArea(left.geometry), sourceCoverageArea(right.geometry)
+	if leftArea != rightArea {
+		return leftArea > rightArea
+	}
+	if geometryQuality(left.geometry) != geometryQuality(right.geometry) {
+		return geometryQuality(left.geometry) > geometryQuality(right.geometry)
 	}
 	if left.paragraph.Confidence != right.paragraph.Confidence {
 		return left.paragraph.Confidence > right.paragraph.Confidence
@@ -170,13 +273,99 @@ func betterRenderCandidate(left, right renderCandidate) bool {
 	if leftDetector != rightDetector {
 		return leftDetector > rightDetector
 	}
-	if geometryQuality(left.geometry) != geometryQuality(right.geometry) {
-		return geometryQuality(left.geometry) > geometryQuality(right.geometry)
-	}
-	if len([]rune(strings.TrimSpace(left.paragraph.Text))) != len([]rune(strings.TrimSpace(right.paragraph.Text))) {
-		return len([]rune(strings.TrimSpace(left.paragraph.Text))) > len([]rune(strings.TrimSpace(right.paragraph.Text)))
-	}
 	return left.paragraph.ID < right.paragraph.ID
+}
+
+func meaningfulTextLength(value string) int { return len([]rune(normalizedCollisionText(value))) }
+
+func meaningfulTokenCount(value string) int {
+	return len(strings.FieldsFunc(strings.ToLower(value), func(character rune) bool {
+		return !unicode.IsLetter(character) && !unicode.IsDigit(character)
+	}))
+}
+
+func sourceCoverageArea(geometry SourceTextGeometry) int {
+	if len(geometry.Regions) > 0 {
+		return regionArea(geometry.Regions)
+	}
+	return geometry.Bounds.Width * geometry.Bounds.Height
+}
+
+func collisionTextSimilarity(left, right string) float64 {
+	a, b := collisionTokens(left), collisionTokens(right)
+	if len(a) == 0 || len(b) == 0 {
+		return 0
+	}
+	counts := make(map[string]int, len(a))
+	for _, token := range a {
+		counts[token]++
+	}
+	shared := 0
+	for _, token := range b {
+		if counts[token] > 0 {
+			shared++
+			counts[token]--
+		}
+	}
+	tokenDice := 2 * float64(shared) / float64(len(a)+len(b))
+	leftNormalized, rightNormalized := normalizedCollisionText(left), normalizedCollisionText(right)
+	if leftNormalized == rightNormalized {
+		return 1
+	}
+	if strings.Contains(leftNormalized, rightNormalized) || strings.Contains(rightNormalized, leftNormalized) {
+		coverage := float64(min(len([]rune(leftNormalized)), len([]rune(rightNormalized)))) / float64(max(len([]rune(leftNormalized)), len([]rune(rightNormalized))))
+		return math.Max(tokenDice, coverage)
+	}
+	return math.Max(tokenDice, collisionNGramSimilarity(leftNormalized, rightNormalized))
+}
+
+func collisionNGramSimilarity(left, right string) float64 {
+	if len([]rune(left)) < 2 || len([]rune(right)) < 2 {
+		return 0
+	}
+	grams := func(value string) []string {
+		runes := []rune(value)
+		result := make([]string, 0, len(runes)-1)
+		for index := 1; index < len(runes); index++ {
+			result = append(result, string(runes[index-1:index+1]))
+		}
+		return result
+	}
+	a, b := grams(left), grams(right)
+	counts := make(map[string]int, len(a))
+	for _, gram := range a {
+		counts[gram]++
+	}
+	shared := 0
+	for _, gram := range b {
+		if counts[gram] > 0 {
+			shared++
+			counts[gram]--
+		}
+	}
+	return 2 * float64(shared) / float64(len(a)+len(b))
+}
+
+func collisionTokens(value string) []string {
+	return strings.FieldsFunc(strings.ToLower(value), func(character rune) bool {
+		return !unicode.IsLetter(character) && !unicode.IsDigit(character)
+	})
+}
+
+func boxIoU(left, right ocr.OCRBox) float64 {
+	intersection := boxIntersectionArea(left, right)
+	union := left.Width*left.Height + right.Width*right.Height - intersection
+	return float64(intersection) / float64(max(1, union))
+}
+
+func normalizedCenterDistance(left, right ocr.OCRBox) float64 {
+	distance := math.Hypot(float64((left.X+left.Width/2)-(right.X+right.Width/2)), float64((left.Y+left.Height/2)-(right.Y+right.Height/2)))
+	return distance / float64(max(1, min(max(left.Width, left.Height), max(right.Width, right.Height))))
+}
+
+func baselineCompatible(left, right ocr.OCRBox) bool {
+	lineHeight := max(1, min(left.Height, right.Height))
+	return absInt((left.Y+left.Height)-(right.Y+right.Height)) <= lineHeight/2+1
 }
 
 func acceptedWordCount(paragraph ocr.OCRParagraph) int {

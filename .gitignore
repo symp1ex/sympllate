@@ -1,4 +1,6 @@
 /dist/
+.codex-tmp/
+.codex-test/
 /frontend/node_modules/
 /frontend/dist/
 *.tsbuildinfo

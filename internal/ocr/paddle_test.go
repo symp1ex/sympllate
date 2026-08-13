@@ -198,18 +198,32 @@ func TestMergePaddleRegionsUsesPolygonGeometryWithoutDuplicates(t *testing.T) {
 
 func TestMergePaddleRegionsDropsContainedTileTextFragment(t *testing.T) {
 	t.Parallel()
-	full:=paddleRegion{Polygon:[4]paddlePoint{{10,10},{210,10},{210,30},{10,30}},Box:OCRBox{X:10,Y:10,Width:200,Height:20},Text:"Check the engine oil daily",RecognizerConfidence:.96,Pass:"full"}
-	fragment:=paddleRegion{Polygon:[4]paddlePoint{{150,10},{210,10},{210,30},{150,30}},Box:OCRBox{X:150,Y:10,Width:60,Height:20},Text:"oil daily",RecognizerConfidence:.99,Pass:"tile-02"}
-	merged,duplicates:=mergePaddleRegions([]paddleRegion{full,fragment})
-	if duplicates!=1 || len(merged)!=1 || merged[0].Text!=full.Text {t.Fatalf("merged=%+v duplicates=%d",merged,duplicates)}
+	full := paddleRegion{Polygon: [4]paddlePoint{{10, 10}, {210, 10}, {210, 30}, {10, 30}}, Box: OCRBox{X: 10, Y: 10, Width: 200, Height: 20}, Text: "Check the engine oil daily", RecognizerConfidence: .96, Pass: "full"}
+	fragment := paddleRegion{Polygon: [4]paddlePoint{{150, 10}, {210, 10}, {210, 30}, {150, 30}}, Box: OCRBox{X: 150, Y: 10, Width: 60, Height: 20}, Text: "oil daily", RecognizerConfidence: .99, Pass: "tile-02"}
+	merged, duplicates := mergePaddleRegions([]paddleRegion{full, fragment})
+	if duplicates != 1 || len(merged) != 1 || merged[0].Text != full.Text {
+		t.Fatalf("merged=%+v duplicates=%d", merged, duplicates)
+	}
 }
 
 func TestMergePaddleRegionsPreservesConflictingContainedText(t *testing.T) {
 	t.Parallel()
-	full:=paddleRegion{Polygon:[4]paddlePoint{{10,10},{210,10},{210,30},{10,30}},Box:OCRBox{X:10,Y:10,Width:200,Height:20},Text:"Engine oil capacity",RecognizerConfidence:.80}
-	conflict:=paddleRegion{Polygon:[4]paddlePoint{{120,10},{210,10},{210,30},{120,30}},Box:OCRBox{X:120,Y:10,Width:90,Height:20},Text:"filter removed",RecognizerConfidence:.82}
-	merged,duplicates:=mergePaddleRegions([]paddleRegion{full,conflict})
-	if duplicates!=0 || len(merged)!=2 {t.Fatalf("merged=%+v duplicates=%d",merged,duplicates)}
+	full := paddleRegion{Polygon: [4]paddlePoint{{10, 10}, {210, 10}, {210, 30}, {10, 30}}, Box: OCRBox{X: 10, Y: 10, Width: 200, Height: 20}, Text: "Engine oil capacity", RecognizerConfidence: .80}
+	conflict := paddleRegion{Polygon: [4]paddlePoint{{120, 10}, {210, 10}, {210, 30}, {120, 30}}, Box: OCRBox{X: 120, Y: 10, Width: 90, Height: 20}, Text: "filter removed", RecognizerConfidence: .82}
+	merged, duplicates := mergePaddleRegions([]paddleRegion{full, conflict})
+	if duplicates != 0 || len(merged) != 2 {
+		t.Fatalf("merged=%+v duplicates=%d", merged, duplicates)
+	}
+}
+
+func TestMergePaddleRegionsDropsNearlyIdenticalOverlappingText(t *testing.T) {
+	t.Parallel()
+	first := paddleRegion{Polygon: [4]paddlePoint{{10, 10}, {180, 10}, {180, 30}, {10, 30}}, Box: OCRBox{X: 10, Y: 10, Width: 170, Height: 20}, Text: "Search by menu", RecognizerConfidence: .91}
+	second := paddleRegion{Polygon: [4]paddlePoint{{13, 11}, {183, 11}, {183, 31}, {13, 31}}, Box: OCRBox{X: 13, Y: 11, Width: 170, Height: 20}, Text: "Search by menu", RecognizerConfidence: .99}
+	merged, duplicates := mergePaddleRegions([]paddleRegion{first, second})
+	if duplicates != 1 || len(merged) != 1 {
+		t.Fatalf("merged=%+v duplicates=%d", merged, duplicates)
+	}
 }
 
 func TestPaddleTilePlanCoversDocumentWithinBudget(t *testing.T) {

@@ -388,6 +388,26 @@ func TestEstimateSourceTypographyRecoversObservedLineStep(t *testing.T) {
 	}
 }
 
+func TestFitBlockLongTranslationAlwaysReturnsDrawableFallback(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFont(t, directory)
+	renderer, err := NewRenderer(directory, DefaultRenderConfig(), &fakeInpaintEngine{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer renderer.Close()
+	box, fit, err := renderer.fitBlock(context.Background(), "Очень длинный перевод, который заведомо не помещается в крошечную исходную область", 12, 1, 0, "left", ocr.OCRBox{X: 5, Y: 5, Width: 4, Height: 3}, nil, -1, nil, 40, 18)
+	if err != nil || !fit.Fits || len(fit.Lines) == 0 || fit.FallbackReason == "" || box.Width <= 0 || box.Height <= 0 {
+		t.Fatalf("box=%+v fit=%+v err=%v", box, fit, err)
+	}
+}
+
+func TestDefaultMinimumFontSupportsSmallUIText(t *testing.T) {
+	if got := DefaultRenderConfig().MinimumFontSize; got > 8 {
+		t.Fatalf("minimum font size=%v", got)
+	}
+}
+
 func TestChooseAlignmentRecognizesRightAlignedTableCell(t *testing.T) {
 	paragraph := ocr.OCRParagraph{
 		Box: ocr.OCRBox{X: 310, Y: 20, Width: 70, Height: 38},

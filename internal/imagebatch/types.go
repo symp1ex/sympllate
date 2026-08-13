@@ -137,6 +137,7 @@ type JobFileReport struct {
 	OCRDiagnostics     ocr.OCRDiagnostics        `json:"ocrDiagnostics"`
 	LayoutDiagnostics  LayoutDiagnostics         `json:"layoutDiagnostics"`
 	CleanupDiagnostics CleanupDiagnosticsSummary `json:"cleanupDiagnostics"`
+	PipelineMetrics    PipelineMetrics           `json:"pipelineMetrics"`
 	DetectedRegions    int                       `json:"detectedRegions"`
 	RecognizedRegions  int                       `json:"recognizedRegions"`
 	AcceptedOCRRegions int                       `json:"acceptedOCRRegions"`
@@ -145,6 +146,8 @@ type JobFileReport struct {
 	OCRWords           int                       `json:"ocrWords"`
 	TranslatedBlocks   int                       `json:"translatedBlocks"`
 	RenderableBlocks   int                       `json:"renderableBlocks"`
+	DeduplicatedBlocks []SkippedRenderBlock      `json:"deduplicatedBlocks,omitempty"`
+	BlockFates         []BlockFate               `json:"blockFates,omitempty"`
 	SourceGeometries   []SourceTextGeometry      `json:"sourceGeometries,omitempty"`
 	Collisions         []CollisionDiagnostic     `json:"collisions,omitempty"`
 }

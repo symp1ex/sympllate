@@ -26,7 +26,7 @@ type LayoutConfig struct {
 
 func DefaultRenderConfig() RenderConfig {
 	return RenderConfig{
-		MinimumFontSize: 10, MaximumFontSize: 48, LineSpacing: 1.15,
+		MinimumFontSize: 7, MaximumFontSize: 48, LineSpacing: 1.15,
 		HorizontalTextPadding: 2, VerticalTextPadding: 2, JPEGQuality: 92,
 		Layout: LayoutConfig{MaximumUpscaleRatio: 1.05, PreferredShrinkRatio: 0.85},
 	}
@@ -85,8 +85,11 @@ type RenderDocument struct {
 	Collisions         []CollisionDiagnostic     `json:"collisions,omitempty"`
 	FillWordBoxes      bool                      `json:"fillWordBoxes,omitempty"`
 	Blocks             []RenderBlock             `json:"blocks"`
+	DeduplicatedBlocks []SkippedRenderBlock      `json:"deduplicatedBlocks,omitempty"`
 	SkippedBlocks      []SkippedRenderBlock      `json:"skippedBlocks"`
 	Warnings           []RenderWarning           `json:"warnings"`
+	BlockFates         []BlockFate               `json:"blockFates,omitempty"`
+	PipelineMetrics    PipelineMetrics           `json:"pipelineMetrics"`
 	LayoutDiagnostics  LayoutDiagnostics         `json:"layoutDiagnostics"`
 	CleanupDiagnostics CleanupDiagnosticsSummary `json:"cleanupDiagnostics"`
 }
@@ -97,10 +100,38 @@ type LayoutDiagnostics struct {
 	SkippedBlocks    int `json:"skippedBlocks"`
 }
 
+// PipelineMetrics makes the translated -> rendered invariant explicit in
+// job/debug JSON. Deduplicated blocks are accounted for separately because
+// suppressing a duplicate is a successful semantic outcome, not a render
+// failure.
+type PipelineMetrics struct {
+	OCRUniqueBlocks        int `json:"ocrUniqueBlocks"`
+	TranslatedBlocks       int `json:"translatedBlocks"`
+	RenderCandidates       int `json:"renderCandidates"`
+	RenderedBlocks         int `json:"renderedBlocks"`
+	DeduplicatedBlocks     int `json:"deduplicatedBlocks"`
+	FallbackRenderedBlocks int `json:"fallbackRenderedBlocks"`
+	HardFailedBlocks       int `json:"hardFailedBlocks"`
+}
+
+type BlockFate struct {
+	ID          string           `json:"id"`
+	Events      []BlockFateEvent `json:"events"`
+	DuplicateOf string           `json:"duplicateOf,omitempty"`
+}
+
+type BlockFateEvent struct {
+	Stage    string `json:"stage"`
+	Decision string `json:"decision"`
+	Reason   string `json:"reason,omitempty"`
+	Strategy string `json:"strategy,omitempty"`
+}
+
 type CleanupDiagnosticsSummary struct {
 	SafeBlocks                 int `json:"safeBlocks"`
 	UnsafeBlocks               int `json:"unsafeBlocks"`
 	ConservativeFallbackBlocks int `json:"conservativeFallbackBlocks,omitempty"`
+	FailedRenderedBlocks       int `json:"failedRenderedBlocks,omitempty"`
 }
 
 type RenderBlock struct {
@@ -173,6 +204,9 @@ type SourceLineLayout struct {
 type FontStyleEstimate struct {
 	Style               string                   `json:"style"`
 	FontSize            float64                  `json:"fontSize"`
+	InitialFontSize     float64                  `json:"initialFontSize,omitempty"`
+	Normalized          bool                     `json:"normalized,omitempty"`
+	NormalizationReason string                   `json:"normalizationReason,omitempty"`
 	LineStep            float64                  `json:"lineStep"`
 	Confidence          float64                  `json:"confidence"`
 	IndividualEstimates []IndividualFontEstimate `json:"individualEstimates"`
@@ -221,6 +255,7 @@ type SkippedRenderBlock struct {
 	SourceBox              ocr.OCRBox     `json:"sourceBox,omitempty"`
 	TranslationText        string         `json:"translationText,omitempty"`
 	ConflictingBlockID     string         `json:"conflictingBlockId,omitempty"`
+	DuplicateOf            string         `json:"duplicateOf,omitempty"`
 	ParagraphOverlapRatio  float64        `json:"paragraphOverlapRatio,omitempty"`
 	TextRegionOverlapRatio float64        `json:"textRegionOverlapRatio,omitempty"`
 	CollisionClass         string         `json:"collisionClass,omitempty"`

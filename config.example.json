@@ -65,7 +65,7 @@
     "store_days": 2
   },
   "imageBatch": {
-    "minimumFontSize": 10,
+    "minimumFontSize": 7,
     "maximumFontSize": 48,
     "lineSpacing": 1.15,
     "jpegQuality": 92

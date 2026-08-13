@@ -78,7 +78,7 @@ func TestDefaultEnablesUpdaterAndConfiguresLogs(t *testing.T) {
 	if strings.Join(cfg.Logs.LogLevel.List, ",") != strings.Join(wantLevels, ",") {
 		t.Fatalf("default log levels = %v, want %v", cfg.Logs.LogLevel.List, wantLevels)
 	}
-	if cfg.ImageBatch.MinimumFontSize != 10 || cfg.ImageBatch.MaximumFontSize != 48 || cfg.ImageBatch.JPEGQuality != 92 {
+	if cfg.ImageBatch.MinimumFontSize != 7 || cfg.ImageBatch.MaximumFontSize != 48 || cfg.ImageBatch.JPEGQuality != 92 {
 		t.Fatalf("default image batch config = %+v", cfg.ImageBatch)
 	}
 }

@@ -57,6 +57,7 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 	paragraphIDs := make(map[string]struct{}, len(page.Paragraphs))
 	for _, paragraph := range page.Paragraphs {
 		paragraphIDs[paragraph.ID] = struct{}{}
+		appendBlockFate(&document, paragraph.ID, BlockFateEvent{Stage: "ocr", Decision: "grouped", Strategy: page.Diagnostics.Backend})
 	}
 	for _, block := range translation.Blocks {
 		if _, ok := paragraphIDs[block.ID]; !ok {
@@ -64,11 +65,22 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 			continue
 		}
 		translated[block.ID] = block
+		if block.Status == "" || block.Status == "translated" {
+			appendBlockFate(&document, block.ID, BlockFateEvent{Stage: "translation", Decision: "translated"})
+		}
 	}
 	sourceBoxes := make([]ocr.OCRBox, len(page.Paragraphs))
 	sourceGeometries := make([]SourceTextGeometry, len(page.Paragraphs))
 	for index, paragraph := range page.Paragraphs {
 		sourceGeometries[index] = sourceTextGeometry(paragraph, transform, width, height)
+		if sourceGeometries[index].Bounds.Width <= 0 || sourceGeometries[index].Bounds.Height <= 0 {
+			x, y := min(max(0, paragraph.Box.X), max(0, width-1)), min(max(0, paragraph.Box.Y), max(0, height-1))
+			fallback := ocr.OCRBox{X: x, Y: y, Width: max(1, min(width-x, 1)), Height: max(1, min(height-y, 1))}
+			sourceGeometries[index].Bounds = fallback
+			sourceGeometries[index].Regions = []ocr.OCRBox{fallback}
+			sourceGeometries[index].Level = "render_fallback"
+			appendBlockFate(&document, paragraph.ID, BlockFateEvent{Stage: "normalization", Decision: "recovered", Reason: "invalid_or_outside_box", Strategy: "one_pixel_anchor"})
+		}
 		sourceBoxes[index] = sourceGeometries[index].Bounds
 	}
 	document.SourceGeometries = append(document.SourceGeometries, sourceGeometries...)
@@ -91,8 +103,31 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 			candidates = append(candidates, renderCandidate{index: index, paragraph: paragraph, translation: block, geometry: sourceGeometries[index]})
 		}
 	}
+	continuationNormalized := normalizeCandidateContinuations(candidates)
+	for _, candidate := range candidates {
+		translated[candidate.paragraph.ID] = candidate.translation
+		if continuationNormalized[candidate.index] {
+			appendBlockFate(&document, candidate.paragraph.ID, BlockFateEvent{Stage: "deduplication", Decision: "normalized_continuation", Strategy: "trimmed_repeated_translation_prefix"})
+		}
+	}
 	rejected, collisions := resolveSourceCollisions(candidates)
 	document.Collisions = append(document.Collisions, collisions...)
+	fontEstimates := make([]FontStyleEstimate, len(page.Paragraphs))
+	fontEligible := make([]bool, len(page.Paragraphs))
+	for index, paragraph := range page.Paragraphs {
+		if initialReasons[index] != "" {
+			continue
+		}
+		if _, duplicate := rejected[index]; duplicate {
+			continue
+		}
+		fontEligible[index] = true
+		fontEstimates[index], err = EstimateSourceTypography(ctx, r.fonts, paragraph, transform, r.config.MinimumFontSize, r.config.MaximumFontSize)
+		if err != nil {
+			return RenderDocument{}, fmt.Errorf("estimate source font size for block %s: %w", paragraph.ID, err)
+		}
+	}
+	normalizeLocalTypography(page.Paragraphs, fontEstimates, fontEligible, transform)
 	activeTextRegions := make([]ocr.OCRBox, 0, len(page.Paragraphs))
 	for index, paragraph := range page.Paragraphs {
 		if err := ctx.Err(); err != nil {
@@ -102,7 +137,17 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 		reason := initialReasons[index]
 		resolution, collisionRejected := rejected[index]
 		if reason == "" && collisionRejected {
-			reason = resolution.reason
+			deduplicated := skippedRenderBlock("deduplication", resolution.reason, paragraph, block, sourceBoxes[index])
+			deduplicated.ConflictingBlockID = resolution.diagnostic.ConflictingBlockID
+			deduplicated.DuplicateOf = resolution.diagnostic.ConflictingBlockID
+			deduplicated.ParagraphOverlapRatio = resolution.diagnostic.ParagraphOverlapRatio
+			deduplicated.TextRegionOverlapRatio = resolution.diagnostic.TextRegionOverlapRatio
+			deduplicated.CollisionClass = resolution.diagnostic.CollisionClass
+			deduplicated.Decision = resolution.diagnostic.Decision
+			document.DeduplicatedBlocks = append(document.DeduplicatedBlocks, deduplicated)
+			appendBlockFate(&document, paragraph.ID, BlockFateEvent{Stage: "deduplication", Decision: "deduplicated", Reason: resolution.reason, Strategy: resolution.diagnostic.ConflictingBlockID})
+			setBlockDuplicateOf(&document, paragraph.ID, resolution.diagnostic.ConflictingBlockID)
+			continue
 		}
 		if reason != "" {
 			skipped := skippedRenderBlock("layout", reason, paragraph, block, sourceBoxes[index])
@@ -114,8 +159,10 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 				skipped.Decision = resolution.diagnostic.Decision
 			}
 			document.SkippedBlocks = append(document.SkippedBlocks, skipped)
+			appendBlockFate(&document, paragraph.ID, BlockFateEvent{Stage: "candidate", Decision: "hard_failed", Reason: reason})
 			continue
 		}
+		appendBlockFate(&document, paragraph.ID, BlockFateEvent{Stage: "candidate", Decision: "unique_render_candidate"})
 		protectedRegions := protectedSourceRegions(sourceGeometries, index, rejected)
 		layoutBase := safeTranslationBase(sourceGeometries[index], protectedRegions)
 		cleanup := ExpandBox(sourceBoxes[index], CleanupPadding{Horizontal: cleanupPaddingHorizontal, Vertical: cleanupPaddingVertical}, width, height)
@@ -132,19 +179,14 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 		}
 		container := sourceTextContainer(sourceBoxes[index], protectedRegions, -1, width, height)
 		alignment, verticalAlignment := chooseAlignment(paragraph, transform, container)
-		fontEstimate, err := EstimateSourceTypography(ctx, r.fonts, paragraph, transform, r.config.MinimumFontSize, r.config.MaximumFontSize)
-		if err != nil {
-			return RenderDocument{}, fmt.Errorf("estimate source font size for block %s: %w", paragraph.ID, err)
-		}
+		fontEstimate := fontEstimates[index]
 		preferredFontSize := fontEstimate.FontSize
 		textBox, fit, err := r.fitBlock(ctx, block.TranslatedText, preferredFontSize, sourceLineCount(paragraph), fontEstimate.LineStep, alignment, layoutBase, protectedRegions, -1, activeTextRegions, width, height)
 		if err != nil {
 			return RenderDocument{}, fmt.Errorf("layout block %s: %w", paragraph.ID, err)
 		}
-		if !fit.Fits {
-			document.SkippedBlocks = append(document.SkippedBlocks, skippedRenderBlock("layout", "text_does_not_fit_safely", paragraph, block, sourceBoxes[index]))
-			continue
-		}
+		// fitBlock guarantees a drawable last-resort result. Overflow is a
+		// warning/fate, never a normal reason to discard translated text.
 		warnings := make([]string, 0, 1)
 		if background.Fallback {
 			warnings = append(warnings, "insufficient_background_sample")
@@ -157,6 +199,11 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 		if fit.EmergencyShrink {
 			warnings = append(warnings, "font_size_below_preferred_range")
 			document.Warnings = append(document.Warnings, RenderWarning{Code: "font_size_below_preferred_range", BlockID: paragraph.ID})
+		}
+		if fit.FallbackReason != "" {
+			appendBlockFate(&document, paragraph.ID, BlockFateEvent{Stage: "layout", Decision: "fallback_render", Reason: "text_does_not_fit_normally", Strategy: fit.FallbackReason})
+		} else {
+			appendBlockFate(&document, paragraph.ID, BlockFateEvent{Stage: "layout", Decision: "fit", Strategy: "normal"})
 		}
 		lineLayouts := positionTextLines(fit, textBox, alignment, verticalAlignment, r.config.HorizontalTextPadding, r.config.VerticalTextPadding)
 		cleanupRegions := cleanupRegionsFor(paragraph, transform, width, height)
@@ -187,9 +234,47 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 			Status: "renderable", Warning: strings.Join(warnings, ","),
 		})
 		activeTextRegions = append(activeTextRegions, renderedLineRegions(lineLayouts, fit.LineHeight, fit.Ascent)...)
+		appendBlockFate(&document, paragraph.ID, BlockFateEvent{Stage: "render", Decision: "ready"})
 	}
 	document.LayoutDiagnostics = LayoutDiagnostics{TranslatedBlocks: len(translation.Blocks), RenderableBlocks: len(document.Blocks), SkippedBlocks: len(document.SkippedBlocks)}
+	document.PipelineMetrics = calculatePipelineMetrics(document, page, translation)
 	return document, nil
+}
+
+func appendBlockFate(document *RenderDocument, id string, event BlockFateEvent) {
+	for index := range document.BlockFates {
+		if document.BlockFates[index].ID == id {
+			document.BlockFates[index].Events = append(document.BlockFates[index].Events, event)
+			return
+		}
+	}
+	document.BlockFates = append(document.BlockFates, BlockFate{ID: id, Events: []BlockFateEvent{event}})
+}
+
+func setBlockDuplicateOf(document *RenderDocument, id, winner string) {
+	for index := range document.BlockFates {
+		if document.BlockFates[index].ID == id {
+			document.BlockFates[index].DuplicateOf = winner
+			return
+		}
+	}
+}
+
+func calculatePipelineMetrics(document RenderDocument, page ocr.OCRPage, translation TranslationDocument) PipelineMetrics {
+	translated := 0
+	for _, block := range translation.Blocks {
+		if (block.Status == "" || block.Status == "translated") && strings.TrimSpace(block.TranslatedText) != "" {
+			translated++
+		}
+	}
+	fallback := 0
+	for _, block := range document.Blocks {
+		if block.FallbackReason != "" {
+			fallback++
+		}
+	}
+	unique := max(0, len(page.Paragraphs)-len(document.DeduplicatedBlocks))
+	return PipelineMetrics{OCRUniqueBlocks: unique, TranslatedBlocks: translated, RenderCandidates: len(document.Blocks), RenderedBlocks: len(document.Blocks), DeduplicatedBlocks: len(document.DeduplicatedBlocks), FallbackRenderedBlocks: fallback, HardFailedBlocks: max(0, translated-len(document.Blocks)-len(document.DeduplicatedBlocks))}
 }
 
 func initialRenderCandidateReason(paragraph ocr.OCRParagraph, block TranslatedBlock, translated bool, box ocr.OCRBox) string {
@@ -323,7 +408,41 @@ func (r *Renderer) fitBlock(ctx context.Context, text string, preferredFontSize 
 			return box, fit, err
 		}
 	}
-	return base, fit, nil
+	return r.forceFitBlock(ctx, text, preferredFontSize, sourceLines, sourceLineStep, alignment, verticalAlignment, base, width, height)
+}
+
+func (r *Renderer) forceFitBlock(ctx context.Context, text string, preferred float64, sourceLines int, sourceLineStep float64, alignment, verticalAlignment string, base ocr.OCRBox, width, height int) (ocr.OCRBox, TextFitResult, error) {
+	padding := max(2, int(math.Round(math.Max(sourceLineStep, preferred))))
+	candidates := []layoutCandidate{
+		{box: ClampBox(ExpandBox(base, CleanupPadding{Horizontal: padding * 2, Vertical: padding * 2}, width, height), width, height), expanded: true},
+		{box: ocr.OCRBox{X: 0, Y: max(0, base.Y-padding), Width: width, Height: max(1, height-max(0, base.Y-padding))}, expanded: true},
+	}
+	request := r.textFitRequest(text, r.config.MinimumFontSize, preferred, preferred, sourceLineStep)
+	request.LineSpacing = 1
+	request.HorizontalPad, request.VerticalPad = 0, 0
+	bestBox, best := base, TextFitResult{}
+	for _, candidate := range candidates {
+		request.Width, request.Height = candidate.box.Width, candidate.box.Height
+		fit, err := FitText(ctx, r.fonts, request)
+		if err != nil {
+			return ocr.OCRBox{}, TextFitResult{}, err
+		}
+		decorateLayoutResult(&fit, preferred, sourceLines, sourceLineStep, alignment, base, candidate, true)
+		if fit.Fits {
+			fit.FallbackReason = "smaller_font_allow_overlap"
+			return candidate.box, fit, nil
+		}
+		if best.FontSize == 0 || fit.TextHeight < best.TextHeight {
+			bestBox, best = candidate.box, fit
+		}
+	}
+	// Even a physically tiny image is still drawable (clipped by image bounds).
+	// Preserve the text and record the exceptional forced-overflow strategy.
+	best.Fits = true
+	best.Overflow = true
+	best.EmergencyShrink = true
+	best.FallbackReason = "forced_minimum_font_overflow"
+	return bestBox, best, nil
 }
 
 func boxesWithoutIndex(boxes []ocr.OCRBox, own int) []ocr.OCRBox {

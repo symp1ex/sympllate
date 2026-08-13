@@ -206,7 +206,7 @@ func TestBatchProtocolFailureFallsBackPerBlockAndRendersPartial(t *testing.T) {
 	}
 }
 
-func TestBatchMaskRejectionFiltersCleanupAndDrawAndReportsPartial(t *testing.T) {
+func TestBatchMaskRejectionRendersAnywayAndReportsWarnings(t *testing.T) {
 	directory := t.TempDir()
 	path := writeBatchNRGBA(t, directory, "mixed.png", maskConfidenceFixture())
 	page := maskConfidencePage(true)
@@ -218,34 +218,31 @@ func TestBatchMaskRejectionFiltersCleanupAndDrawAndReportsPartial(t *testing.T) 
 		t.Fatal(err)
 	}
 	status := waitBatch(t, service, id)
-	if status.State != "completed" || status.Partial != 1 || status.Rendered != 1 || status.Failed != 0 {
+	if status.State != "completed" || status.Partial != 0 || status.Translated != 1 || status.Failed != 0 {
 		t.Fatalf("status=%+v", status)
 	}
 	var report JobReport
 	readJSON(t, filepath.Join(status.OutputDirectory, "job.json"), &report)
 	file := report.Files[0]
-	if file.Status != "partial" || file.RenderedBlocks != 1 || len(file.SkippedBlocks) != 1 || file.SkippedBlocks[0].ID != "p1-b1-par1" || file.SkippedBlocks[0].Stage != "cleanup" || file.SkippedBlocks[0].Reason != textMaskLowConfidenceCode {
+	if file.Status != "translated_with_warnings" || file.RenderedBlocks != 2 || len(file.SkippedBlocks) != 0 || file.PipelineMetrics.HardFailedBlocks != 0 {
 		t.Fatalf("file=%+v", file)
 	}
-	if len(file.Warnings) != 1 || file.Warnings[0] != (RenderWarning{Code: textMaskLowConfidenceCode, BlockID: "p1-b1-par1"}) {
+	if !hasWarning(file.Warnings, "cleanup_failed_rendered_anyway", "p1-b1-par1") {
 		t.Fatalf("warnings=%+v", file.Warnings)
 	}
 	original := decodeTestNRGBA(t, path)
 	output := decodeTestNRGBA(t, filepath.Join(status.OutputDirectory, "translated", "mixed.png"))
-	if got := output.NRGBAAt(60, 50); got != original.NRGBAAt(60, 50) {
-		t.Fatalf("rejected block changed: got=%+v want=%+v", got, original.NRGBAAt(60, 50))
-	}
 	if bytes.Equal(output.Pix, original.Pix) {
-		t.Fatal("safe block was neither cleaned nor drawn")
+		t.Fatal("translations were not drawn")
 	}
 	var renderDocument RenderDocument
 	readJSON(t, filepath.Join(status.OutputDirectory, "debug", "mixed.render.json"), &renderDocument)
-	if len(renderDocument.Blocks) != 1 || renderDocument.Blocks[0].ID != "p1-b2-par1" || len(renderDocument.SkippedBlocks) != 1 || renderDocument.SkippedBlocks[0].ID != "p1-b1-par1" {
+	if len(renderDocument.Blocks) != 2 || len(renderDocument.SkippedBlocks) != 0 || renderDocument.PipelineMetrics.HardFailedBlocks != 0 {
 		t.Fatalf("debug render document=%+v", renderDocument)
 	}
 }
 
-func TestBatchAllMaskRejectionsPreserveOriginalAndContinueNextFile(t *testing.T) {
+func TestBatchAllMaskRejectionsRenderOverOriginalAndContinueNextFile(t *testing.T) {
 	directory := t.TempDir()
 	problematic := writeBatchNRGBA(t, directory, "problematic.png", maskConfidenceFixture())
 	valid := writeBatchImage(t, directory, "valid.png")
@@ -257,7 +254,7 @@ func TestBatchAllMaskRejectionsPreserveOriginalAndContinueNextFile(t *testing.T)
 		t.Fatal(err)
 	}
 	status := waitBatch(t, service, id)
-	if status.State != "completed" || status.Processed != 2 || status.Partial != 1 || status.Translated != 1 || status.Failed != 0 {
+	if status.State != "completed" || status.Processed != 2 || status.Partial != 0 || status.Translated != 2 || status.Failed != 0 {
 		t.Fatalf("status=%+v", status)
 	}
 	original, err := os.ReadFile(problematic)
@@ -268,12 +265,12 @@ func TestBatchAllMaskRejectionsPreserveOriginalAndContinueNextFile(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(output, original) {
-		t.Fatal("all-rejected image was re-encoded instead of preserving the original")
+	if bytes.Equal(output, original) {
+		t.Fatal("cleanup rejection suppressed fallback rendering")
 	}
 	var report JobReport
 	readJSON(t, filepath.Join(status.OutputDirectory, "job.json"), &report)
-	if report.Files[0].RenderedBlocks != 0 || report.Files[0].Status != "partial" || report.Files[1].Status != "translated" {
+	if report.Files[0].RenderedBlocks != 1 || report.Files[0].Status != "translated_with_warnings" || report.Files[0].PipelineMetrics.HardFailedBlocks != 0 || report.Files[1].Status != "translated" {
 		t.Fatalf("files=%+v", report.Files)
 	}
 }

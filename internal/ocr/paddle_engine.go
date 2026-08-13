@@ -415,6 +415,11 @@ func paddleTileCrops(width, height int, profile paddleDocumentProfile, full dete
 }
 
 func mergePaddleRegions(regions []paddleRegion) ([]paddleRegion, int) {
+	// Prefer complete regions before comparing them. This makes containment
+	// resolution independent of detector pass order and prevents a confident
+	// tile fragment from becoming the canonical source region.
+	regions = append([]paddleRegion(nil), regions...)
+	sort.SliceStable(regions, func(i, j int) bool { return betterPaddleRegion(regions[i], regions[j]) })
 	result := make([]paddleRegion, 0, len(regions))
 	duplicates := 0
 	for _, candidate := range regions {
@@ -430,7 +435,11 @@ func mergePaddleRegions(regions []paddleRegion) ([]paddleRegion, int) {
 			scale := math.Max(1, math.Min(float64(existing.Box.Height), float64(candidate.Box.Height)))
 			sameText := normalizedOCRText(existing.Text) == normalizedOCRText(candidate.Text)
 			containedText := normalizedTextContains(existing.Text, candidate.Text)
-			if (sameText && intersection/smaller >= .30 && centerDistance <= scale*2) || (containedText && intersection/smaller >= .80) || (intersection/smaller >= .75 && centerDistance <= scale) {
+			textSimilarity := paddleTextSimilarity(existing.Text, candidate.Text)
+			baselineDelta := math.Abs(float64((existing.Box.Y + existing.Box.Height) - (candidate.Box.Y + candidate.Box.Height)))
+			if (sameText && intersection/smaller >= .20 && centerDistance <= scale*2.5) ||
+				(containedText && textSimilarity >= .45 && intersection/smaller >= .65) ||
+				(textSimilarity >= .88 && intersection/smaller >= .45 && baselineDelta <= scale*.6) {
 				match = index
 				break
 			}
@@ -441,12 +450,49 @@ func mergePaddleRegions(regions []paddleRegion) ([]paddleRegion, int) {
 		}
 		duplicates++
 		existing := result[match]
-		candidateText, existingText := []rune(normalizedOCRText(candidate.Text)), []rune(normalizedOCRText(existing.Text))
-		if len(candidateText) > len(existingText) && normalizedTextContains(candidate.Text, existing.Text) || (len(candidateText) == len(existingText) && (candidate.RecognizerConfidence > existing.RecognizerConfidence || (candidate.RecognizerConfidence == existing.RecognizerConfidence && candidate.DetectorConfidence > existing.DetectorConfidence))) {
+		if betterPaddleRegion(candidate, existing) {
 			result[match] = candidate
 		}
 	}
 	return result, duplicates
+}
+
+func betterPaddleRegion(left, right paddleRegion) bool {
+	leftText, rightText := []rune(normalizedOCRText(left.Text)), []rune(normalizedOCRText(right.Text))
+	if len(leftText) != len(rightText) {
+		return len(leftText) > len(rightText)
+	}
+	leftTokens, rightTokens := len(strings.Fields(left.Text)), len(strings.Fields(right.Text))
+	if leftTokens != rightTokens {
+		return leftTokens > rightTokens
+	}
+	leftArea, rightArea := polygonArea(left.Polygon), polygonArea(right.Polygon)
+	if leftArea != rightArea {
+		return leftArea > rightArea
+	}
+	if left.RecognizerConfidence != right.RecognizerConfidence {
+		return left.RecognizerConfidence > right.RecognizerConfidence
+	}
+	return left.DetectorConfidence > right.DetectorConfidence
+}
+
+func paddleTextSimilarity(left, right string) float64 {
+	a, b := strings.Fields(normalizedOCRText(left)), strings.Fields(normalizedOCRText(right))
+	if len(a) == 0 || len(b) == 0 {
+		return 0
+	}
+	counts := make(map[string]int, len(a))
+	for _, token := range a {
+		counts[token]++
+	}
+	shared := 0
+	for _, token := range b {
+		if counts[token] > 0 {
+			shared++
+			counts[token]--
+		}
+	}
+	return 2 * float64(shared) / float64(len(a)+len(b))
 }
 
 func normalizedTextContains(left, right string) bool {

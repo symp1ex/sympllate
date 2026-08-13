@@ -215,7 +215,7 @@ func TestOverlappingCleanupRegionsAreAppliedOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(filtered.Blocks) != 1 || len(filtered.SkippedBlocks) != 1 || filtered.SkippedBlocks[0].Reason != textMaskOverlapCode {
+	if len(filtered.Blocks) != 2 || len(filtered.SkippedBlocks) != 0 || filtered.CleanupDiagnostics.FailedRenderedBlocks != 1 {
 		t.Fatalf("overlap was not normalized: %+v", filtered)
 	}
 	assertPixelsOutsideMaskEqual(t, original, cleaned, stats.Diagnostics.FinalCleanupMask)

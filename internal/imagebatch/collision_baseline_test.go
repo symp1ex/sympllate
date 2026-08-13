@@ -28,7 +28,7 @@ func TestLegacyOverlapBaselineVersusSourceGeometryPolicy(t *testing.T) {
 				geometryParagraph("a", 95, []ocr.OCRBox{{X: 20, Y: 20, Width: 120, Height: 24}}),
 				geometryParagraph("b", 80, []ocr.OCRBox{{X: 35, Y: 22, Width: 110, Height: 24}}),
 			},
-			eligible: []bool{true, true}, wantLegacy: 2, wantNew: 1,
+			eligible: []bool{true, true}, wantLegacy: 2, wantNew: 0,
 		},
 		{
 			name: "failed_translation_blocker",
