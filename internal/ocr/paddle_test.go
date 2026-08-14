@@ -206,6 +206,20 @@ func TestMergePaddleRegionsDropsContainedTileTextFragment(t *testing.T) {
 	}
 }
 
+func TestPaddleFiltersLowConfidenceIsolatedNoiseButKeepsCallout(t *testing.T) {
+	regions := []paddleRegion{
+		{Text: "X", RecognizerConfidence: .42, DetectorConfidence: .60, Box: OCRBox{X: 10, Y: 10, Width: 12, Height: 14}},
+		{Text: "-", RecognizerConfidence: .97, DetectorConfidence: .91, Box: OCRBox{X: 100, Y: 10, Width: 12, Height: 3}},
+		{Text: "a", RecognizerConfidence: .31, DetectorConfidence: .91, Box: OCRBox{X: 200, Y: 10, Width: 9, Height: 13}},
+		{Text: "4", RecognizerConfidence: .49, DetectorConfidence: .62, Box: OCRBox{X: 300, Y: 10, Width: 10, Height: 14}},
+		{Text: "A", RecognizerConfidence: .99, DetectorConfidence: .96, Box: OCRBox{X: 400, Y: 10, Width: 12, Height: 14}},
+	}
+	kept, rejected := filterNonSemanticPaddleRegions(regions)
+	if len(kept) != 1 || kept[0].Text != "A" || len(rejected) != 4 {
+		t.Fatalf("kept=%+v rejected=%+v", kept, rejected)
+	}
+}
+
 func TestMergePaddleRegionsPreservesConflictingContainedText(t *testing.T) {
 	t.Parallel()
 	full := paddleRegion{Polygon: [4]paddlePoint{{10, 10}, {210, 10}, {210, 30}, {10, 30}}, Box: OCRBox{X: 10, Y: 10, Width: 200, Height: 20}, Text: "Engine oil capacity", RecognizerConfidence: .80}
@@ -220,6 +234,16 @@ func TestMergePaddleRegionsDropsNearlyIdenticalOverlappingText(t *testing.T) {
 	t.Parallel()
 	first := paddleRegion{Polygon: [4]paddlePoint{{10, 10}, {180, 10}, {180, 30}, {10, 30}}, Box: OCRBox{X: 10, Y: 10, Width: 170, Height: 20}, Text: "Search by menu", RecognizerConfidence: .91}
 	second := paddleRegion{Polygon: [4]paddlePoint{{13, 11}, {183, 11}, {183, 31}, {13, 31}}, Box: OCRBox{X: 13, Y: 11, Width: 170, Height: 20}, Text: "Search by menu", RecognizerConfidence: .99}
+	merged, duplicates := mergePaddleRegions([]paddleRegion{first, second})
+	if duplicates != 1 || len(merged) != 1 {
+		t.Fatalf("merged=%+v duplicates=%d", merged, duplicates)
+	}
+}
+
+func TestMergePaddleRegionsDropsBoundaryDuplicateWithThinOverlap(t *testing.T) {
+	t.Parallel()
+	first := paddleRegion{Polygon: [4]paddlePoint{{10, 10}, {150, 10}, {150, 35}, {10, 35}}, Box: OCRBox{X: 10, Y: 10, Width: 140, Height: 25}, Text: "Internal Price List", RecognizerConfidence: .97, Pass: "full"}
+	second := paddleRegion{Polygon: [4]paddlePoint{{12, 32}, {152, 32}, {152, 57}, {12, 57}}, Box: OCRBox{X: 12, Y: 32, Width: 140, Height: 25}, Text: "Internal Price List", RecognizerConfidence: .95, Pass: "tile-02"}
 	merged, duplicates := mergePaddleRegions([]paddleRegion{first, second})
 	if duplicates != 1 || len(merged) != 1 {
 		t.Fatalf("merged=%+v duplicates=%d", merged, duplicates)

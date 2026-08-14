@@ -54,6 +54,9 @@ type OCRWord struct {
 	CleanupSafe          bool       `json:"cleanupSafe,omitempty"`
 	Recognizer           string     `json:"recognizer,omitempty"`
 	GeometryLevel        string     `json:"geometryLevel,omitempty"`
+	SemanticStatus       string     `json:"semanticStatus,omitempty"`
+	SemanticReason       string     `json:"semanticReason,omitempty"`
+	FragmentOf           string     `json:"fragmentOf,omitempty"`
 	Page                 int        `json:"page"`
 	Block                int        `json:"block"`
 	Paragraph            int        `json:"paragraph"`
@@ -137,6 +140,8 @@ type OCRDiagnostics struct {
 	MergeDuplicates        int                           `json:"mergeDuplicates"`
 	FinalLines             int                           `json:"finalLines"`
 	FinalParagraphs        int                           `json:"finalParagraphs"`
+	NonSemanticOCRNoise    int                           `json:"nonSemanticOCRNoise"`
+	SemanticSourceBlocks   int                           `json:"semanticSourceBlocks"`
 	AverageConfidence      float64                       `json:"averageConfidence"`
 	MinimumConfidence      float64                       `json:"minimumConfidence"`
 	Durations              []OCRStageDuration            `json:"durations,omitempty"`
@@ -155,6 +160,9 @@ type OCRRegionDiagnostic struct {
 	Recognized           bool       `json:"recognized"`
 	TextAccepted         bool       `json:"textAccepted"`
 	CleanupSafe          bool       `json:"cleanupSafe"`
+	SemanticStatus       string     `json:"semanticStatus,omitempty"`
+	SemanticReason       string     `json:"semanticReason,omitempty"`
+	FragmentOf           string     `json:"fragmentOf,omitempty"`
 }
 
 type OCRParagraphMergeDiagnostic struct {

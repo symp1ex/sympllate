@@ -132,6 +132,46 @@ func TestPaddleParagraphsKeepNormalRaggedBodyTogether(t *testing.T) {
 	}
 }
 
+func TestPaddleSeparatesHeadingFromBodyAndBoundsUIColumnGroups(t *testing.T) {
+	words := []OCRWord{
+		testAdaptiveWord("ENGINE OIL", 20, 20, 190, 28, 0, 0, 0, 0),
+		testAdaptiveWord("Check the engine oil before starting.", 20, 62, 360, 16, 0, 0, 0, 0),
+		testAdaptiveWord("Damage may result from a low level.", 20, 84, 330, 16, 0, 0, 0, 0),
+		testAdaptiveWord("Products", 500, 20, 80, 14, 0, 0, 0, 0),
+		testAdaptiveWord("Items", 500, 40, 50, 14, 0, 0, 0, 0),
+		testAdaptiveWord("Modifiers", 500, 60, 90, 14, 0, 0, 0, 0),
+		testAdaptiveWord("Stock list", 500, 80, 85, 14, 0, 0, 0, 0),
+	}
+	paragraphs := buildPaddleParagraphs(words)
+	heading := findAdaptiveParagraphContaining(t, paragraphs, "ENGINE OIL")
+	if len(heading.Lines) != 1 {
+		t.Fatalf("heading=%+v", heading)
+	}
+	for _, paragraph := range paragraphs {
+		if paragraph.Box.X >= 490 && len(paragraph.Lines) > 2 {
+			t.Fatalf("UI column merged: %+v", paragraph)
+		}
+	}
+}
+
+func TestPaddleUIColumnWithSearchInstructionStaysControlLevel(t *testing.T) {
+	words := []OCRWord{
+		testAdaptiveWord("Enter the text to search by menu.", 120, 20, 190, 25, 0, 0, 0, 0),
+		testAdaptiveWord("Favourites", 130, 55, 105, 30, 0, 0, 0, 0),
+		testAdaptiveWord("Retail Sales", 130, 90, 90, 30, 0, 0, 0, 0),
+		testAdaptiveWord("Inventory Management", 130, 125, 170, 30, 0, 0, 0, 0),
+		testAdaptiveWord("Reference books", 150, 160, 105, 26, 0, 0, 0, 0),
+		testAdaptiveWord("EAEU commodity code reference book", 150, 191, 250, 26, 0, 0, 0, 0),
+		testAdaptiveWord("Products", 150, 222, 80, 26, 0, 0, 0, 0),
+	}
+	paragraphs := buildPaddleParagraphs(words)
+	for _, paragraph := range paragraphs {
+		if len(paragraph.Lines) > 2 {
+			t.Fatalf("UI navigation column merged: %+v", paragraph)
+		}
+	}
+}
+
 func TestPaddleUIGridCellsRemainSeparateParagraphs(t *testing.T) {
 	words := []OCRWord{
 		testAdaptiveWord("Name", 20, 20, 55, 14, 0, 0, 0, 0), testAdaptiveWord("Value", 140, 20, 62, 14, 0, 0, 0, 0), testAdaptiveWord("Status", 260, 20, 70, 14, 0, 0, 0, 0),

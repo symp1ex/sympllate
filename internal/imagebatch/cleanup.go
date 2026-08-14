@@ -178,6 +178,7 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 	target := cloneNRGBA(source)
 	stats := CleanupStats{Diagnostics: newCleanupDiagnostics(source.Bounds())}
 	regions := make([]maskedRegion, 0, len(document.Blocks))
+	neuralBlocks := make([]blockCleanup, 0, len(document.Blocks))
 	solid := make([]blockCleanup, 0, len(document.Blocks))
 	claimed := image.NewGray(source.Bounds())
 	filtered := document
@@ -263,6 +264,7 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 		} else {
 			stats.NeuralRegions++
 			regions = append(regions, splitMaskedRegion(mask)...)
+			neuralBlocks = append(neuralBlocks, blockCleanup{block: block, mask: mask})
 		}
 	}
 	if err := ctx.Err(); err != nil {
@@ -285,7 +287,22 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 			}
 			// Neural cleanup is cosmetic. Preserve the original crop and proceed
 			// to Draw rather than losing every successfully translated block.
-			filtered.Warnings = append(filtered.Warnings, RenderWarning{Code: "cleanup_failed_rendered_anyway"}, RenderWarning{Code: "original_text_may_remain"})
+			for _, cleanup := range neuralBlocks {
+				cleanupBox := cleanup.block.CleanupBox
+				if !image.Rect(cleanupBox.X, cleanupBox.Y, cleanupBox.X+cleanupBox.Width, cleanupBox.Y+cleanupBox.Height).Overlaps(cluster.bounds) {
+					continue
+				}
+				for index := range filtered.Blocks {
+					if filtered.Blocks[index].ID != cleanup.block.ID || strings.Contains(filtered.Blocks[index].Warning, "cleanup_failed_rendered_anyway") {
+						continue
+					}
+					filtered.Blocks[index].Warning = appendWarningCode(filtered.Blocks[index].Warning, "cleanup_failed_rendered_anyway")
+					filtered.Blocks[index].Status = "renderable_cleanup_fallback"
+					filtered.Warnings = append(filtered.Warnings, RenderWarning{Code: "cleanup_failed_rendered_anyway", BlockID: cleanup.block.ID}, RenderWarning{Code: "original_text_may_remain", BlockID: cleanup.block.ID})
+					filtered.CleanupDiagnostics.FailedRenderedBlocks++
+					appendBlockFate(&filtered, cleanup.block.ID, BlockFateEvent{Stage: "cleanup", Decision: "rendered_anyway", Reason: "inpaint_failed", Strategy: "draw_over_original"})
+				}
+			}
 			continue
 		}
 		stats.Preprocessing += result.Timings.Preprocessing
@@ -306,9 +323,26 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 	if stats.OCRRegionPixels > 0 {
 		stats.CleanupPixelRatio = float64(stats.FinalCleanupPixels) / float64(stats.OCRRegionPixels)
 	}
-	filtered.PipelineMetrics.RenderedBlocks = len(filtered.Blocks)
-	filtered.PipelineMetrics.FallbackRenderedBlocks += filtered.CleanupDiagnostics.ConservativeFallbackBlocks + filtered.CleanupDiagnostics.FailedRenderedBlocks
-	filtered.PipelineMetrics.HardFailedBlocks = max(0, filtered.PipelineMetrics.TranslatedBlocks-len(filtered.Blocks)-filtered.PipelineMetrics.DeduplicatedBlocks)
+	renderedIDs, layoutFallbackIDs, cleanupFallbackIDs := make(map[string]struct{}), make(map[string]struct{}), make(map[string]struct{})
+	for _, block := range filtered.Blocks {
+		renderedIDs[block.ID] = struct{}{}
+		if isLocalityFallbackStrategy(block.FallbackReason) {
+			layoutFallbackIDs[block.ID] = struct{}{}
+		}
+		if strings.Contains(block.Warning, "cleanup_fallback_used") || strings.Contains(block.Warning, "cleanup_failed_rendered_anyway") {
+			cleanupFallbackIDs[block.ID] = struct{}{}
+		}
+	}
+	for _, warning := range filtered.Warnings {
+		if warning.BlockID != "" && (warning.Code == "cleanup_fallback_used" || warning.Code == "cleanup_failed_rendered_anyway") {
+			cleanupFallbackIDs[warning.BlockID] = struct{}{}
+		}
+	}
+	filtered.PipelineMetrics.RenderedBlocks = len(renderedIDs)
+	filtered.PipelineMetrics.FallbackRenderedBlocks = len(layoutFallbackIDs)
+	filtered.PipelineMetrics.CleanupFallbackBlocks = len(cleanupFallbackIDs)
+	filtered.PipelineMetrics.NormalRenderedBlocks = len(renderedIDs) - len(layoutFallbackIDs)
+	filtered.PipelineMetrics.HardFailedBlocks = max(0, filtered.PipelineMetrics.TranslatedUniqueBlocks-len(renderedIDs)-filtered.PipelineMetrics.DeduplicatedBlocks-filtered.PipelineMetrics.PassthroughBlocks)
 	return target, filtered, stats, nil
 }
 

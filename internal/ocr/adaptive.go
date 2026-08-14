@@ -347,7 +347,10 @@ func buildPaddleParagraphsWithDiagnostics(words []OCRWord, diagnostics *[]OCRPar
 	for _, word := range words {
 		lines = append(lines, []OCRWord{word})
 	}
-	groups := spatialParagraphsWithDiagnostics(lines, diagnostics)
+	// Paddle detector regions are already semantic lines. First establish the
+	// document's visual density; dense UI/screenshot areas stay at control/line
+	// granularity while sparse prose can form paragraphs.
+	groups := paddleSemanticGroups(lines, diagnostics)
 	result := make([]OCRParagraph, 0, len(groups))
 	for paragraphIndex, group := range groups {
 		block := paragraphIndex + 1
@@ -359,6 +362,112 @@ func buildPaddleParagraphsWithDiagnostics(words []OCRWord, diagnostics *[]OCRPar
 		result = append(result, paragraph)
 	}
 	return columnAwareParagraphOrder(result)
+}
+
+func paddleSemanticGroups(lines [][]OCRWord, diagnostics *[]OCRParagraphMergeDiagnostic) [][][]OCRWord {
+	result := make([][][]OCRWord, 0, len(lines))
+	for _, group := range spatialParagraphsWithDiagnostics(lines, diagnostics) {
+		parts := splitPaddleSemanticGroup(group, diagnostics)
+		for _, part := range parts {
+			if len(part) <= 2 || !paddleUIGroup(part, lines) {
+				result = append(result, part)
+				continue
+			}
+			for len(part) > 2 {
+				result = append(result, part[:2])
+				part = part[2:]
+			}
+			if len(part) > 0 {
+				result = append(result, part)
+			}
+		}
+	}
+	return result
+}
+
+func splitPaddleSemanticGroup(group [][]OCRWord, diagnostics *[]OCRParagraphMergeDiagnostic) [][][]OCRWord {
+	if len(group) < 2 {
+		return [][][]OCRWord{group}
+	}
+	result := make([][][]OCRWord, 0, len(group))
+	start := 0
+	for index := 1; index < len(group); index++ {
+		previous, current := group[index-1], group[index]
+		previousBox, currentBox := unionWordBoxes(previous), unionWordBoxes(current)
+		if !paddleSemanticBreak(joinWords(previous), joinWords(current), previousBox, currentBox) {
+			continue
+		}
+		diagnostic := mergeDiagnostic(previousBox, currentBox, "semantic_boundary")
+		diagnostic.PreviousText, diagnostic.CurrentText = joinWords(previous), joinWords(current)
+		recordParagraphMergeDiagnostic(diagnostics, diagnostic)
+		result = append(result, group[start:index])
+		start = index
+	}
+	result = append(result, group[start:])
+	return result
+}
+
+func paddleUIGroup(group [][]OCRWord, all [][]OCRWord) bool {
+	if len(group) == 0 {
+		return false
+	}
+	line := group[0]
+	box := unionWordBoxes(line)
+	text := strings.TrimSpace(joinWords(line))
+	if box.Width <= 0 || box.Height <= 0 || text == "" {
+		return true
+	}
+	nearby, aligned := 0, 0
+	for _, other := range all {
+		otherBox := unionWordBoxes(other)
+		if otherBox == box && joinWords(other) == text {
+			continue
+		}
+		height := maximum(box.Height, otherBox.Height)
+		if verticalBandDistance(box, otherBox) <= height*3 && horizontalGap(box, otherBox) <= height*8 {
+			nearby++
+			if abs(box.X-otherBox.X) <= height || abs(box.X+box.Width-(otherBox.X+otherBox.Width)) <= height {
+				aligned++
+			}
+		}
+	}
+	shortControl := len([]rune(text)) <= 28 && len(strings.Fields(text)) <= 4
+	shortLines := 0
+	heights := make([]float64, 0, len(group))
+	for _, member := range group {
+		memberText := strings.TrimSpace(joinWords(member))
+		memberBox := unionWordBoxes(member)
+		if memberBox.Height > 0 {
+			heights = append(heights, float64(memberBox.Height))
+		}
+		if len([]rune(memberText)) <= 36 && len(strings.Fields(memberText)) <= 5 {
+			shortLines++
+		}
+	}
+	tallDenseColumn := false
+	if len(group) >= 4 && len(heights) > 0 {
+		groupBox := unionPaddleLineBoxes(group)
+		tallDenseColumn = shortLines*4 >= len(group)*3 && float64(groupBox.Height) >= medianOCRMeasurements(heights)*3.5
+	}
+	return tallDenseColumn || (shortControl && nearby >= 3 && aligned < nearby/2+1)
+}
+
+func unionPaddleLineBoxes(lines [][]OCRWord) OCRBox {
+	boxes := make([]OCRBox, 0, len(lines))
+	for _, line := range lines {
+		boxes = append(boxes, unionWordBoxes(line))
+	}
+	return unionBoxes(boxes)
+}
+
+func medianOCRMeasurements(values []float64) float64 {
+	ordered := append([]float64(nil), values...)
+	sort.Float64s(ordered)
+	middle := len(ordered) / 2
+	if len(ordered)%2 != 0 {
+		return ordered[middle]
+	}
+	return (ordered[middle-1] + ordered[middle]) / 2
 }
 
 func columnAwareParagraphOrder(paragraphs []OCRParagraph) []OCRParagraph {
@@ -576,6 +685,24 @@ func paragraphMergeSafe(paragraph [][]OCRWord, line []OCRWord, allLines [][]OCRW
 		}
 	}
 	return true
+}
+
+func paddleSemanticBreak(previousText, currentText string, previous, current OCRBox) bool {
+	height := maximum(previous.Height, current.Height)
+	gap := current.Y - (previous.Y + previous.Height)
+	previousTokens, currentTokens := len(strings.Fields(previousText)), len(strings.Fields(currentText))
+	currentRunes, previousRunes := []rune(currentText), []rune(previousText)
+	if len(currentRunes) == 0 || len(previousRunes) == 0 {
+		return false
+	}
+	startsList := strings.ContainsRune("•●○▪▫-", currentRunes[0])
+	if startsList {
+		return true
+	}
+	if gap > height*2/5 && previousTokens <= 5 && currentTokens >= 6 {
+		return true
+	}
+	return false
 }
 
 func narrowLineEntersCrowdedNeighborhood(previous []OCRBox, current OCRBox, allLines [][]OCRWord, member map[string]struct{}) bool {

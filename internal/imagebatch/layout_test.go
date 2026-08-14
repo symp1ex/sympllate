@@ -388,7 +388,25 @@ func TestEstimateSourceTypographyRecoversObservedLineStep(t *testing.T) {
 	}
 }
 
-func TestFitBlockLongTranslationAlwaysReturnsDrawableFallback(t *testing.T) {
+func TestEstimateSourceTypographyShortRunUsesInkHeight(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFont(t, directory)
+	fonts := newFontCache(directory)
+	defer fonts.close()
+	paragraph := ocr.OCRParagraph{Text: "X", Box: ocr.OCRBox{X: 20, Y: 20, Width: 90, Height: 12}, Lines: []ocr.OCRLine{{
+		ID: "l1", Text: "X", Box: ocr.OCRBox{X: 20, Y: 20, Width: 90, Height: 12},
+		Words: []ocr.OCRWord{{Text: "X", Box: ocr.OCRBox{X: 20, Y: 20, Width: 90, Height: 12}}},
+	}}}
+	estimate, err := EstimateSourceTypography(context.Background(), fonts, paragraph, CoordinateTransform{ScaleX: 1, ScaleY: 1}, 8, 48)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if estimate.FontSize > 22 || estimate.Confidence >= .75 {
+		t.Fatalf("short run must be height-led and low-confidence: %+v", estimate)
+	}
+}
+
+func TestFitBlockLongTranslationNeverCreatesFullPageFallback(t *testing.T) {
 	directory := t.TempDir()
 	writeTestFont(t, directory)
 	renderer, err := NewRenderer(directory, DefaultRenderConfig(), &fakeInpaintEngine{})
@@ -397,8 +415,27 @@ func TestFitBlockLongTranslationAlwaysReturnsDrawableFallback(t *testing.T) {
 	}
 	defer renderer.Close()
 	box, fit, err := renderer.fitBlock(context.Background(), "Очень длинный перевод, который заведомо не помещается в крошечную исходную область", 12, 1, 0, "left", ocr.OCRBox{X: 5, Y: 5, Width: 4, Height: 3}, nil, -1, nil, 40, 18)
-	if err != nil || !fit.Fits || len(fit.Lines) == 0 || fit.FallbackReason == "" || box.Width <= 0 || box.Height <= 0 {
+	if err != nil || fit.Fits || fit.FallbackReason != "locality_preserving_hard_failure" || box.X < 0 || box.Y < 0 || box.Width >= 40 || box.Height >= 18 {
 		t.Fatalf("box=%+v fit=%+v err=%v", box, fit, err)
+	}
+}
+
+func TestFallbackAnchorAndExpansionRemainBounded(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFont(t, directory)
+	renderer, err := NewRenderer(directory, DefaultRenderConfig(), &fakeInpaintEngine{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer renderer.Close()
+	base := ocr.OCRBox{X: 30, Y: 30, Width: 70, Height: 18}
+	neighbor := ocr.OCRBox{X: 130, Y: 0, Width: 120, Height: 160}
+	box, fit, err := renderer.fitBlock(context.Background(), strings.Repeat("long translation ", 8), 12, 1, 18, "left", base, []ocr.OCRBox{neighbor}, -1, nil, 300, 180)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if box.X < base.X-54 || box.Y < base.Y-54 || box.X+box.Width > neighbor.X || fit.AnchorDisplacement > 54 {
+		t.Fatalf("non-local fallback: base=%+v box=%+v fit=%+v", base, box, fit)
 	}
 }
 

@@ -3,6 +3,7 @@ package ocr
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -112,6 +113,60 @@ func TestPaddleDocumentRegression(t *testing.T) {
 	}
 	if page.Diagnostics.Tiles == 0 {
 		t.Fatalf("document profile did not use tiles: %+v", page.Diagnostics)
+	}
+}
+
+func TestPaddleSevenImageSemanticRegression(t *testing.T) {
+	repository := strings.TrimSpace(os.Getenv("SYMPLLATE_PADDLE_REGRESSION_ROOT"))
+	if repository == "" {
+		t.Skip("set SYMPLLATE_PADDLE_REGRESSION_ROOT to run the seven-image semantic regression")
+	}
+	executableDir := filepath.Join(repository, "dist", "portable")
+	engine, err := NewPaddleEngine(executableDir, 2*DefaultTimeout, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	fixtures := []string{
+		filepath.Join(repository, "_resources", "images", "99920-2296-05-o5fx801v-us-en-tws.pdf", "99920-2296-05-o5fx801v-us-en-tws-14.png"),
+		filepath.Join(repository, "_resources", "images", "99920-2296-05-o5fx801v-us-en-tws.pdf", "99920-2296-05-o5fx801v-us-en-tws-18.png"),
+	}
+	for page := 1; page <= 5; page++ {
+		fixtures = append(fixtures, filepath.Join(repository, "_resources", "images", "TAX and Service.pdf", fmt.Sprintf("TAX and Service-%d.png", page)))
+	}
+	for _, fixture := range fixtures {
+		fixture := fixture
+		t.Run(filepath.Base(fixture), func(t *testing.T) {
+			data, readErr := os.ReadFile(fixture)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			configuration, format, decodeErr := image.DecodeConfig(bytes.NewReader(data))
+			if decodeErr != nil {
+				t.Fatal(decodeErr)
+			}
+			mediaType := map[string]string{"png": "image/png", "jpeg": "image/jpeg"}[format]
+			page, recognizeErr := engine.RecognizeStructured(context.Background(), translation.ValidatedImage{Data: data, MediaType: mediaType, Width: configuration.Width, Height: configuration.Height}, "en")
+			if recognizeErr != nil {
+				t.Fatal(recognizeErr)
+			}
+			maximumLines := 0
+			for _, paragraph := range page.Paragraphs {
+				if len(paragraph.Lines) > maximumLines {
+					maximumLines = len(paragraph.Lines)
+				}
+				if strings.HasPrefix(filepath.Base(fixture), "TAX and Service-") && paragraph.Box.Width < page.Image.Width/2 && len(paragraph.Lines) > 5 {
+					t.Fatalf("UI paragraph is too large: id=%s lines=%d text=%q", paragraph.ID, len(paragraph.Lines), paragraph.Text)
+				}
+			}
+			text := strings.ToLower(plainText(page))
+			for _, fragment := range []string{"eans of sof the by an equally", "the oil thout el. the marks."} {
+				if strings.Contains(strings.Join(strings.Fields(text), " "), fragment) {
+					t.Fatalf("contained OCR fragment survived: %q", fragment)
+				}
+			}
+			t.Logf("semantic OCR words=%d paragraphs=%d max_lines=%d noise=%d duplicates=%d", len(page.Words), len(page.Paragraphs), maximumLines, page.Diagnostics.NonSemanticOCRNoise, page.Diagnostics.MergeDuplicates)
+		})
 	}
 }
 

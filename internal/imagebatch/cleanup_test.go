@@ -229,9 +229,13 @@ func TestUniformCleanupDoesNotInvokeInpaintAndNeuralErrorsFallBackToDraw(t *test
 	}
 	engine.err = errors.New("inference failed")
 	block.CleanupMode = CleanupNeural
-	_, filtered, _, err := renderer.Clean(context.Background(), source, RenderDocument{Blocks: []RenderBlock{block}})
-	if err != nil || len(filtered.Blocks) != 1 || !hasWarning(filtered.Warnings, "cleanup_failed_rendered_anyway", "") {
+	block.FallbackReason = "local_smaller_font_backing_plate"
+	_, filtered, _, err := renderer.Clean(context.Background(), source, RenderDocument{Blocks: []RenderBlock{block}, PipelineMetrics: PipelineMetrics{TranslatedUniqueBlocks: 1}})
+	if err != nil || len(filtered.Blocks) != 1 || !hasWarning(filtered.Warnings, "cleanup_failed_rendered_anyway", "text") {
 		t.Fatalf("filtered=%+v err=%v", filtered, err)
+	}
+	if filtered.PipelineMetrics.RenderedBlocks != 1 || filtered.PipelineMetrics.FallbackRenderedBlocks != 1 || filtered.PipelineMetrics.CleanupFallbackBlocks != 1 || filtered.PipelineMetrics.FallbackRenderedBlocks > filtered.PipelineMetrics.RenderedBlocks {
+		t.Fatalf("fallback metrics must count the unique block once per category: %+v", filtered.PipelineMetrics)
 	}
 }
 

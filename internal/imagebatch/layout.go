@@ -92,6 +92,15 @@ func EstimateSourceTypography(ctx context.Context, fonts *fontCache, paragraph o
 	if len(geometry) == 1 {
 		confidence *= 0.75
 	}
+	contentRunes := 0
+	for _, line := range geometry {
+		contentRunes += utf8.RuneCountInString(strings.ReplaceAll(line.text, " ", ""))
+	}
+	if contentRunes <= 4 {
+		confidence *= 0.45
+	} else if contentRunes <= 8 {
+		confidence *= 0.7
+	}
 	return FontStyleEstimate{
 		Style: "regular", FontSize: bestSize, LineStep: roundMetric(lineStep),
 		Confidence: roundMetric(confidence), IndividualEstimates: individual,
@@ -131,6 +140,15 @@ func sourceGeometry(paragraph ocr.OCRParagraph, transform CoordinateTransform) [
 		geometry.widthWeight = 0.01
 		if len(geometry.wordBoxes) > 0 {
 			geometry.widthWeight = math.Min(1, 0.60+float64(min(4, len(geometry.wordBoxes)))*0.05+float64(runes)/100)
+			// A detector quad around one short glyph/run has much less reliable
+			// horizontal geometry than its observed ink height. Letting width fit
+			// dominate here is what produced giant isolated letters.
+			averageRuneWidth := float64(geometry.box.Width) / float64(max(1, runes))
+			if runes <= 4 && averageRuneWidth > float64(geometry.box.Height)*1.5 {
+				geometry.widthWeight = 0.08
+			} else if runes <= 8 && averageRuneWidth > float64(geometry.box.Height)*1.2 {
+				geometry.widthWeight = math.Min(geometry.widthWeight, 0.25)
+			}
 		}
 		result = append(result, geometry)
 	}

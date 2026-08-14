@@ -270,7 +270,8 @@ func TestBatchAllMaskRejectionsRenderOverOriginalAndContinueNextFile(t *testing.
 	}
 	var report JobReport
 	readJSON(t, filepath.Join(status.OutputDirectory, "job.json"), &report)
-	if report.Files[0].RenderedBlocks != 1 || report.Files[0].Status != "translated_with_warnings" || report.Files[0].PipelineMetrics.HardFailedBlocks != 0 || report.Files[1].Status != "translated" {
+	if report.Files[0].RenderedBlocks != 1 || report.Files[0].Status != "translated_with_warnings" || report.Files[0].PipelineMetrics.HardFailedBlocks != 0 ||
+		(report.Files[1].Status != "translated" && report.Files[1].Status != "translated_with_warnings") {
 		t.Fatalf("files=%+v", report.Files)
 	}
 }
