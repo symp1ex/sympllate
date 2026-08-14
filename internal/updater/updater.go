@@ -102,18 +102,9 @@ func SetLogger(logger Logger) {
 }
 
 func ResolvePaths() (Paths, error) {
-	applicationExecutable, err := os.Executable()
+	applicationExecutable, err := resolveApplicationExecutable()
 	if err != nil {
-		logSink.Errorf("[Updater] Failed to resolve application executable path: %v", err)
-		return Paths{}, fmt.Errorf("resolve application executable: %w", err)
-	}
-
-	// A broken or inaccessible symlink must not make a valid os.Executable path
-	// unusable. Keep the original absolute path and record the normalization error.
-	if resolvedExecutable, resolveErr := filepath.EvalSymlinks(applicationExecutable); resolveErr == nil {
-		applicationExecutable = resolvedExecutable
-	} else {
-		logSink.Warnf("[Updater] Failed to resolve application executable symlinks; using original path: exe=%s error=%v", applicationExecutable, resolveErr)
+		return Paths{}, err
 	}
 
 	appDir := filepath.Dir(applicationExecutable)
@@ -149,6 +140,24 @@ func ResolvePaths() (Paths, error) {
 		UpdaterDir:         updaterDir,
 		UpdaterExe:         updaterExe,
 	}, nil
+}
+
+func resolveApplicationExecutable() (string, error) {
+	applicationExecutable, err := os.Executable()
+	if err != nil {
+		logSink.Errorf("[Updater] Failed to resolve application executable path: %v", err)
+		return "", fmt.Errorf("resolve application executable: %w", err)
+	}
+
+	// A broken or inaccessible symlink must not make a valid os.Executable path
+	// unusable. Keep the original absolute path and record the normalization error.
+	if resolvedExecutable, resolveErr := filepath.EvalSymlinks(applicationExecutable); resolveErr == nil {
+		applicationExecutable = resolvedExecutable
+	} else {
+		logSink.Warnf("[Updater] Failed to resolve application executable symlinks; using original path: exe=%s error=%v", applicationExecutable, resolveErr)
+	}
+
+	return applicationExecutable, nil
 }
 
 func (s *Service) Check(ctx context.Context) CheckResult {

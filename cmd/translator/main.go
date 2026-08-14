@@ -33,7 +33,7 @@ import (
 )
 
 var errRestartRequested = errors.New("application restart requested")
-var version = "0.3.10.9"
+var version = "0.4.1.0"
 
 func main() {
 	if err := run(); errors.Is(err, errRestartRequested) {
@@ -64,6 +64,9 @@ func run() (runErr error) {
 	applicationLogger.Printf("application starting: config=%s", configPath)
 	if created {
 		applicationLogger.Printf("default config created: path=%s", configPath)
+	}
+	if err := updater.RunMigrations(); err != nil {
+		applicationLogger.Errorf("startup cleanup migrations failed; will retry on next start: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
