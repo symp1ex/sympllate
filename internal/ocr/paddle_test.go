@@ -206,6 +206,26 @@ func TestMergePaddleRegionsDropsContainedTileTextFragment(t *testing.T) {
 	}
 }
 
+func TestMergePaddleRegionsDropsKnownDocumentFragments(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		parent, fragment string
+	}{
+		{"Means of preventing accidental starting", "eans of"},
+		{"surfaces of the engine", "sof the"},
+		{"controlled by an operator", "by an"},
+		{"load is equally distributed", "equally"},
+	}
+	for index, test := range cases {
+		full := testPaddleRegion(test.parent, 10, 10+index*40, 260, 24, .94, .91, "full")
+		fragment := testPaddleRegion(test.fragment, 80, 10+index*40, 80, 24, .82, .88, "tile-01")
+		merged, duplicates, suppressed := mergePaddleRegionsDetailed([]paddleRegion{full, fragment})
+		if duplicates != 1 || len(merged) != 1 || merged[0].Text != test.parent || len(suppressed) != 1 || suppressed[0].Reason != "fragment_of" {
+			t.Fatalf("case=%q merged=%+v duplicates=%d suppressed=%+v", test.fragment, merged, duplicates, suppressed)
+		}
+	}
+}
+
 func TestPaddleFiltersLowConfidenceIsolatedNoiseButKeepsCallout(t *testing.T) {
 	regions := []paddleRegion{
 		{Text: "X", RecognizerConfidence: .42, DetectorConfidence: .60, Box: OCRBox{X: 10, Y: 10, Width: 12, Height: 14}},
@@ -244,9 +264,52 @@ func TestMergePaddleRegionsDropsBoundaryDuplicateWithThinOverlap(t *testing.T) {
 	t.Parallel()
 	first := paddleRegion{Polygon: [4]paddlePoint{{10, 10}, {150, 10}, {150, 35}, {10, 35}}, Box: OCRBox{X: 10, Y: 10, Width: 140, Height: 25}, Text: "Internal Price List", RecognizerConfidence: .97, Pass: "full"}
 	second := paddleRegion{Polygon: [4]paddlePoint{{12, 32}, {152, 32}, {152, 57}, {12, 57}}, Box: OCRBox{X: 12, Y: 32, Width: 140, Height: 25}, Text: "Internal Price List", RecognizerConfidence: .95, Pass: "tile-02"}
-	merged, duplicates := mergePaddleRegions([]paddleRegion{first, second})
-	if duplicates != 1 || len(merged) != 1 {
-		t.Fatalf("merged=%+v duplicates=%d", merged, duplicates)
+	merged, duplicates, suppressed := mergePaddleRegionsDetailed([]paddleRegion{first, second})
+	if duplicates != 1 || len(merged) != 1 || len(suppressed) != 1 || suppressed[0].Reason != "duplicate_detector_region" {
+		t.Fatalf("merged=%+v duplicates=%d suppressed=%+v", merged, duplicates, suppressed)
+	}
+}
+
+func TestBoundaryDetectorCopiesProduceOneSemanticLine(t *testing.T) {
+	t.Parallel()
+	regions := []paddleRegion{
+		testPaddleRegion("Internal Price List", 10, 10, 180, 24, .97, .93, "full"),
+		testPaddleRegion("Internal Price List", 12, 11, 180, 24, .95, .91, "tile-01"),
+		testPaddleRegion("Internal Price List", 9, 9, 180, 24, .94, .90, "tile-03"),
+	}
+	merged, duplicates, suppressed := mergePaddleRegionsDetailed(regions)
+	if len(merged) != 1 || duplicates != 2 || len(suppressed) != 2 {
+		t.Fatalf("boundary copies rendered more than once: merged=%+v duplicates=%d suppressed=%+v", merged, duplicates, suppressed)
+	}
+	for _, item := range suppressed {
+		if item.Reason != "duplicate_detector_region" {
+			t.Fatalf("suppression reason=%q", item.Reason)
+		}
+	}
+}
+
+func TestPaddleFiltersShortCorruptedRuns(t *testing.T) {
+	regions := []paddleRegion{
+		testPaddleRegion("tu", 10, 10, 22, 14, .28, .91, "full"),
+		testPaddleRegion("ply", 50, 10, 28, 14, .62, .90, "full"),
+		testPaddleRegion("Lr)", 90, 10, 28, 14, .38, .88, "full"),
+		testPaddleRegion("wx", 130, 10, 24, 14, .65, .92, "full"),
+		testPaddleRegion("Add", 170, 10, 36, 14, .96, .94, "full"),
+	}
+	kept, rejected := filterNonSemanticPaddleRegions(regions)
+	if len(kept) != 1 || kept[0].Text != "Add" || len(rejected) != 4 {
+		t.Fatalf("kept=%+v rejected=%+v", kept, rejected)
+	}
+}
+
+func testPaddleRegion(text string, x, y, width, height int, recognizer, detector float64, pass string) paddleRegion {
+	return paddleRegion{
+		Polygon:              [4]paddlePoint{{float64(x), float64(y)}, {float64(x + width), float64(y)}, {float64(x + width), float64(y + height)}, {float64(x), float64(y + height)}},
+		Box:                  OCRBox{X: x, Y: y, Width: width, Height: height},
+		Text:                 text,
+		RecognizerConfidence: recognizer,
+		DetectorConfidence:   detector,
+		Pass:                 pass,
 	}
 }
 

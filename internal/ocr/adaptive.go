@@ -369,16 +369,15 @@ func paddleSemanticGroups(lines [][]OCRWord, diagnostics *[]OCRParagraphMergeDia
 	for _, group := range spatialParagraphsWithDiagnostics(lines, diagnostics) {
 		parts := splitPaddleSemanticGroup(group, diagnostics)
 		for _, part := range parts {
-			if len(part) <= 2 || !paddleUIGroup(part, lines) {
+			if !paddleUIGroup(part, lines) {
 				result = append(result, part)
 				continue
 			}
-			for len(part) > 2 {
-				result = append(result, part[:2])
-				part = part[2:]
-			}
-			if len(part) > 0 {
-				result = append(result, part)
+			// Dense screenshot/UI regions use detector-line/control units. Pairing
+			// adjacent controls made their union box span menus, table cells and
+			// dialog fields, so cleanup and layout could no longer stay local.
+			for _, line := range part {
+				result = append(result, [][]OCRWord{line})
 			}
 		}
 	}
@@ -700,6 +699,11 @@ func paddleSemanticBreak(previousText, currentText string, previous, current OCR
 		return true
 	}
 	if gap > height*2/5 && previousTokens <= 5 && currentTokens >= 6 {
+		return true
+	}
+	// A short field/tab caption immediately after a long instruction is a
+	// screenshot/control boundary, not the final ragged line of the prose.
+	if previousTokens >= 6 && currentTokens <= 4 && current.Width*2 < previous.Width && gap >= height/5 {
 		return true
 	}
 	return false

@@ -21,9 +21,9 @@ func TestNormalizeLocalTypographyCorrectsIsolatedOutlier(t *testing.T) {
 
 func TestNormalizeLocalTypographyPreservesHeading(t *testing.T) {
 	paragraphs := []ocr.OCRParagraph{
-		{Box: ocr.OCRBox{X: 20, Y: 10, Width: 220, Height: 28}, Lines: []ocr.OCRLine{{Box: ocr.OCRBox{X: 20, Y: 10, Width: 220, Height: 28}}}},
-		{Box: ocr.OCRBox{X: 20, Y: 50, Width: 180, Height: 12}, Lines: []ocr.OCRLine{{Box: ocr.OCRBox{X: 20, Y: 50, Width: 180, Height: 12}}}},
-		{Box: ocr.OCRBox{X: 20, Y: 70, Width: 180, Height: 12}, Lines: []ocr.OCRLine{{Box: ocr.OCRBox{X: 20, Y: 70, Width: 180, Height: 12}}}},
+		{Text: "ENGINE OIL", Box: ocr.OCRBox{X: 20, Y: 10, Width: 220, Height: 28}, Lines: []ocr.OCRLine{{Text: "ENGINE OIL", Box: ocr.OCRBox{X: 20, Y: 10, Width: 220, Height: 28}}}},
+		{Text: "Normal body line", Box: ocr.OCRBox{X: 20, Y: 50, Width: 180, Height: 12}, Lines: []ocr.OCRLine{{Text: "Normal body line", Box: ocr.OCRBox{X: 20, Y: 50, Width: 180, Height: 12}}}},
+		{Text: "Another body line", Box: ocr.OCRBox{X: 20, Y: 70, Width: 180, Height: 12}, Lines: []ocr.OCRLine{{Text: "Another body line", Box: ocr.OCRBox{X: 20, Y: 70, Width: 180, Height: 12}}}},
 	}
 	estimates := []FontStyleEstimate{{FontSize: 27}, {FontSize: 11}, {FontSize: 12}}
 	normalizeLocalTypography(paragraphs, estimates, []bool{true, true, true}, CoordinateTransform{ScaleX: 1, ScaleY: 1})

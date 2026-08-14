@@ -141,8 +141,9 @@ func (s *Service) Start(request StartImageBatchRequest) (string, error) {
 		errors: []BatchFileError{},
 		report: JobReport{
 			SchemaVersion: SchemaVersion, ID: id, State: "pending", StartedAt: started, Source: request.Source, Target: request.Target,
-			Selection: JobSelection{Kind: selection.Kind, DisplayName: selection.DisplayName, FileCount: len(selection.Files)},
-			Summary:   JobSummary{Total: len(selection.Files)}, Files: []JobFileReport{},
+			Configuration: JobRunConfiguration{Debug: request.Debug, FillWordBoxes: request.FillWordBoxes, MinimumFontSize: s.renderer.config.MinimumFontSize, MaximumFontSize: s.renderer.config.MaximumFontSize, LineSpacing: s.renderer.config.LineSpacing, JPEGQuality: s.renderer.config.JPEGQuality},
+			Selection:     JobSelection{Kind: selection.Kind, DisplayName: selection.DisplayName, FileCount: len(selection.Files)},
+			Summary:       JobSummary{Total: len(selection.Files)}, Files: []JobFileReport{},
 		},
 	}
 	s.mu.Lock()

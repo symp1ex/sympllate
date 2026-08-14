@@ -96,6 +96,7 @@ func EstimateSourceTypography(ctx context.Context, fonts *fontCache, paragraph o
 	for _, line := range geometry {
 		contentRunes += utf8.RuneCountInString(strings.ReplaceAll(line.text, " ", ""))
 	}
+	bestSize = capShortRunFontSize(bestSize, minimum, contentRunes, geometry)
 	if contentRunes <= 4 {
 		confidence *= 0.45
 	} else if contentRunes <= 8 {
@@ -105,6 +106,30 @@ func EstimateSourceTypography(ctx context.Context, fonts *fontCache, paragraph o
 		Style: "regular", FontSize: bestSize, LineStep: roundMetric(lineStep),
 		Confidence: roundMetric(confidence), IndividualEstimates: individual,
 	}, nil
+}
+
+func capShortRunFontSize(size, minimum float64, contentRunes int, geometry []sourceLineGeometry) float64 {
+	if contentRunes > 8 || len(geometry) == 0 {
+		return size
+	}
+	heights := make([]float64, 0, len(geometry))
+	for _, line := range geometry {
+		height := line.medianWordHeight
+		if height <= 0 {
+			height = float64(line.box.Height)
+		}
+		if height > 0 {
+			heights = append(heights, height)
+		}
+	}
+	if len(heights) == 0 {
+		return size
+	}
+	factor := 1.6
+	if contentRunes <= 4 {
+		factor = 1.35
+	}
+	return roundFontSize(math.Max(minimum, math.Min(size, median(heights)*factor)))
 }
 
 func sourceGeometry(paragraph ocr.OCRParagraph, transform CoordinateTransform) []sourceLineGeometry {

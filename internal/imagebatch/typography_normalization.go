@@ -2,6 +2,8 @@ package imagebatch
 
 import (
 	"math"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/sympllate/translator/internal/ocr"
 )
@@ -19,6 +21,7 @@ func normalizeLocalTypography(paragraphs []ocr.OCRParagraph, estimates []FontSty
 		if ownHeight <= 0 {
 			continue
 		}
+		capShortParagraphEstimate(&estimates[index], paragraph, ownHeight)
 		neighborSizes := make([]float64, 0, 4)
 		neighborHeights := make([]float64, 0, 4)
 		for other := range paragraphs {
@@ -47,7 +50,29 @@ func normalizeLocalTypography(paragraphs []ocr.OCRParagraph, estimates []FontSty
 		estimates[index].FontSize = roundFontSize(localSize)
 		estimates[index].Normalized = true
 		estimates[index].NormalizationReason = "local_line_geometry_outlier"
+		capShortParagraphEstimate(&estimates[index], paragraph, ownHeight)
 	}
+}
+
+func capShortParagraphEstimate(estimate *FontStyleEstimate, paragraph ocr.OCRParagraph, observedHeight float64) {
+	runes := utf8.RuneCountInString(strings.ReplaceAll(paragraph.Text, " ", ""))
+	if runes > 8 || runes == 0 || observedHeight <= 0 {
+		return
+	}
+	factor := 1.6
+	if runes <= 4 {
+		factor = 1.35
+	}
+	maximum := roundFontSize(observedHeight * factor)
+	if estimate.FontSize <= maximum {
+		return
+	}
+	if estimate.InitialFontSize == 0 {
+		estimate.InitialFontSize = estimate.FontSize
+	}
+	estimate.FontSize = maximum
+	estimate.Normalized = true
+	estimate.NormalizationReason = "short_run_glyph_height_cap"
 }
 
 func paragraphMedianLineHeight(paragraph ocr.OCRParagraph, transform CoordinateTransform) float64 {

@@ -72,11 +72,11 @@ func TestPaddleTableCellsRemainSeparateParagraphs(t *testing.T) {
 		testAdaptiveWord("Pressure", 20, 42, 90, 14, 0, 0, 0, 0), testAdaptiveWord("2.5 bar", 180, 42, 65, 14, 0, 0, 0, 0),
 	}
 	paragraphs := buildPaddleParagraphs(words)
-	if len(paragraphs) != 2 {
+	if len(paragraphs) != 4 {
 		t.Fatalf("paragraphs=%+v", paragraphs)
 	}
 	for _, paragraph := range paragraphs {
-		if paragraph.Box.Width > 120 {
+		if len(paragraph.Lines) != 1 || paragraph.Box.Width > 120 {
 			t.Fatalf("table cells merged into wide paragraph: %+v", paragraph)
 		}
 	}
@@ -132,6 +132,17 @@ func TestPaddleParagraphsKeepNormalRaggedBodyTogether(t *testing.T) {
 	}
 }
 
+func TestPaddleSeparatesBodyInstructionFromScreenshotControl(t *testing.T) {
+	words := []OCRWord{
+		testAdaptiveWord("Create a new product card by clicking Add.", 40, 40, 360, 16, 0, 0, 0, 0),
+		testAdaptiveWord("Main properties", 40, 60, 130, 16, 0, 0, 0, 0),
+	}
+	paragraphs := buildPaddleParagraphs(words)
+	if len(paragraphs) != 2 || paragraphs[0].Text != "Create a new product card by clicking Add." || paragraphs[1].Text != "Main properties" {
+		t.Fatalf("body and screenshot control merged: %+v", paragraphs)
+	}
+}
+
 func TestPaddleSeparatesHeadingFromBodyAndBoundsUIColumnGroups(t *testing.T) {
 	words := []OCRWord{
 		testAdaptiveWord("ENGINE OIL", 20, 20, 190, 28, 0, 0, 0, 0),
@@ -148,7 +159,7 @@ func TestPaddleSeparatesHeadingFromBodyAndBoundsUIColumnGroups(t *testing.T) {
 		t.Fatalf("heading=%+v", heading)
 	}
 	for _, paragraph := range paragraphs {
-		if paragraph.Box.X >= 490 && len(paragraph.Lines) > 2 {
+		if paragraph.Box.X >= 490 && len(paragraph.Lines) > 1 {
 			t.Fatalf("UI column merged: %+v", paragraph)
 		}
 	}
@@ -166,7 +177,7 @@ func TestPaddleUIColumnWithSearchInstructionStaysControlLevel(t *testing.T) {
 	}
 	paragraphs := buildPaddleParagraphs(words)
 	for _, paragraph := range paragraphs {
-		if len(paragraph.Lines) > 2 {
+		if len(paragraph.Lines) > 1 {
 			t.Fatalf("UI navigation column merged: %+v", paragraph)
 		}
 	}
@@ -178,11 +189,11 @@ func TestPaddleUIGridCellsRemainSeparateParagraphs(t *testing.T) {
 		testAdaptiveWord("Tax", 20, 42, 45, 14, 0, 0, 0, 0), testAdaptiveWord("20%", 140, 42, 42, 14, 0, 0, 0, 0), testAdaptiveWord("Active", 260, 42, 68, 14, 0, 0, 0, 0),
 	}
 	paragraphs := buildPaddleParagraphs(words)
-	if len(paragraphs) != 3 {
+	if len(paragraphs) != 6 {
 		t.Fatalf("grid columns merged unexpectedly: %+v", paragraphs)
 	}
 	for _, paragraph := range paragraphs {
-		if len(paragraph.Lines) != 2 || paragraph.Box.Width > 80 {
+		if len(paragraph.Lines) != 1 || paragraph.Box.Width > 80 {
 			t.Fatalf("grid paragraph shape=%+v", paragraph)
 		}
 	}

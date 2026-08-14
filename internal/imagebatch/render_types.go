@@ -95,9 +95,17 @@ type RenderDocument struct {
 }
 
 type LayoutDiagnostics struct {
-	TranslatedBlocks int `json:"translatedBlocks"`
-	RenderableBlocks int `json:"renderableBlocks"`
-	SkippedBlocks    int `json:"skippedBlocks"`
+	TranslatedBlocks               int     `json:"translatedBlocks"`
+	RenderableBlocks               int     `json:"renderableBlocks"`
+	SkippedBlocks                  int     `json:"skippedBlocks"`
+	FullPageFallbackBlocks         int     `json:"fullPageFallbackBlocks"`
+	CrossedColumnPlacements        int     `json:"crossedColumnPlacements"`
+	CrossedParentPlacements        int     `json:"crossedParentPlacements"`
+	MaximumAnchorDisplacementLines float64 `json:"maximumAnchorDisplacementLineHeights"`
+	MaximumExpansionRatio          float64 `json:"maximumExpansionRatio"`
+	MaximumWidthExpansionRatio     float64 `json:"maximumWidthExpansionRatio"`
+	MaximumHeightExpansionRatio    float64 `json:"maximumHeightExpansionRatio"`
+	MediumOrHigherVisualRiskBlocks int     `json:"mediumOrHigherVisualRiskBlocks"`
 }
 
 // PipelineMetrics makes the translated -> rendered invariant explicit in

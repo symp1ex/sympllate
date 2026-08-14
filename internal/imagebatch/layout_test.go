@@ -401,7 +401,7 @@ func TestEstimateSourceTypographyShortRunUsesInkHeight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if estimate.FontSize > 22 || estimate.Confidence >= .75 {
+	if estimate.FontSize > 16.25 || estimate.Confidence >= .75 {
 		t.Fatalf("short run must be height-led and low-confidence: %+v", estimate)
 	}
 }
@@ -436,6 +436,64 @@ func TestFallbackAnchorAndExpansionRemainBounded(t *testing.T) {
 	}
 	if box.X < base.X-54 || box.Y < base.Y-54 || box.X+box.Width > neighbor.X || fit.AnchorDisplacement > 54 {
 		t.Fatalf("non-local fallback: base=%+v box=%+v fit=%+v", base, box, fit)
+	}
+}
+
+func TestFallbackNeverCrossesDocumentMidline(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFont(t, directory)
+	renderer, err := NewRenderer(directory, DefaultRenderConfig(), &fakeInpaintEngine{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer renderer.Close()
+	base := ocr.OCRBox{X: 120, Y: 30, Width: 70, Height: 20}
+	box, fit, err := renderer.fitBlock(context.Background(), strings.Repeat("long local translation ", 5), 13, 1, 20, "left", base, nil, -1, nil, 400, 180)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if crossesDocumentMidline(base, box, 400, 20) || box.X+box.Width > 220 {
+		t.Fatalf("fallback crossed document column: base=%+v box=%+v fit=%+v", base, box, fit)
+	}
+}
+
+func TestLongTranslationFitsWithLocalShrinkAndAdditionalLines(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFont(t, directory)
+	renderer, err := NewRenderer(directory, DefaultRenderConfig(), &fakeInpaintEngine{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer renderer.Close()
+	base := ocr.OCRBox{X: 40, Y: 30, Width: 150, Height: 48}
+	box, fit, err := renderer.fitBlock(context.Background(), "Detailed translated instruction remains beside its source control", 14, 1, 18, "left", base, nil, -1, nil, 500, 220)
+	if err != nil || !fit.Fits {
+		t.Fatalf("box=%+v fit=%+v err=%v", box, fit, err)
+	}
+	if fit.FontSize > 14 || len(fit.Lines) <= 1 || fit.AnchorDisplacement > 54 || box.Width >= 500 || box.Height >= 220 {
+		t.Fatalf("translation did not remain locally readable: base=%+v box=%+v fit=%+v", base, box, fit)
+	}
+}
+
+func TestFallbackTranslatedOverlapIsNumericallyLimited(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFont(t, directory)
+	renderer, err := NewRenderer(directory, DefaultRenderConfig(), &fakeInpaintEngine{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer renderer.Close()
+	base := ocr.OCRBox{X: 40, Y: 30, Width: 90, Height: 24}
+	active := []ocr.OCRBox{{X: 42, Y: 30, Width: 84, Height: 24}}
+	box, fit, err := renderer.fitBlock(context.Background(), strings.Repeat("translated text ", 5), 13, 1, 18, "left", base, nil, -1, active, 320, 180)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fit.Fits && isLocalityFallbackStrategy(fit.FallbackReason) {
+		ink := unionOCRBoxes(renderedLineRegions(positionTextLines(fit, box, "left", "middle", 0, 0), fit.LineHeight, fit.Ascent))
+		if newIndependentSourceOverlapRatio(base, ink, active) > .35 {
+			t.Fatalf("fallback accepted excessive translated overlap: box=%+v ink=%+v fit=%+v", box, ink, fit)
+		}
 	}
 }
 

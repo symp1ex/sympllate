@@ -86,18 +86,28 @@ type ErrorsDocument struct {
 }
 
 type JobReport struct {
-	SchemaVersion int             `json:"schemaVersion"`
-	ID            string          `json:"id"`
-	State         string          `json:"state"`
-	StartedAt     time.Time       `json:"startedAt"`
-	CompletedAt   *time.Time      `json:"completedAt,omitempty"`
-	Source        string          `json:"source"`
-	Target        string          `json:"target"`
-	OCRBackend    string          `json:"ocrBackend,omitempty"`
-	Error         string          `json:"error,omitempty"`
-	Selection     JobSelection    `json:"selection"`
-	Summary       JobSummary      `json:"summary"`
-	Files         []JobFileReport `json:"files"`
+	SchemaVersion int                 `json:"schemaVersion"`
+	ID            string              `json:"id"`
+	State         string              `json:"state"`
+	StartedAt     time.Time           `json:"startedAt"`
+	CompletedAt   *time.Time          `json:"completedAt,omitempty"`
+	Source        string              `json:"source"`
+	Target        string              `json:"target"`
+	OCRBackend    string              `json:"ocrBackend,omitempty"`
+	Configuration JobRunConfiguration `json:"configuration"`
+	Error         string              `json:"error,omitempty"`
+	Selection     JobSelection        `json:"selection"`
+	Summary       JobSummary          `json:"summary"`
+	Files         []JobFileReport     `json:"files"`
+}
+
+type JobRunConfiguration struct {
+	Debug           bool    `json:"debug"`
+	FillWordBoxes   bool    `json:"fillWordBoxes"`
+	MinimumFontSize float64 `json:"minimumFontSize"`
+	MaximumFontSize float64 `json:"maximumFontSize"`
+	LineSpacing     float64 `json:"lineSpacing"`
+	JPEGQuality     int     `json:"jpegQuality"`
 }
 
 type JobSelection struct {

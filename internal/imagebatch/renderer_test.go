@@ -164,6 +164,30 @@ func TestPrepareIncludesTypographyAndLayoutDiagnostics(t *testing.T) {
 	if block.FontReductionRatio <= 0 || block.ExpansionRatio < 0 || block.LayoutScore < 0 {
 		t.Fatalf("layout ratios=%+v", block)
 	}
+	if document.LayoutDiagnostics.FullPageFallbackBlocks != 0 || document.LayoutDiagnostics.CrossedColumnPlacements != 0 || document.LayoutDiagnostics.CrossedParentPlacements != 0 {
+		t.Fatalf("locality diagnostics=%+v", document.LayoutDiagnostics)
+	}
+}
+
+func TestUnchangedModelCodeAndTableValueArePassthrough(t *testing.T) {
+	for _, value := range []string{"FX801V", "KAW-42", "1550 r/min"} {
+		paragraph := ocr.OCRParagraph{ID: "one", Text: value, Confidence: 95}
+		block := TranslatedBlock{ID: "one", SourceText: value, TranslatedText: value, Status: "translated"}
+		if reason := initialRenderCandidateReason(paragraph, block, true, ocr.OCRBox{X: 10, Y: 10, Width: 80, Height: 20}); reason != "passthrough_no_translation_needed" {
+			t.Fatalf("value=%q reason=%q", value, reason)
+		}
+	}
+}
+
+func TestPipelineMetricInvariantRejectsDoubleCountedFallback(t *testing.T) {
+	metrics := PipelineMetrics{TranslatedUniqueBlocks: 2, RenderedBlocks: 1, FallbackRenderedBlocks: 2, HardFailedBlocks: 1}
+	if err := validatePipelineMetrics(metrics); err == nil {
+		t.Fatal("double-counted fallback metrics were accepted")
+	}
+	metrics.FallbackRenderedBlocks = 1
+	if err := validatePipelineMetrics(metrics); err != nil {
+		t.Fatalf("valid unique-block metrics rejected: %v", err)
+	}
 }
 
 func TestSmallOCRBoxOverlapDoesNotSkipRender(t *testing.T) {

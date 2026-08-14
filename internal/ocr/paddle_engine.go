@@ -254,7 +254,7 @@ func (e *PaddleEngine) recognizePage(ctx context.Context, validated translation.
 	merged, duplicates, fragments := mergePaddleRegionsDetailed(regions)
 	diagnostics.MergeDuplicates = duplicates
 	for _, fragment := range fragments {
-		diagnostic := paddleRegionDiagnostic(fragment.Region, "fragment_of")
+		diagnostic := paddleRegionDiagnostic(fragment.Region, fragment.Reason)
 		diagnostic.FragmentOf = paddleRegionReference(fragment.Parent)
 		diagnostics.Regions = append(diagnostics.Regions, diagnostic)
 	}
@@ -433,6 +433,7 @@ func mergePaddleRegions(regions []paddleRegion) ([]paddleRegion, int) {
 type paddleSuppressedRegion struct {
 	Region paddleRegion
 	Parent paddleRegion
+	Reason string
 }
 
 func mergePaddleRegionsDetailed(regions []paddleRegion) ([]paddleRegion, int, []paddleSuppressedRegion) {
@@ -446,6 +447,7 @@ func mergePaddleRegionsDetailed(regions []paddleRegion) ([]paddleRegion, int, []
 	fragments := make([]paddleSuppressedRegion, 0)
 	for _, candidate := range regions {
 		match := -1
+		matchReason := "fragment_of"
 		for index, existing := range result {
 			intersection := polygonIntersectionArea(existing.Polygon, candidate.Polygon)
 			smaller := math.Min(polygonArea(existing.Polygon), polygonArea(candidate.Polygon))
@@ -463,6 +465,9 @@ func mergePaddleRegionsDetailed(regions []paddleRegion) ([]paddleRegion, int, []
 				(containedText && intersection/smaller >= .55 && baselineDelta <= scale*.8) ||
 				(textSimilarity >= .88 && intersection/smaller >= .45 && baselineDelta <= scale*.6) {
 				match = index
+				if sameText {
+					matchReason = "duplicate_detector_region"
+				}
 				break
 			}
 		}
@@ -472,14 +477,32 @@ func mergePaddleRegionsDetailed(regions []paddleRegion) ([]paddleRegion, int, []
 		}
 		duplicates++
 		existing := result[match]
-		if betterPaddleRegion(candidate, existing) {
+		if betterPaddleMatch(candidate, existing) {
 			result[match] = candidate
-			fragments = append(fragments, paddleSuppressedRegion{Region: existing, Parent: candidate})
+			fragments = append(fragments, paddleSuppressedRegion{Region: existing, Parent: candidate, Reason: matchReason})
 		} else {
-			fragments = append(fragments, paddleSuppressedRegion{Region: candidate, Parent: existing})
+			fragments = append(fragments, paddleSuppressedRegion{Region: candidate, Parent: existing, Reason: matchReason})
 		}
 	}
 	return result, duplicates, fragments
+}
+
+func betterPaddleMatch(left, right paddleRegion) bool {
+	leftText, rightText := normalizedOCRText(left.Text), normalizedOCRText(right.Text)
+	if leftText == rightText {
+		return betterPaddleRegion(left, right)
+	}
+	// Exact textual containment is strong evidence that the longer detector
+	// region is the semantic line and the shorter region is a tile fragment.
+	if strings.Contains(leftText, rightText) != strings.Contains(rightText, leftText) {
+		return strings.Contains(leftText, rightText)
+	}
+	// For only fuzzy matches, do not let a longer corrupted recognition win
+	// solely because it contains more characters.
+	if math.Abs(left.RecognizerConfidence-right.RecognizerConfidence) >= .08 {
+		return left.RecognizerConfidence > right.RecognizerConfidence
+	}
+	return betterPaddleRegion(left, right)
 }
 
 func paddleRegionReference(region paddleRegion) string {
@@ -583,13 +606,16 @@ func filterNonSemanticPaddleRegions(regions []paddleRegion) ([]paddleRegion, []p
 		}
 		runes := []rune(text)
 		contextual := paddleSingleCharacterContext(regions, index)
-		supportedLabel := len(runes) == 1 && unicode.IsUpper(runes[0]) && region.RecognizerConfidence >= .68 && region.DetectorConfidence >= .78 && region.Box.Width <= region.Box.Height*6/5
-		supportedTableValue := len(runes) == 1 && digits == 1 && contextual && region.RecognizerConfidence >= .92 && region.DetectorConfidence >= .82
 		iconLike := len(runes) == 1 && letters+digits <= 1 && region.Box.Width >= region.Box.Height*3/4 && region.Box.Width <= region.Box.Height*3/2 && (region.RecognizerConfidence < .95 || region.DetectorConfidence < .90)
+		supportedLabel := len(runes) == 1 && unicode.IsUpper(runes[0]) && !iconLike && region.RecognizerConfidence >= .68 && region.DetectorConfidence >= .78 && region.Box.Width <= region.Box.Height*6/5
+		supportedTableValue := len(runes) == 1 && digits == 1 && contextual && region.RecognizerConfidence >= .92 && region.DetectorConfidence >= .82
+		shortLowConfidenceRun := letters >= 2 && letters <= 4 && digits == 0 && region.RecognizerConfidence < .72
+		corruptedOverlap := region.RecognizerConfidence < .78 && paddleRegionHasStrongerTextRelation(regions, index)
 		noise := text == "" ||
 			(letters+digits == 0 && len(runes) <= 2) ||
 			(len(runes) == 1 && !supportedLabel && !supportedTableValue && (region.RecognizerConfidence < .90 || region.DetectorConfidence < .78 || iconLike)) ||
-			(letters+digits <= 1 && len(runes) <= 3 && region.RecognizerConfidence < .55)
+			(letters+digits <= 1 && len(runes) <= 3 && region.RecognizerConfidence < .55) ||
+			shortLowConfidenceRun || corruptedOverlap
 		if noise {
 			rejected = append(rejected, region)
 			continue
@@ -597,6 +623,23 @@ func filterNonSemanticPaddleRegions(regions []paddleRegion) ([]paddleRegion, []p
 		kept = append(kept, region)
 	}
 	return kept, rejected
+}
+
+func paddleRegionHasStrongerTextRelation(regions []paddleRegion, own int) bool {
+	region := regions[own]
+	for index, other := range regions {
+		if index == own || other.RecognizerConfidence < region.RecognizerConfidence+.10 {
+			continue
+		}
+		smaller := math.Min(polygonArea(region.Polygon), polygonArea(other.Polygon))
+		if smaller <= 0 || polygonIntersectionArea(region.Polygon, other.Polygon)/smaller < .45 {
+			continue
+		}
+		if normalizedTextContains(region.Text, other.Text) || fuzzyContainedOCRText(region.Text, other.Text) >= .5 || paddleTextSimilarity(region.Text, other.Text) >= .6 {
+			return true
+		}
+	}
+	return false
 }
 
 func paddleSingleCharacterContext(regions []paddleRegion, own int) bool {

@@ -139,6 +139,12 @@ func TestBatchLifecycleSuccessWritesDocumentsAndDebug(t *testing.T) {
 	if report.State != "completed" || report.CompletedAt == nil || len(report.Files) != 1 || report.Files[0].SourceID == "" {
 		t.Fatalf("report=%+v", report)
 	}
+	if !report.Configuration.Debug || report.Configuration.FillWordBoxes || report.Configuration.MinimumFontSize != DefaultRenderConfig().MinimumFontSize || report.Configuration.LineSpacing != DefaultRenderConfig().LineSpacing {
+		t.Fatalf("run configuration was not persisted: %+v", report.Configuration)
+	}
+	if report.Files[0].LayoutDiagnostics.FullPageFallbackBlocks != 0 || report.Files[0].LayoutDiagnostics.CrossedColumnPlacements != 0 || report.Files[0].LayoutDiagnostics.CrossedParentPlacements != 0 {
+		t.Fatalf("locality diagnostics=%+v", report.Files[0].LayoutDiagnostics)
+	}
 }
 
 func TestBatchNoTextSkipsModel(t *testing.T) {

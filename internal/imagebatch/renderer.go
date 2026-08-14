@@ -260,9 +260,39 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 		activeTextRegions = append(activeTextRegions, renderedLineRegions(lineLayouts, fit.LineHeight, fit.Ascent)...)
 		appendBlockFate(&document, paragraph.ID, BlockFateEvent{Stage: "render", Decision: "ready"})
 	}
-	document.LayoutDiagnostics = LayoutDiagnostics{TranslatedBlocks: len(translation.Blocks), RenderableBlocks: len(document.Blocks), SkippedBlocks: len(document.SkippedBlocks)}
+	document.LayoutDiagnostics = summarizeLayoutDiagnostics(document, len(translation.Blocks))
 	document.PipelineMetrics = calculatePipelineMetrics(document, page, translation)
+	if err := validatePipelineMetrics(document.PipelineMetrics); err != nil {
+		return RenderDocument{}, err
+	}
 	return document, nil
+}
+
+func summarizeLayoutDiagnostics(document RenderDocument, translated int) LayoutDiagnostics {
+	diagnostics := LayoutDiagnostics{TranslatedBlocks: translated, RenderableBlocks: len(document.Blocks), SkippedBlocks: len(document.SkippedBlocks)}
+	for _, block := range document.Blocks {
+		diagnostics.MaximumAnchorDisplacementLines = math.Max(diagnostics.MaximumAnchorDisplacementLines, block.AnchorDisplacementLineHeights)
+		diagnostics.MaximumExpansionRatio = math.Max(diagnostics.MaximumExpansionRatio, block.ExpansionRatio)
+		diagnostics.MaximumWidthExpansionRatio = math.Max(diagnostics.MaximumWidthExpansionRatio, block.WidthExpansionRatio)
+		diagnostics.MaximumHeightExpansionRatio = math.Max(diagnostics.MaximumHeightExpansionRatio, block.HeightExpansionRatio)
+		if block.CrossedColumn {
+			diagnostics.CrossedColumnPlacements++
+		}
+		if block.CrossedParentRegion {
+			diagnostics.CrossedParentPlacements++
+		}
+		if block.VisualRiskSeverity == "medium" || block.VisualRiskSeverity == "high" {
+			diagnostics.MediumOrHigherVisualRiskBlocks++
+		}
+		if isLocalityFallbackStrategy(block.FallbackReason) && block.TextBox.X == 0 && block.TextBox.Y == 0 && block.TextBox.Width >= document.ImageWidth && block.TextBox.Height >= document.ImageHeight {
+			diagnostics.FullPageFallbackBlocks++
+		}
+	}
+	diagnostics.MaximumAnchorDisplacementLines = roundMetric(diagnostics.MaximumAnchorDisplacementLines)
+	diagnostics.MaximumExpansionRatio = roundMetric(diagnostics.MaximumExpansionRatio)
+	diagnostics.MaximumWidthExpansionRatio = roundMetric(diagnostics.MaximumWidthExpansionRatio)
+	diagnostics.MaximumHeightExpansionRatio = roundMetric(diagnostics.MaximumHeightExpansionRatio)
+	return diagnostics
 }
 
 func appendBlockFate(document *RenderDocument, id string, event BlockFateEvent) {
@@ -325,6 +355,17 @@ func calculatePipelineMetrics(document RenderDocument, page ocr.OCRPage, transla
 		SemanticSourceBlocks: len(page.Paragraphs), NonSemanticOCRNoise: page.Diagnostics.NonSemanticOCRNoise,
 		TranslatedUniqueBlocks: len(translatedIDs), PassthroughBlocks: len(passthroughIDs), OCRUniqueBlocks: unique, TranslatedBlocks: len(translatedIDs), RenderCandidates: len(renderedIDs), RenderedBlocks: len(renderedIDs),
 		NormalRenderedBlocks: len(renderedIDs) - len(fallbackIDs), DeduplicatedBlocks: len(deduplicatedIDs), FallbackRenderedBlocks: len(fallbackIDs), HardFailedBlocks: hardFailed}
+}
+
+func validatePipelineMetrics(metrics PipelineMetrics) error {
+	if metrics.FallbackRenderedBlocks > metrics.RenderedBlocks {
+		return fmt.Errorf("invalid pipeline metrics: fallback rendered blocks %d exceed rendered blocks %d", metrics.FallbackRenderedBlocks, metrics.RenderedBlocks)
+	}
+	accounted := metrics.RenderedBlocks + metrics.DeduplicatedBlocks + metrics.PassthroughBlocks + metrics.HardFailedBlocks
+	if metrics.TranslatedUniqueBlocks != accounted {
+		return fmt.Errorf("invalid pipeline metrics: translated unique blocks %d != accounted outcomes %d", metrics.TranslatedUniqueBlocks, accounted)
+	}
+	return nil
 }
 
 func layoutVisualRisk(fit TextFitResult) string {
@@ -572,7 +613,8 @@ func (r *Renderer) forceFitBlock(ctx context.Context, text string, preferred flo
 		candidate := ClampBox(ExpandBox(base, CleanupPadding{Horizontal: padding, Vertical: padding}, width, height), width, height)
 		if candidate.Width > base.Width+axisLimit*2 || candidate.Height > base.Height+axisLimit*2 ||
 			float64(candidate.Width*candidate.Height) > float64(max(1, base.Width*base.Height))*6 ||
-			hasMaterialIntersection(candidate, protected, base) {
+			hasMaterialIntersection(candidate, protected, base) ||
+			!localityCandidateAllowed(base, candidate, alignment, width, lineHeight) {
 			continue
 		}
 		candidates = append(candidates, layoutCandidate{box: candidate, expanded: candidate != base})
@@ -594,7 +636,28 @@ func (r *Renderer) forceFitBlock(ctx context.Context, text string, preferred flo
 		decorateLayoutResult(&fit, preferred, sourceLines, sourceLineStep, alignment, base, candidate, true)
 		lineLayouts := positionTextLines(fit, candidate.box, alignment, verticalAlignment, 0, 0)
 		ink := renderedLineRegions(lineLayouts, fit.LineHeight, fit.Ascent)
-		if intersectsRegionSets(ink, active) {
+		if !localityInkAllowed(base, ink, protected, width, lineHeight) {
+			fit.Fits = false
+			fit.Overflow = true
+			fit.FallbackReason = "locality_boundary"
+			if best.FontSize == 0 || fit.TextHeight < best.TextHeight {
+				bestBox, best = candidate.box, fit
+			}
+			continue
+		}
+		placedInk := unionOCRBoxes(ink)
+		translatedOverlap := maximumBoxOverlapRatio(placedInk, active)
+		newTranslatedOverlap := newIndependentSourceOverlapRatio(base, placedInk, active)
+		if newTranslatedOverlap > .35 {
+			fit.Fits = false
+			fit.Overflow = true
+			fit.FallbackReason = "translated_overlap_limit"
+			if best.FontSize == 0 || fit.TextHeight < best.TextHeight {
+				bestBox, best = candidate.box, fit
+			}
+			continue
+		}
+		if translatedOverlap > 0 {
 			fit.FallbackReason = "local_smaller_font_limited_overlap"
 		} else {
 			fit.FallbackReason = "local_smaller_font_backing_plate"
@@ -675,13 +738,38 @@ func (r *Renderer) layoutCandidates(text string, preferred float64, sourceLines 
 		if box == base || box.Width <= 0 || box.Height <= 0 {
 			continue
 		}
-		if _, ok := seen[box]; ok || hasAmbiguousOverlap(box, occupied, own) || hasAmbiguousOverlap(box, active, -1) {
+		if _, ok := seen[box]; ok || hasAmbiguousOverlap(box, occupied, own) || hasAmbiguousOverlap(box, active, -1) ||
+			!localityCandidateAllowed(base, box, alignment, width, float64(observedLineHeight)) {
 			continue
 		}
 		seen[box] = struct{}{}
 		result = append(result, layoutCandidate{box: box, expanded: true})
 	}
 	return result, nil
+}
+
+func localityCandidateAllowed(base, candidate ocr.OCRBox, alignment string, imageWidth int, lineHeight float64) bool {
+	lineHeight = math.Max(1, lineHeight)
+	if candidate.Width <= 0 || candidate.Height <= 0 || crossesDocumentMidline(base, candidate, imageWidth, int(math.Ceil(lineHeight))) {
+		return false
+	}
+	if layoutAnchorDisplacement(base, candidate, alignment) > lineHeight*3+.5 {
+		return false
+	}
+	return candidate.Width <= base.Width+int(math.Ceil(lineHeight*6)) &&
+		candidate.Height <= base.Height+int(math.Ceil(lineHeight*6)) &&
+		float64(candidate.Width*candidate.Height) <= float64(max(1, base.Width*base.Height))*6
+}
+
+func localityInkAllowed(base ocr.OCRBox, ink, protected []ocr.OCRBox, imageWidth int, lineHeight float64) bool {
+	if len(ink) == 0 {
+		return true
+	}
+	placed := unionOCRBoxes(ink)
+	if crossesDocumentMidline(base, placed, imageWidth, int(math.Ceil(math.Max(1, lineHeight)))) {
+		return false
+	}
+	return newIndependentSourceOverlapRatio(base, placed, protected) <= .12
 }
 
 func freeSpaceLimits(base ocr.OCRBox, occupied []ocr.OCRBox, own int, active []ocr.OCRBox, width, height int) (int, int, int) {

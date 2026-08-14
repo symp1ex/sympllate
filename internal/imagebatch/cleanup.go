@@ -343,6 +343,11 @@ func (r *Renderer) Clean(ctx context.Context, source *image.NRGBA, document Rend
 	filtered.PipelineMetrics.CleanupFallbackBlocks = len(cleanupFallbackIDs)
 	filtered.PipelineMetrics.NormalRenderedBlocks = len(renderedIDs) - len(layoutFallbackIDs)
 	filtered.PipelineMetrics.HardFailedBlocks = max(0, filtered.PipelineMetrics.TranslatedUniqueBlocks-len(renderedIDs)-filtered.PipelineMetrics.DeduplicatedBlocks-filtered.PipelineMetrics.PassthroughBlocks)
+	if filtered.PipelineMetrics.TranslatedUniqueBlocks > 0 {
+		if err := validatePipelineMetrics(filtered.PipelineMetrics); err != nil {
+			return nil, filtered, stats, err
+		}
+	}
 	return target, filtered, stats, nil
 }
 
