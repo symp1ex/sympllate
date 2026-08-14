@@ -494,8 +494,27 @@ func betterPaddleMatch(left, right paddleRegion) bool {
 	}
 	// Exact textual containment is strong evidence that the longer detector
 	// region is the semantic line and the shorter region is a tile fragment.
-	if strings.Contains(leftText, rightText) != strings.Contains(rightText, leftText) {
-		return strings.Contains(leftText, rightText)
+	leftContainsRight, rightContainsLeft := ocrTextContains(leftText, rightText), ocrTextContains(rightText, leftText)
+	if leftContainsRight != rightContainsLeft {
+		leftLonger := leftContainsRight
+		longer, shorter := left, right
+		if !leftLonger {
+			longer, shorter = right, left
+		}
+		lengthRatio := float64(len([]rune(normalizedOCRText(longer.Text)))) / float64(maximum(1, len([]rune(normalizedOCRText(shorter.Text)))))
+		if lengthRatio < 2 && longer.RecognizerConfidence+.12 < shorter.RecognizerConfidence {
+			return !leftLonger
+		}
+		return leftLonger
+	}
+	leftRunes, rightRunes := len([]rune(leftText)), len([]rune(rightText))
+	longer, shorter := left, right
+	leftLonger := leftRunes >= rightRunes
+	if !leftLonger {
+		longer, shorter = right, left
+	}
+	if maximum(leftRunes, rightRunes) >= minimum(leftRunes, rightRunes)*3 && fuzzyContainedOCRText(longer.Text, shorter.Text) >= .68 && longer.RecognizerConfidence >= .75 {
+		return leftLonger
 	}
 	// For only fuzzy matches, do not let a longer corrupted recognition win
 	// solely because it contains more characters.
@@ -552,7 +571,24 @@ func normalizedTextContains(left, right string) bool {
 	if left == "" || right == "" {
 		return false
 	}
-	return strings.Contains(left, right) || strings.Contains(right, left)
+	return ocrTextContains(left, right) || ocrTextContains(right, left)
+}
+
+func ocrTextContains(container, contained string) bool {
+	if strings.Contains(container, contained) {
+		return true
+	}
+	container, contained = comparableOCRText(container), comparableOCRText(contained)
+	return len([]rune(container)) >= 3 && len([]rune(contained)) >= 3 && strings.Contains(container, contained)
+}
+
+func comparableOCRText(value string) string {
+	return strings.Map(func(character rune) rune {
+		if unicode.IsLetter(character) || unicode.IsDigit(character) {
+			return unicode.ToLower(character)
+		}
+		return -1
+	}, value)
 }
 
 func fuzzyContainedOCRText(left, right string) float64 {
@@ -609,13 +645,14 @@ func filterNonSemanticPaddleRegions(regions []paddleRegion) ([]paddleRegion, []p
 		iconLike := len(runes) == 1 && letters+digits <= 1 && region.Box.Width >= region.Box.Height*3/4 && region.Box.Width <= region.Box.Height*3/2 && (region.RecognizerConfidence < .95 || region.DetectorConfidence < .90)
 		supportedLabel := len(runes) == 1 && unicode.IsUpper(runes[0]) && !iconLike && region.RecognizerConfidence >= .68 && region.DetectorConfidence >= .78 && region.Box.Width <= region.Box.Height*6/5
 		supportedTableValue := len(runes) == 1 && digits == 1 && contextual && region.RecognizerConfidence >= .92 && region.DetectorConfidence >= .82
-		shortLowConfidenceRun := letters >= 2 && letters <= 4 && digits == 0 && region.RecognizerConfidence < .72
-		corruptedOverlap := region.RecognizerConfidence < .78 && paddleRegionHasStrongerTextRelation(regions, index)
+		corruptedOverlap := paddleRegionHasStrongerTextRelation(regions, index) && (region.RecognizerConfidence < .78 || paddleLexicallyImplausible(text))
+		unstableRecognition := region.RecognizerConfidence < .80 && paddleRegionHasUnstableRecognition(regions, index)
+		weakDetectorCopy := region.RecognizerConfidence < .65 && paddleLexicallyImplausible(text) && paddleRegionHasEmptyDetectorCopy(regions, index)
 		noise := text == "" ||
 			(letters+digits == 0 && len(runes) <= 2) ||
 			(len(runes) == 1 && !supportedLabel && !supportedTableValue && (region.RecognizerConfidence < .90 || region.DetectorConfidence < .78 || iconLike)) ||
 			(letters+digits <= 1 && len(runes) <= 3 && region.RecognizerConfidence < .55) ||
-			shortLowConfidenceRun || corruptedOverlap
+			corruptedOverlap || unstableRecognition || weakDetectorCopy
 		if noise {
 			rejected = append(rejected, region)
 			continue
@@ -631,11 +668,84 @@ func paddleRegionHasStrongerTextRelation(regions []paddleRegion, own int) bool {
 		if index == own || other.RecognizerConfidence < region.RecognizerConfidence+.10 {
 			continue
 		}
-		smaller := math.Min(polygonArea(region.Polygon), polygonArea(other.Polygon))
-		if smaller <= 0 || polygonIntersectionArea(region.Polygon, other.Polygon)/smaller < .45 {
+		polygonSmaller := math.Min(polygonArea(region.Polygon), polygonArea(other.Polygon))
+		polygonOverlap := 0.0
+		if polygonSmaller > 0 {
+			polygonOverlap = polygonIntersectionArea(region.Polygon, other.Polygon) / polygonSmaller
+		}
+		if polygonOverlap < .45 && paddleBoxOverlapOverSmaller(region.Box, other.Box) < .35 {
 			continue
 		}
 		if normalizedTextContains(region.Text, other.Text) || fuzzyContainedOCRText(region.Text, other.Text) >= .5 || paddleTextSimilarity(region.Text, other.Text) >= .6 {
+			return true
+		}
+	}
+	return false
+}
+
+func paddleRegionHasUnstableRecognition(regions []paddleRegion, own int) bool {
+	region := regions[own]
+	for index, other := range regions {
+		if index == own || strings.TrimSpace(other.Text) == "" || normalizedOCRText(region.Text) == normalizedOCRText(other.Text) || other.RecognizerConfidence >= .80 {
+			continue
+		}
+		if paddleBoxOverlapOverSmaller(region.Box, other.Box) < .72 {
+			continue
+		}
+		height := maximum(region.Box.Height, other.Box.Height)
+		if abs((region.Box.Y+region.Box.Height)-(other.Box.Y+other.Box.Height)) > height/2 {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func paddleRegionHasEmptyDetectorCopy(regions []paddleRegion, own int) bool {
+	region := regions[own]
+	for index, other := range regions {
+		if index == own || strings.TrimSpace(other.Text) != "" || other.DetectorConfidence < region.DetectorConfidence+.08 {
+			continue
+		}
+		if paddleBoxOverlapOverSmaller(region.Box, other.Box) >= .80 {
+			return true
+		}
+	}
+	return false
+}
+
+func paddleBoxOverlapOverSmaller(left, right OCRBox) float64 {
+	intersection := ocrBoxIntersectionArea(left, right)
+	smaller := minimum(left.Width*left.Height, right.Width*right.Height)
+	if smaller <= 0 {
+		return 0
+	}
+	return float64(intersection) / float64(smaller)
+}
+
+func paddleLexicallyImplausible(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	if strings.HasSuffix(trimmed, "...") {
+		return true
+	}
+	for _, token := range strings.FieldsFunc(trimmed, func(character rune) bool { return !unicode.IsLetter(character) }) {
+		runes := []rune(token)
+		consonants := 0
+		for index, character := range runes {
+			lower := unicode.ToLower(character)
+			if index > 0 && unicode.IsUpper(character) && unicode.IsLower(runes[index-1]) {
+				return true
+			}
+			if strings.ContainsRune("aeiouy", lower) || !unicode.In(lower, unicode.Latin) {
+				consonants = 0
+			} else {
+				consonants++
+			}
+			if consonants >= 4 {
+				return true
+			}
+		}
+		if len(runes) >= 6 && consonants >= 3 {
 			return true
 		}
 	}

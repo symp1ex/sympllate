@@ -31,3 +31,21 @@ func TestNormalizeLocalTypographyPreservesHeading(t *testing.T) {
 		t.Fatalf("heading=%+v", estimates[0])
 	}
 }
+
+func TestNormalizeLocalTypographyDoesNotGiveUIControlDocumentFont(t *testing.T) {
+	paragraphs := []ocr.OCRParagraph{
+		{Text: "Start", Box: ocr.OCRBox{X: 20, Y: 20, Width: 60, Height: 12}, Lines: []ocr.OCRLine{{Text: "Start", Box: ocr.OCRBox{X: 20, Y: 20, Width: 60, Height: 12}}}},
+		{Text: "Document body one", Box: ocr.OCRBox{X: 20, Y: 40, Width: 180, Height: 12}, Lines: []ocr.OCRLine{{Text: "Document body one", Box: ocr.OCRBox{X: 20, Y: 40, Width: 180, Height: 12}}}},
+		{Text: "Document body two", Box: ocr.OCRBox{X: 20, Y: 60, Width: 180, Height: 12}, Lines: []ocr.OCRLine{{Text: "Document body two", Box: ocr.OCRBox{X: 20, Y: 60, Width: 180, Height: 12}}}},
+	}
+	estimates := []FontStyleEstimate{{FontSize: 8}, {FontSize: 24}, {FontSize: 23}}
+	parents := []StructuralParent{
+		{ID: "control", Type: "control_row"},
+		{ID: "document", Type: "document_column", SourceColumn: 1},
+		{ID: "document", Type: "document_column", SourceColumn: 1},
+	}
+	normalizeLocalTypographyWithin(paragraphs, estimates, []bool{true, true, true}, CoordinateTransform{ScaleX: 1, ScaleY: 1}, parents)
+	if estimates[0].FontSize != 8 || estimates[0].Normalized {
+		t.Fatalf("UI control inherited document typography: %+v", estimates[0])
+	}
+}

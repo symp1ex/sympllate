@@ -227,6 +227,54 @@ func TestPaddleTaxAndServiceTabsAndControlsRemainIndependent(t *testing.T) {
 	}
 }
 
+func TestPaddleKeepsManualWarningAndBulletContinuationsAttached(t *testing.T) {
+	words := []OCRWord{
+		testAdaptiveWord("WARNING", 323, 586, 229, 45, 0, 0, 0, 0),
+		testAdaptiveWord("Engine exhaust may ignite combustible", 140, 649, 593, 33, 0, 0, 0, 0),
+		testAdaptiveWord("located at least one meter (3.3 feet) from any", 136, 815, 598, 38, 0, 0, 0, 0),
+		testAdaptiveWord("obstructions.", 138, 848, 187, 36, 0, 0, 0, 0),
+		testAdaptiveWord("O Before starting the engine, disconnect all possible", 828, 363, 641, 42, 0, 0, 0, 0),
+		testAdaptiveWord("external loads.", 853, 400, 188, 33, 0, 0, 0, 0),
+		testAdaptiveWord("Moving the lever away from its low speed end", 852, 597, 617, 38, 0, 0, 0, 0),
+		testAdaptiveWord("turns ignition on.", 854, 633, 215, 38, 0, 0, 0, 0),
+	}
+	paragraphs := buildPaddleParagraphs(words)
+	for _, continuation := range []string{"obstructions.", "external loads.", "turns ignition on."} {
+		paragraph := findAdaptiveParagraphContaining(t, paragraphs, continuation)
+		if len(paragraph.Lines) < 2 {
+			t.Fatalf("continuation %q detached: %+v", continuation, paragraph)
+		}
+	}
+	heading := findAdaptiveParagraphContaining(t, paragraphs, "WARNING")
+	if len(heading.Lines) != 1 {
+		t.Fatalf("warning heading merged with body: %+v", heading)
+	}
+}
+
+func TestPaddleSeparatesInsetScreenshotLabelsFromFollowingBodyProse(t *testing.T) {
+	words := []OCRWord{
+		testAdaptiveWord("Inventory management settings", 178, 173, 271, 25, 0, 0, 0, 0),
+		testAdaptiveWord("Separate VAT from cost upon receipt of products, sales VAT accounting", 180, 195, 617, 32, 0, 0, 0, 0),
+		testAdaptiveWord("VAT account:", 316, 224, 118, 28, 0, 0, 0, 0),
+		testAdaptiveWord("Sales VAT", 499, 222, 93, 31, 0, 0, 0, 0),
+		testAdaptiveWord("After the setting is applied, the sales VAT account will accumulate the amount of tax from all sales in", 112, 253, 1025, 38, 0, 0, 0, 0),
+		testAdaptiveWord("the chart of accounts on the sales VAT account.", 112, 284, 483, 34, 0, 0, 0, 0),
+		testAdaptiveWord("The following settings must be made to calculate and account for the service charge:", 111, 339, 859, 40, 0, 0, 0, 0),
+		testAdaptiveWord("Create an account in the chart of accounts:", 113, 371, 437, 34, 0, 0, 0, 0),
+	}
+	paragraphs := buildPaddleParagraphs(words)
+	body := findAdaptiveParagraphContaining(t, paragraphs, "After the setting")
+	if strings.Contains(body.Text, "Inventory management settings") || strings.Contains(body.Text, "Separate VAT") {
+		t.Fatalf("screenshot labels merged with body prose: %+v", body)
+	}
+	for _, control := range []string{"Inventory management settings", "Separate VAT", "VAT account:", "Sales VAT"} {
+		paragraph := findAdaptiveParagraphContaining(t, paragraphs, control)
+		if strings.Contains(paragraph.Text, "After the setting") {
+			t.Fatalf("control %q merged with external instruction: %+v", control, paragraph)
+		}
+	}
+}
+
 func testAdaptiveWord(text string, x, y, width, height, page, block, paragraph, line int) OCRWord {
 	return OCRWord{
 		Text: text, Confidence: 90, Box: OCRBox{X: x, Y: y, Width: width, Height: height}, Accepted: true,

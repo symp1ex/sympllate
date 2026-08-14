@@ -5,6 +5,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 const (
@@ -694,8 +695,18 @@ func paddleSemanticBreak(previousText, currentText string, previous, current OCR
 	if len(currentRunes) == 0 || len(previousRunes) == 0 {
 		return false
 	}
+	if paddleContinuationLine(previousRunes, currentRunes, previous, current, height, gap) {
+		return false
+	}
 	startsList := strings.ContainsRune("•●○▪▫-", currentRunes[0])
 	if startsList {
+		return true
+	}
+	// Returning from an inset screenshot/control panel to the document margin is
+	// a visual-context boundary even when both sides contain sentence-length
+	// text. Requiring both a line-sized left shift and a real vertical gap keeps
+	// ordinary ragged prose and hanging bullet indentation together.
+	if current.X+height*3/2 < previous.X && gap > height/2 {
 		return true
 	}
 	if gap > height*2/5 && previousTokens <= 5 && currentTokens >= 6 {
@@ -707,6 +718,19 @@ func paddleSemanticBreak(previousText, currentText string, previous, current OCR
 		return true
 	}
 	return false
+}
+
+func paddleContinuationLine(previousText, currentText []rune, previous, current OCRBox, height, gap int) bool {
+	last := previousText[len(previousText)-1]
+	first := currentText[0]
+	if strings.ContainsRune(".!?:;", last) || !unicode.IsLower(first) {
+		return false
+	}
+	minimumHeight := minimum(previous.Height, current.Height)
+	if minimumHeight <= 0 || float64(height)/float64(minimumHeight) > 1.35 {
+		return false
+	}
+	return gap <= height/3 && abs(previous.X-current.X) <= height
 }
 
 func narrowLineEntersCrowdedNeighborhood(previous []OCRBox, current OCRBox, allLines [][]OCRWord, member map[string]struct{}) bool {

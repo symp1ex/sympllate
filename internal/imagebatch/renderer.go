@@ -83,6 +83,8 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 		}
 		sourceBoxes[index] = sourceGeometries[index].Bounds
 	}
+	structuralParents := inferStructuralParents(source, page.Paragraphs, sourceGeometries)
+	document.StructuralParents = uniqueStructuralParents(structuralParents)
 	document.SourceGeometries = append(document.SourceGeometries, sourceGeometries...)
 	initialReasons := make([]string, len(page.Paragraphs))
 	candidates := make([]renderCandidate, 0, len(page.Paragraphs))
@@ -127,7 +129,7 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 			return RenderDocument{}, fmt.Errorf("estimate source font size for block %s: %w", paragraph.ID, err)
 		}
 	}
-	normalizeLocalTypography(page.Paragraphs, fontEstimates, fontEligible, transform)
+	normalizeLocalTypographyWithin(page.Paragraphs, fontEstimates, fontEligible, transform, structuralParents)
 	activeTextRegions := make([]ocr.OCRBox, 0, len(page.Paragraphs))
 	for index, paragraph := range page.Paragraphs {
 		if err := ctx.Err(); err != nil {
@@ -170,12 +172,15 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 			continue
 		}
 		appendBlockFate(&document, paragraph.ID, BlockFateEvent{Stage: "candidate", Decision: "unique_render_candidate"})
+		parent := structuralParents[index]
 		protectedRegions := protectedSourceRegions(sourceGeometries, index, rejected)
 		layoutBase := safeTranslationBase(sourceGeometries[index], protectedRegions)
+		layoutBase = clampBoxToBounds(layoutBase, parent.Bounds)
 		cleanup := ExpandBox(sourceBoxes[index], CleanupPadding{Horizontal: cleanupPaddingHorizontal, Vertical: cleanupPaddingVertical}, width, height)
 		if intersectsAny(cleanup, protectedRegions) {
 			cleanup = sourceBoxes[index]
 		}
+		cleanup = clampBoxToBounds(cleanup, parent.Bounds)
 		background, err := SampleBackground(ctx, source, boxFromOCR(cleanup), backgroundSampleWidth, minimumBackgroundSamples, maximumBackgroundSamples)
 		if err != nil {
 			return RenderDocument{}, fmt.Errorf("sample background for block %s: %w", paragraph.ID, err)
@@ -184,11 +189,11 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 		if err != nil {
 			return RenderDocument{}, err
 		}
-		container := sourceTextContainer(sourceBoxes[index], protectedRegions, -1, width, height)
+		container := parent.Bounds
 		alignment, verticalAlignment := chooseAlignment(paragraph, transform, container)
 		fontEstimate := fontEstimates[index]
 		preferredFontSize := fontEstimate.FontSize
-		textBox, fit, err := r.fitBlock(ctx, block.TranslatedText, preferredFontSize, sourceLineCount(paragraph), fontEstimate.LineStep, alignment, layoutBase, protectedRegions, -1, activeTextRegions, width, height)
+		textBox, fit, err := r.fitBlockWithin(ctx, block.TranslatedText, preferredFontSize, sourceLineCount(paragraph), fontEstimate.LineStep, alignment, layoutBase, protectedRegions, -1, activeTextRegions, width, height, parent.Bounds)
 		if err != nil {
 			return RenderDocument{}, fmt.Errorf("layout block %s: %w", paragraph.ID, err)
 		}
@@ -234,10 +239,17 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 		crossedColumn := crossesDocumentMidline(sourceBoxes[index], textBox, width, int(lineHeight))
 		independentOverlap := newIndependentSourceOverlapRatio(sourceBoxes[index], textBox, protectedRegions)
 		translatedOverlap := maximumBoxOverlapRatio(textBox, activeTextRegions)
-		crossedParent := independentOverlap > .12
+		containmentViolation := containmentViolationPixels(textBox, parent.Bounds)
+		crossedParent := containmentViolation > 0
+		visualRisk := layoutVisualRisk(fit)
 		document.Blocks = append(document.Blocks, RenderBlock{
 			ID: paragraph.ID, SourceText: paragraph.Text, TranslatedText: block.TranslatedText,
 			SourceBox: sourceBoxes[index], SourcePolygon: paragraphPolygon(paragraph), SourceGeometry: sourceGeometries[index], CleanupBox: cleanup, CleanupRegions: cleanupRegions, TextBox: textBox,
+			StructuralParentID: parent.ID, StructuralParentType: parent.Type, StructuralParentBounds: parent.Bounds, StructuralParentDetection: parent.Detection,
+			SourceColumn: parent.SourceColumn, SourceCell: parent.SourceCell, MaximumLocalExpansion: parent.MaximumLocalExpansion,
+			ContainmentViolationPixels: containmentViolation, CrossedActualParent: crossedParent, OverlapWithContainerBorder: overlapsContainerBorder(textBox, parent),
+			OverlapWithIndependentControl: independentOverlap > .12, DetachedContinuation: strings.Contains(strings.ToLower(page.Diagnostics.Backend), "paddle") && detachedPaddleContinuation(page.Paragraphs, index),
+			ContextualFontOutlier: contextualFontOutlier(fontEstimate), ReadabilityRisk: visualRisk,
 			SourceWords: sourceWords, SourceLines: sourceLines, SourceLineHeights: sourceHeights, SourceLineWidths: sourceWidths, SourceLineGaps: sourceGaps,
 			FontEstimate: fontEstimate,
 			Background:   newRenderColor(background.Color), Foreground: newRenderColor(foreground),
@@ -254,7 +266,7 @@ func (r *Renderer) Prepare(ctx context.Context, source *image.NRGBA, page ocr.OC
 			AnchorDisplacement: fit.AnchorDisplacement, AnchorDisplacementLineHeights: roundMetric(fit.AnchorDisplacement / lineHeight),
 			WidthExpansionRatio: roundMetric(float64(textBox.Width) / float64(max(1, sourceBoxes[index].Width))), HeightExpansionRatio: roundMetric(float64(textBox.Height) / float64(max(1, sourceBoxes[index].Height))),
 			IndependentSourceOverlapRatio: roundMetric(independentOverlap), TranslatedRegionOverlapRatio: roundMetric(translatedOverlap),
-			CrossedColumn: crossedColumn, CrossedParentRegion: crossedParent, VisualRiskSeverity: layoutVisualRisk(fit), LineStepRatio: fit.LineStepRatio, FallbackReason: fit.FallbackReason,
+			CrossedColumn: crossedColumn, CrossedParentRegion: crossedParent, VisualRiskSeverity: visualRisk, LineStepRatio: fit.LineStepRatio, FallbackReason: fit.FallbackReason,
 			Status: "renderable", Warning: strings.Join(warnings, ","),
 		})
 		activeTextRegions = append(activeTextRegions, renderedLineRegions(lineLayouts, fit.LineHeight, fit.Ascent)...)
@@ -280,6 +292,24 @@ func summarizeLayoutDiagnostics(document RenderDocument, translated int) LayoutD
 		}
 		if block.CrossedParentRegion {
 			diagnostics.CrossedParentPlacements++
+		}
+		if block.ContainmentViolationPixels > 0 {
+			diagnostics.ContainmentViolations++
+		}
+		if block.OverlapWithContainerBorder {
+			diagnostics.ContainerBorderOverlaps++
+		}
+		if block.OverlapWithIndependentControl {
+			diagnostics.IndependentControlOverlaps++
+		}
+		if block.DetachedContinuation {
+			diagnostics.DetachedContinuations++
+		}
+		if block.ContextualFontOutlier {
+			diagnostics.ContextualFontOutliers++
+		}
+		if block.ReadabilityRisk == "medium" || block.ReadabilityRisk == "high" {
+			diagnostics.ReadabilityRiskBlocks++
 		}
 		if block.VisualRiskSeverity == "medium" || block.VisualRiskSeverity == "high" {
 			diagnostics.MediumOrHigherVisualRiskBlocks++
@@ -574,6 +604,10 @@ type layoutCandidate struct {
 }
 
 func (r *Renderer) fitBlock(ctx context.Context, text string, preferredFontSize float64, sourceLines int, sourceLineStep float64, alignment string, base ocr.OCRBox, occupied []ocr.OCRBox, own int, active []ocr.OCRBox, width, height int) (ocr.OCRBox, TextFitResult, error) {
+	return r.fitBlockWithin(ctx, text, preferredFontSize, sourceLines, sourceLineStep, alignment, base, occupied, own, active, width, height, ocr.OCRBox{Width: width, Height: height})
+}
+
+func (r *Renderer) fitBlockWithin(ctx context.Context, text string, preferredFontSize float64, sourceLines int, sourceLineStep float64, alignment string, base ocr.OCRBox, occupied []ocr.OCRBox, own int, active []ocr.OCRBox, width, height int, bounds ocr.OCRBox) (ocr.OCRBox, TextFitResult, error) {
 	verticalAlignment := "top"
 	if sourceLines <= 1 {
 		verticalAlignment = "middle"
@@ -585,6 +619,7 @@ func (r *Renderer) fitBlock(ctx context.Context, text string, preferredFontSize 
 	if err != nil {
 		return ocr.OCRBox{}, TextFitResult{}, err
 	}
+	candidates = constrainLayoutCandidates(candidates, bounds)
 	normalMinimum := math.Max(r.config.MinimumFontSize, preferredFontSize*r.config.Layout.PreferredShrinkRatio)
 	box, fit, err := r.bestCandidateFit(ctx, text, preferredFontSize, maximumFontSize, normalMinimum, sourceLines, sourceLineStep, alignment, verticalAlignment, base, candidates, protected, active, false)
 	if err != nil || fit.Fits {
@@ -596,10 +631,14 @@ func (r *Renderer) fitBlock(ctx context.Context, text string, preferredFontSize 
 			return box, fit, err
 		}
 	}
-	return r.forceFitBlock(ctx, text, preferredFontSize, sourceLines, sourceLineStep, alignment, verticalAlignment, base, protected, active, width, height)
+	return r.forceFitBlockWithin(ctx, text, preferredFontSize, sourceLines, sourceLineStep, alignment, verticalAlignment, base, protected, active, width, height, bounds)
 }
 
 func (r *Renderer) forceFitBlock(ctx context.Context, text string, preferred float64, sourceLines int, sourceLineStep float64, alignment, verticalAlignment string, base ocr.OCRBox, protected, active []ocr.OCRBox, width, height int) (ocr.OCRBox, TextFitResult, error) {
+	return r.forceFitBlockWithin(ctx, text, preferred, sourceLines, sourceLineStep, alignment, verticalAlignment, base, protected, active, width, height, ocr.OCRBox{Width: width, Height: height})
+}
+
+func (r *Renderer) forceFitBlockWithin(ctx context.Context, text string, preferred float64, sourceLines int, sourceLineStep float64, alignment, verticalAlignment string, base ocr.OCRBox, protected, active []ocr.OCRBox, width, height int, bounds ocr.OCRBox) (ocr.OCRBox, TextFitResult, error) {
 	lineHeight := math.Max(sourceLineStep, preferred)
 	if lineHeight <= 0 {
 		lineHeight = float64(max(1, base.Height/max(1, sourceLines)))
@@ -611,6 +650,7 @@ func (r *Renderer) forceFitBlock(ctx context.Context, text string, preferred flo
 	for _, scale := range []int{1, 2, 3} {
 		padding := axisLimit * scale / 3
 		candidate := ClampBox(ExpandBox(base, CleanupPadding{Horizontal: padding, Vertical: padding}, width, height), width, height)
+		candidate = clampBoxToBounds(candidate, bounds)
 		if candidate.Width > base.Width+axisLimit*2 || candidate.Height > base.Height+axisLimit*2 ||
 			float64(candidate.Width*candidate.Height) > float64(max(1, base.Width*base.Height))*6 ||
 			hasMaterialIntersection(candidate, protected, base) ||
@@ -636,7 +676,7 @@ func (r *Renderer) forceFitBlock(ctx context.Context, text string, preferred flo
 		decorateLayoutResult(&fit, preferred, sourceLines, sourceLineStep, alignment, base, candidate, true)
 		lineLayouts := positionTextLines(fit, candidate.box, alignment, verticalAlignment, 0, 0)
 		ink := renderedLineRegions(lineLayouts, fit.LineHeight, fit.Ascent)
-		if !localityInkAllowed(base, ink, protected, width, lineHeight) {
+		if containmentViolationPixels(unionOCRBoxes(ink), bounds) > 0 || !localityInkAllowed(base, ink, protected, width, lineHeight) {
 			fit.Fits = false
 			fit.Overflow = true
 			fit.FallbackReason = "locality_boundary"
@@ -676,6 +716,23 @@ func (r *Renderer) forceFitBlock(ctx context.Context, text string, preferred flo
 	best.EmergencyShrink = true
 	best.FallbackReason = "locality_preserving_hard_failure"
 	return bestBox, best, nil
+}
+
+func constrainLayoutCandidates(candidates []layoutCandidate, bounds ocr.OCRBox) []layoutCandidate {
+	result := make([]layoutCandidate, 0, len(candidates))
+	seen := make(map[ocr.OCRBox]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		candidate.box = clampBoxToBounds(candidate.box, bounds)
+		if candidate.box.Width <= 0 || candidate.box.Height <= 0 {
+			continue
+		}
+		if _, ok := seen[candidate.box]; ok {
+			continue
+		}
+		seen[candidate.box] = struct{}{}
+		result = append(result, candidate)
+	}
+	return result
 }
 
 func hasMaterialIntersection(candidate ocr.OCRBox, protected []ocr.OCRBox, base ocr.OCRBox) bool {

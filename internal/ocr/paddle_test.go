@@ -288,16 +288,48 @@ func TestBoundaryDetectorCopiesProduceOneSemanticLine(t *testing.T) {
 	}
 }
 
-func TestPaddleFiltersShortCorruptedRuns(t *testing.T) {
+func TestPaddleFiltersCorruptedRunsFromCompoundEvidence(t *testing.T) {
 	regions := []paddleRegion{
-		testPaddleRegion("tu", 10, 10, 22, 14, .28, .91, "full"),
-		testPaddleRegion("ply", 50, 10, 28, 14, .62, .90, "full"),
-		testPaddleRegion("Lr)", 90, 10, 28, 14, .38, .88, "full"),
-		testPaddleRegion("wx", 130, 10, 24, 14, .65, .92, "full"),
-		testPaddleRegion("Add", 170, 10, 36, 14, .96, .94, "full"),
+		testPaddleRegion("tu", 10, 10, 22, 14, .28, .91, "full"), // confidence alone is not evidence
+		testPaddleRegion("Itmce", 50, 10, 120, 24, .53, .75, "full"),
+		testPaddleRegion("emce wats", 51, 10, 119, 24, .59, .74, "tile-01"),
+		testPaddleRegion("anusedthcnt", 50, 50, 150, 24, .58, .76, "full"),
+		testPaddleRegion("Can be used hrscont", 51, 50, 149, 24, .74, .76, "tile-01"),
+		testPaddleRegion("C3", 240, 50, 25, 28, .29, .64, "tile-02"),
+		testPaddleRegion("A", 300, 50, 18, 20, .99, .96, "full"),
+		testPaddleRegion("Add", 340, 50, 36, 14, .96, .94, "full"),
 	}
 	kept, rejected := filterNonSemanticPaddleRegions(regions)
-	if len(kept) != 1 || kept[0].Text != "Add" || len(rejected) != 4 {
+	if len(kept) != 4 || len(rejected) != 4 {
+		t.Fatalf("kept=%+v rejected=%+v", kept, rejected)
+	}
+	for _, expected := range []string{"tu", "C3", "A", "Add"} {
+		found := false
+		for _, region := range kept {
+			found = found || region.Text == expected
+		}
+		if !found {
+			t.Fatalf("legitimate/contextual value %q was dropped: kept=%+v", expected, kept)
+		}
+	}
+}
+
+func TestMergePaddleRegionsPrefersCompleteWeekdayLabelOverConfidentFragment(t *testing.T) {
+	full := testPaddleRegion("Mon. Tue. Wed. Thu. Friday Saturday Sunday", 10, 10, 340, 29, .81, .80, "full")
+	fragment := testPaddleRegion("Satu...", 250, 12, 52, 20, .94, .80, "tile-01")
+	merged, duplicates, suppressed := mergePaddleRegionsDetailed([]paddleRegion{fragment, full})
+	if duplicates != 1 || len(merged) != 1 || merged[0].Text != full.Text || len(suppressed) != 1 || suppressed[0].Reason != "fragment_of" {
+		t.Fatalf("merged=%+v duplicates=%d suppressed=%+v", merged, duplicates, suppressed)
+	}
+}
+
+func TestPaddleUsesOverlappingStrongerLabelAgainstCorruptedSuffix(t *testing.T) {
+	regions := []paddleRegion{
+		testPaddleRegion("BarM", 100, 30, 77, 40, .81, .72, "tile-01"),
+		testPaddleRegion("Bar", 95, 12, 70, 39, .96, .71, "full"),
+	}
+	kept, rejected := filterNonSemanticPaddleRegions(regions)
+	if len(kept) != 1 || kept[0].Text != "Bar" || len(rejected) != 1 || rejected[0].Text != "BarM" {
 		t.Fatalf("kept=%+v rejected=%+v", kept, rejected)
 	}
 }

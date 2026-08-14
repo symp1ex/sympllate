@@ -81,6 +81,7 @@ type RenderDocument struct {
 	ImageHeight        int                       `json:"imageHeight"`
 	Transform          CoordinateTransform       `json:"coordinateTransform"`
 	OCRBackend         string                    `json:"ocrBackend,omitempty"`
+	StructuralParents  []StructuralParent        `json:"structuralParents,omitempty"`
 	SourceGeometries   []SourceTextGeometry      `json:"sourceGeometries,omitempty"`
 	Collisions         []CollisionDiagnostic     `json:"collisions,omitempty"`
 	FillWordBoxes      bool                      `json:"fillWordBoxes,omitempty"`
@@ -101,6 +102,12 @@ type LayoutDiagnostics struct {
 	FullPageFallbackBlocks         int     `json:"fullPageFallbackBlocks"`
 	CrossedColumnPlacements        int     `json:"crossedColumnPlacements"`
 	CrossedParentPlacements        int     `json:"crossedParentPlacements"`
+	ContainmentViolations          int     `json:"containmentViolations"`
+	ContainerBorderOverlaps        int     `json:"containerBorderOverlaps"`
+	IndependentControlOverlaps     int     `json:"independentControlOverlaps"`
+	DetachedContinuations          int     `json:"detachedContinuations"`
+	ContextualFontOutliers         int     `json:"contextualFontOutliers"`
+	ReadabilityRiskBlocks          int     `json:"readabilityRiskBlocks"`
 	MaximumAnchorDisplacementLines float64 `json:"maximumAnchorDisplacementLineHeights"`
 	MaximumExpansionRatio          float64 `json:"maximumExpansionRatio"`
 	MaximumWidthExpansionRatio     float64 `json:"maximumWidthExpansionRatio"`
@@ -159,6 +166,20 @@ type RenderBlock struct {
 	CleanupBox                    ocr.OCRBox         `json:"cleanupBox"`
 	CleanupRegions                []CleanupRegion    `json:"cleanupRegions,omitempty"`
 	TextBox                       ocr.OCRBox         `json:"textBox"`
+	StructuralParentID            string             `json:"structuralParentId,omitempty"`
+	StructuralParentType          string             `json:"structuralParentType,omitempty"`
+	StructuralParentBounds        ocr.OCRBox         `json:"structuralParentBounds,omitempty"`
+	StructuralParentDetection     string             `json:"structuralParentDetection,omitempty"`
+	SourceColumn                  int                `json:"sourceColumn,omitempty"`
+	SourceCell                    string             `json:"sourceCell,omitempty"`
+	MaximumLocalExpansion         ocr.OCRBox         `json:"maximumLocalExpansion,omitempty"`
+	ContainmentViolationPixels    int                `json:"containmentViolationPixels,omitempty"`
+	CrossedActualParent           bool               `json:"crossedActualParent"`
+	OverlapWithContainerBorder    bool               `json:"overlapWithContainerBorder"`
+	OverlapWithIndependentControl bool               `json:"overlapWithIndependentControl"`
+	DetachedContinuation          bool               `json:"detachedContinuation"`
+	ContextualFontOutlier         bool               `json:"contextualFontOutlier"`
+	ReadabilityRisk               string             `json:"readabilityRisk"`
 	SourceWords                   []SourceWordLayout `json:"sourceWords"`
 	SourceLines                   []SourceLineLayout `json:"sourceLines"`
 	SourceLineHeights             []int              `json:"sourceLineHeights"`
@@ -205,6 +226,16 @@ type RenderBlock struct {
 	FallbackReason                string             `json:"fallbackReason,omitempty"`
 	Status                        string             `json:"status"`
 	Warning                       string             `json:"warning,omitempty"`
+}
+
+type StructuralParent struct {
+	ID                    string     `json:"id"`
+	Type                  string     `json:"type"`
+	Bounds                ocr.OCRBox `json:"bounds"`
+	Detection             string     `json:"detection"`
+	SourceColumn          int        `json:"sourceColumn,omitempty"`
+	SourceCell            string     `json:"sourceCell,omitempty"`
+	MaximumLocalExpansion ocr.OCRBox `json:"maximumLocalExpansion"`
 }
 
 type SourceWordLayout struct {

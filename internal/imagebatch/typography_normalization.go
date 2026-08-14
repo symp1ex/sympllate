@@ -13,6 +13,10 @@ import (
 // boxes rather than paragraph height, so multi-line paragraphs do not look
 // like headings merely because their union box is tall.
 func normalizeLocalTypography(paragraphs []ocr.OCRParagraph, estimates []FontStyleEstimate, eligible []bool, transform CoordinateTransform) {
+	normalizeLocalTypographyWithin(paragraphs, estimates, eligible, transform, nil)
+}
+
+func normalizeLocalTypographyWithin(paragraphs []ocr.OCRParagraph, estimates []FontStyleEstimate, eligible []bool, transform CoordinateTransform, parents []StructuralParent) {
 	for index, paragraph := range paragraphs {
 		if !eligible[index] || estimates[index].FontSize <= 0 {
 			continue
@@ -25,7 +29,7 @@ func normalizeLocalTypography(paragraphs []ocr.OCRParagraph, estimates []FontSty
 		neighborSizes := make([]float64, 0, 4)
 		neighborHeights := make([]float64, 0, 4)
 		for other := range paragraphs {
-			if other == index || !eligible[other] || estimates[other].FontSize <= 0 || !typographicNeighbors(paragraph, paragraphs[other], transform) {
+			if other == index || !eligible[other] || estimates[other].FontSize <= 0 || !sameTypographyContext(index, other, parents) || !typographicNeighbors(paragraph, paragraphs[other], transform) {
 				continue
 			}
 			height := paragraphMedianLineHeight(paragraphs[other], transform)
@@ -52,6 +56,23 @@ func normalizeLocalTypography(paragraphs []ocr.OCRParagraph, estimates []FontSty
 		estimates[index].NormalizationReason = "local_line_geometry_outlier"
 		capShortParagraphEstimate(&estimates[index], paragraph, ownHeight)
 	}
+}
+
+func sameTypographyContext(left, right int, parents []StructuralParent) bool {
+	if len(parents) == 0 || left >= len(parents) || right >= len(parents) {
+		return true
+	}
+	a, b := parents[left], parents[right]
+	if a.ID == b.ID {
+		return true
+	}
+	if a.Type == "document_column" && b.Type == "document_column" {
+		return a.SourceColumn == b.SourceColumn
+	}
+	if a.Type == "local_text_region" && b.Type == "local_text_region" {
+		return boxIntersectionArea(a.Bounds, b.Bounds) > 0
+	}
+	return false
 }
 
 func capShortParagraphEstimate(estimate *FontStyleEstimate, paragraph ocr.OCRParagraph, observedHeight float64) {
