@@ -5,21 +5,6 @@ import (
 	"testing"
 )
 
-func TestRebuildOCRPagePreservesTesseractParagraphs(t *testing.T) {
-	words := []OCRWord{
-		testAdaptiveWord("HEADING", 20, 20, 150, 24, 1, 1, 1, 1),
-		testAdaptiveWord("Body", 20, 52, 45, 12, 1, 2, 1, 1),
-		testAdaptiveWord("copy", 70, 52, 40, 12, 1, 2, 1, 1),
-	}
-	page := rebuildOCRPage(words, OCRImageInfo{Width: 400, Height: 200})
-	if len(page.Paragraphs) != 2 {
-		t.Fatalf("paragraphs=%+v", page.Paragraphs)
-	}
-	if page.Paragraphs[0].Text != "HEADING" || page.Paragraphs[1].Text != "Body copy" {
-		t.Fatalf("paragraph texts=%q, %q", page.Paragraphs[0].Text, page.Paragraphs[1].Text)
-	}
-}
-
 func TestSpatialParagraphsSeparatesHeadingFromNearbyBody(t *testing.T) {
 	lines := [][]OCRWord{
 		{testAdaptiveWord("HEADING", 20, 20, 150, 24, 0, 0, 0, 0)},

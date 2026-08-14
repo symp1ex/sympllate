@@ -7,10 +7,6 @@
       "local"
     ]
   },
-  "ocrBackend": {
-    "active": "tesseract",
-    "list": ["tesseract", "paddleocr"]
-  },
   "localModel": {
     "modelFile": "",
     "startupTimeoutSeconds": 180,

@@ -110,14 +110,14 @@ func TestPrepareNonRenderableParagraphDoesNotBlockTranslatedCandidate(t *testing
 	}
 }
 
-func TestPrepareTesseractWordGeometryAllowsIndependentLabels(t *testing.T) {
+func TestPrepareAxisAlignedPaddleGeometryAllowsIndependentLabels(t *testing.T) {
 	left := geometryParagraph("left", 92, []ocr.OCRBox{{X: 20, Y: 18, Width: 80, Height: 18}, {X: 20, Y: 70, Width: 80, Height: 18}})
 	right := geometryParagraph("right", 91, []ocr.OCRBox{{X: 40, Y: 42, Width: 70, Height: 20}})
 	for lineIndex := range left.Lines {
-		left.Lines[lineIndex].Words[0].GeometryLevel = "tesseract_word"
+		left.Lines[lineIndex].Words[0].GeometryLevel = "full"
 		left.Lines[lineIndex].Words[0].Polygon = ocr.OCRPolygon{}
 	}
-	right.Lines[0].Words[0].GeometryLevel = "tesseract_word"
+	right.Lines[0].Words[0].GeometryLevel = "full"
 	right.Lines[0].Words[0].Polygon = ocr.OCRPolygon{}
 	document := prepareGeometryDocument(t, []ocr.OCRParagraph{left, right}, []TranslatedBlock{
 		{ID: "left", TranslatedText: "Left labels", Status: "translated"},

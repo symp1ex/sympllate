@@ -1,7 +1,6 @@
 # build-onefile-ffmpeg.ps1
 # Minimal single-file FFmpeg for Sympllate:
 #   PNG/JPEG/WebP/TIFF/BMP single-image decoding
-#   OCR preprocessing with crop/scale/format/eq/unsharp
 #   PNG/BMP/TIFF encoding via native FFmpeg encoders
 #   Static WebP encoding via libwebp
 #
@@ -404,12 +403,7 @@ mkdir -p "$INSTALL_DIR"
   --enable-encoder=png \
   --enable-encoder=bmp \
   --enable-encoder=tiff \
-  --enable-encoder=libwebp \
-  --enable-filter=crop \
-  --enable-filter=scale \
-  --enable-filter=format \
-  --enable-filter=eq \
-  --enable-filter=unsharp
+  --enable-encoder=libwebp
 
 require_config() {
   local name="$1"
@@ -426,7 +420,6 @@ required_configs=(
   IMAGE2_MUXER WEBP_MUXER
   PNG_DECODER MJPEG_DECODER WEBP_DECODER TIFF_DECODER BMP_DECODER
   PNG_ENCODER BMP_ENCODER TIFF_ENCODER LIBWEBP_ENCODER
-  CROP_FILTER SCALE_FILTER FORMAT_FILTER EQ_FILTER UNSHARP_FILTER
 )
 
 for config in "${required_configs[@]}"; do
@@ -459,8 +452,8 @@ echo "Configured image demuxers and muxers:"
 grep -E '^!?CONFIG_IMAGE_(PNG|JPEG|WEBP|TIFF|BMP)_PIPE_DEMUXER=|^!?CONFIG_(IMAGE2|WEBP)_MUXER=' ffbuild/config.mak || true
 
 echo ""
-echo "Configured OCR filters and local-file protocol:"
-grep -E '^!?CONFIG_(CROP|SCALE|FORMAT|EQ|UNSHARP)_FILTER=|^!?CONFIG_FILE_PROTOCOL=' ffbuild/config.mak || true
+echo "Configured local-file protocol:"
+grep -E '^!?CONFIG_FILE_PROTOCOL=' ffbuild/config.mak || true
 
 make -j"$(nproc)" V=0
 make install
@@ -681,22 +674,7 @@ try {
 
     try {
         $InputPng = Join-Path $SmokeDir "input.png"
-        $InputJpeg = Join-Path $SmokeDir "input.jpg"
-
         [IO.File]::WriteAllBytes($InputPng, [Convert]::FromBase64String("iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAACXBIWXMAAAABAAAAAQBPJcTWAAAAI0lEQVR4nGP8//8/AymAhSTVDKMaiAMsRKqDg1ENxACSQwkAg10DO7J+0fsAAAAASUVORK5CYII="))
-        [IO.File]::WriteAllBytes($InputJpeg, [Convert]::FromBase64String("/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYyLjI4LjEwMQD/2wBDAAgEBAQEBAUFBQUFBQYGBgYGBgYGBgYGBgYHBwcICAgHBwcGBgcHCAgICAkJCQgICAgJCQoKCgwMCwsODg4RERT/xABLAAEBAAAAAAAAAAAAAAAAAAAABwEBAAAAAAAAAAAAAAAAAAAAABABAAAAAAAAAAAAAAAAAAAAABEBAAAAAAAAAAAAAAAAAAAAAP/AABEIABAAEAMBIgACEQADEQD/2gAMAwEAAhEDEQA/AL+AD//Z"))
-
-        foreach ($Input in @($InputPng, $InputJpeg)) {
-            $Name = [IO.Path]::GetFileNameWithoutExtension($Input)
-            $OcrOutput = Join-Path $SmokeDir "$Name-ocr.png"
-            $OcrArguments = @(
-                "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-noautorotate",
-                "-i", $Input,
-                "-vf", "crop=16:16:0:0,scale=32:32:flags=lanczos,format=gray,eq=contrast=1.08,unsharp=5:5:0.45:3:3:0.0",
-                "-frames:v", "1", $OcrOutput
-            )
-            Invoke-FFmpegSmokeCommand -Description "OCR preprocess $([IO.Path]::GetExtension($Input)) -> PNG" -Arguments $OcrArguments -OutputPath $OcrOutput
-        }
 
         foreach ($Extension in @("webp", "tiff", "bmp")) {
             $Encoded = Join-Path $SmokeDir "encoded.$Extension"

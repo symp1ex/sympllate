@@ -15,7 +15,7 @@ export interface ImageTranslateResult { text: string; detectedLanguage?: string 
 export interface ImageJobStatus { state: 'pending' | 'done' | 'error'; result?: ImageTranslateResult; error?: string }
 export type BatchSelectionKind = 'files' | 'directory'
 export interface BatchSelection { id: string; kind: BatchSelectionKind; displayName: string; fileCount: number }
-export interface StartImageBatchRequest { selectionId: string; source: string; target: string; debug: boolean; fillWordBoxes: boolean }
+export interface StartImageBatchRequest { selectionId: string; source: string; target: string; debug: boolean }
 export type ImageBatchState = 'pending' | 'preparing' | 'processing' | 'completed' | 'completed_with_errors' | 'cancelled' | 'failed'
 export type ImageBatchStage = 'prepare_render' | 'ocr' | 'translate' | 'layout_text' | 'clean_background' | 'render_text' | 'encode_output' | 'verify_output'
 export interface ImageBatchStatus {

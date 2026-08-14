@@ -27,11 +27,11 @@ test('image translation uses only the image bindings and preserves an empty resu
 test('image provider error is surfaced to the UI caller', async () => {
   installWindow({
     TranslateImage: async () => 'image-job',
-    GetImageTranslation: async () => ({ state: 'error', error: 'Tesseract OCR is unavailable' }),
+    GetImageTranslation: async () => ({ state: 'error', error: 'PaddleOCR is unavailable' }),
   })
   await assert.rejects(
     translateImage({ dataBase64: 'AA==', mediaType: 'image/png', source: 'en', target: 'ru' }),
-    /Tesseract OCR is unavailable/,
+    /PaddleOCR is unavailable/,
   )
 })
 

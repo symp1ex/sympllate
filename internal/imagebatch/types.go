@@ -23,11 +23,10 @@ type BatchSelection struct {
 }
 
 type StartImageBatchRequest struct {
-	SelectionID   string `json:"selectionId"`
-	Source        string `json:"source"`
-	Target        string `json:"target"`
-	Debug         bool   `json:"debug"`
-	FillWordBoxes bool   `json:"fillWordBoxes"`
+	SelectionID string `json:"selectionId"`
+	Source      string `json:"source"`
+	Target      string `json:"target"`
+	Debug       bool   `json:"debug"`
 }
 
 type ImageBatchStatus struct {
@@ -103,7 +102,6 @@ type JobReport struct {
 
 type JobRunConfiguration struct {
 	Debug           bool    `json:"debug"`
-	FillWordBoxes   bool    `json:"fillWordBoxes"`
 	MinimumFontSize float64 `json:"minimumFontSize"`
 	MaximumFontSize float64 `json:"maximumFontSize"`
 	LineSpacing     float64 `json:"lineSpacing"`

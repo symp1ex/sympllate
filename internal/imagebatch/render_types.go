@@ -84,7 +84,6 @@ type RenderDocument struct {
 	StructuralParents  []StructuralParent        `json:"structuralParents,omitempty"`
 	SourceGeometries   []SourceTextGeometry      `json:"sourceGeometries,omitempty"`
 	Collisions         []CollisionDiagnostic     `json:"collisions,omitempty"`
-	FillWordBoxes      bool                      `json:"fillWordBoxes,omitempty"`
 	Blocks             []RenderBlock             `json:"blocks"`
 	DeduplicatedBlocks []SkippedRenderBlock      `json:"deduplicatedBlocks,omitempty"`
 	SkippedBlocks      []SkippedRenderBlock      `json:"skippedBlocks"`

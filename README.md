@@ -72,33 +72,34 @@ Portable из заранее подготовленных локальных р�
 
 ## Перевод изображений
 
-OCR backend выбирается через `ocrBackend.active`: `tesseract` (значение по умолчанию и для старых config) либо `paddleocr`. PaddleOCR выполняет локальный PP-OCRv5 detector и language-specific recognizer через общую CPU ONNX Runtime 1.26.0; Python, сервер и сетевые загрузки не используются. Модели располагаются в `bin\OCR`, а общая DLL для PaddleOCR и LaMa — в `runtime\onnx\onnxruntime.dll`.
+Приложение использует единственную встроенную OCR-реализацию — PaddleOCR. Локальный PP-OCRv5 detector и language-specific recognizers работают через общую CPU ONNX Runtime 1.26.0; Python, сервер и сетевые загрузки не используются. Модели располагаются в `bin\OCR`, а общая DLL для PaddleOCR и LaMa — в `runtime\onnx\onnxruntime.dll`.
 
-Одиночное изображение PNG или JPEG можно вставить через `Ctrl+V` либо передать Drag-and-Drop. Для local provider перед Tesseract создаётся временный OCR PNG через `bin\ffmpeg\ffmpeg.exe`: изображение масштабируется Lanczos с сохранением aspect ratio, переводится в luma/grayscale и получает умеренное повышение контраста и резкости без агрессивного threshold. После этого распознанный текст переводится той же TranslateGemma. Ollama image provider этот pipeline не использует: исходное изображение по-прежнему передаётся непосредственно vision-модели Ollama, без Tesseract.
+Одиночное изображение PNG или JPEG можно вставить через `Ctrl+V` либо передать Drag-and-Drop. Local provider извлекает текст через PaddleOCR и переводит его той же TranslateGemma. Ollama image provider этот pipeline не использует: исходное изображение передаётся непосредственно vision-модели Ollama.
 
-Local и batch OCR используют один adaptive pipeline. Основной full-image TSV pass выполняется с Tesseract PSM 3. Небольшие изображения увеличиваются до 2–4 раз в пределах hard limits. Если целую крупную страницу нельзя увеличить до полезного масштаба либо основной pass содержит мелкие или низкоуверенные слова, добавляется ограниченное число перекрывающихся tiles; каждый tile масштабируется отдельно и распознаётся с PSM 11. Tile-слова дополняют основной layout, overlap-кандидаты объединяются по геометрии, нормализованному тексту и confidence, а координаты возвращаются в систему оригинального изображения. FFmpeg и Tesseract запускаются только последовательно под одним OCR timeout; временные файлы удаляются при успехе, ошибке и отмене.
+Local и batch OCR используют один и тот же PaddleOCR pipeline: PP-OCRv5 detector, recognizer для выбранного языка или автоматический выбор recognizer по региону, Paddle-specific tiling, объединение регионов и построение строк/абзацев. Пользовательского выбора OCR engine нет.
 
-Существующий OCR layout разрешается только относительно каталога EXE:
+OCR runtime разрешается только относительно каталога EXE:
 
 ```text
 Sympllate/
 ├── translator.exe
-└── bin/
-    ├── ffmpeg/
-    │   └── ffmpeg.exe
-    ├── tesseract.exe
-    ├── необходимые DLL
-    └── tessdata/
-        └── *.traineddata
+├── bin/
+│   ├── OCR/
+│   │   ├── det.onnx
+│   │   ├── det.yml
+│   │   └── *_rec.onnx + *_rec.yml
+│   └── ffmpeg/
+│       └── ffmpeg.exe
+└── runtime/
+    └── onnx/
+        └── onnxruntime.dll
 ```
-
-Для совместимости с layout первой фазы также распознаётся вложенный каталог `bin/tesseract/` с тем же содержимым. Если он уже работает, его переносить не требуется. `PATH` и автоматическое скачивание бинарников или языков не используются.
 
 ## Пакетный перевод изображений
 
 Кнопка с иконкой изображений и стрелок перевода справа от **Copy** открывает отдельное окно **Batch image translation**. В нём можно выбрать несколько PNG, JPEG, WebP, TIFF или BMP-файлов либо один каталог. Закрытие прячет окно по аналогии с quick translate popup; активное задание продолжает выполняться, а повторное открытие показывает его текущий статус. Каталог просматривается нерекурсивно; скрытые, временные, symbolic-link/junction entries и неподдерживаемые расширения пропускаются. Файлы сортируются natural sort (`page-2.png` перед `page-10.png`). Абсолютные пути выбранных файлов хранятся только на стороне Go в краткоживущем selection record и не передаются в WebView.
 
-Задание выполняет файлы последовательно: проверяет и копирует оригинал без перекодирования, запускает описанный выше FFmpeg preprocessing и adaptive Tesseract TSV OCR, восстанавливает детерминированные строки/абзацы и переводит их через TranslateGemma. После layout renderer анализирует кольцо пикселей вокруг OCR-области. Однородный фон очищается точной дешёвой заливкой; градиенты, рамки, UI и текстуры направляются в shared CPU-session LaMa. Для LaMa строится маска пикселей текста по foreground/background contrast с dilation в один пиксель. Близкие маски объединяются, получают 48 px контекста и aspect-ratio preserving letterbox до 512×512; целая страница не уменьшается.
+Задание выполняет файлы последовательно: проверяет и копирует оригинал без перекодирования, запускает PaddleOCR, сохраняет детерминированные строки/абзацы и переводит их через TranslateGemma. После layout renderer анализирует кольцо пикселей вокруг OCR-области. Однородный фон очищается точной дешёвой заливкой; градиенты, рамки, UI и текстуры направляются в shared CPU-session LaMa. Для LaMa строится маска пикселей текста по foreground/background contrast с dilation в один пиксель. Близкие маски объединяются, получают 48 px контекста и aspect-ratio preserving letterbox до 512×512; целая страница не уменьшается.
 
 Размер исходного текста оценивается по OCR line boxes и ink bounds встроенного TTF; используется медиана строк, word boxes служат fallback, а высота paragraph box никогда не считается высотой одной строки, если известна многострочная структура. Полученный preferred font size ограничивается прежними `minimumFontSize`/`maximumFontSize`. Layout сначала проверяет исходный bbox при preferred size, затем безопасные расширения при том же размере и лишь после этого уменьшает шрифт с шагом 0.25 px. Обычный диапазон уменьшения ограничен 70% preferred size; дальнейшее уменьшение до hard minimum возможно только как диагностируемый emergency fallback. Расширение bbox не увеличивает font size.
 
@@ -126,7 +127,7 @@ Translation JSON также имеет `schemaVersion: 1`. Для каждого
 
 Если принятого OCR-текста нет, модель, cleanup и renderer не вызываются; файл в `translated` является byte-for-byte копией оригинала, а translation status равен `no_text`. Ошибка отдельного файла записывается в `errors.json` и не останавливает остальные файлы; системная недоступность OCR, модели или обязательного шрифта завершает задание. После `completed` и `completed_with_errors` каталог автоматически открывается в Explorer. Ошибка Explorer не меняет успешный статус.
 
-PNG и JPEG для renderer декодируются и кодируются pure Go один раз; отдельный временный FFmpeg PNG используется только OCR pipeline. JPEG quality задаётся в `imageBatch.jpegQuality`. Для WebP, TIFF и BMP `bin\ffmpeg\ffmpeg.exe` также нормализует вход в один временный PNG и один раз кодирует готовый PNG обратно в исходное расширение. Команды запускаются без shell, с timeout/cancellation, ограниченным stderr и проверкой результата. Оригинал в `images` никогда не заменяется.
+PNG и JPEG для renderer декодируются и кодируются pure Go один раз. JPEG quality задаётся в `imageBatch.jpegQuality`. Для WebP, TIFF и BMP `bin\ffmpeg\ffmpeg.exe` нормализует вход в один временный PNG и один раз кодирует готовый PNG обратно в исходное расширение. Команды запускаются без shell, с timeout/cancellation, ограниченным stderr и проверкой результата. Оригинал в `images` никогда не заменяется.
 
 Renderer использует Go Regular из `golang.org/x/image/font/gofont/goregular` (BSD-3-Clause). Сборка детерминированно создаёт `bin\fonts\regular.ttf` рядом с EXE и кладёт рядом текст лицензии; системные Windows fonts не используются. Один TTF парсится один раз, faces кэшируются по размеру. Проверены латиница, кириллица, цифры и символы, присутствующие в шрифте. Сложный shaping арабского письма, вертикальный текст, блоки 90°/270° и произвольный rotation текущим pure-Go renderer не поддерживаются.
 

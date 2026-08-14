@@ -141,7 +141,7 @@ func (s *Service) Start(request StartImageBatchRequest) (string, error) {
 		errors: []BatchFileError{},
 		report: JobReport{
 			SchemaVersion: SchemaVersion, ID: id, State: "pending", StartedAt: started, Source: request.Source, Target: request.Target,
-			Configuration: JobRunConfiguration{Debug: request.Debug, FillWordBoxes: request.FillWordBoxes, MinimumFontSize: s.renderer.config.MinimumFontSize, MaximumFontSize: s.renderer.config.MaximumFontSize, LineSpacing: s.renderer.config.LineSpacing, JPEGQuality: s.renderer.config.JPEGQuality},
+			Configuration: JobRunConfiguration{Debug: request.Debug, MinimumFontSize: s.renderer.config.MinimumFontSize, MaximumFontSize: s.renderer.config.MaximumFontSize, LineSpacing: s.renderer.config.LineSpacing, JPEGQuality: s.renderer.config.JPEGQuality},
 			Selection:     JobSelection{Kind: selection.Kind, DisplayName: selection.DisplayName, FileCount: len(selection.Files)},
 			Summary:       JobSummary{Total: len(selection.Files)}, Files: []JobFileReport{},
 		},
@@ -159,7 +159,7 @@ func (s *Service) Start(request StartImageBatchRequest) (string, error) {
 	s.wg.Add(1)
 	s.mu.Unlock()
 	releaseBusy = false
-	s.logf("image batch started: id=%s kind=%s files=%d source=%s target=%s output=%s debug=%t fill_word_boxes=%t", id, selection.Kind, len(selection.Files), request.Source, request.Target, filepath.Base(layout.Root), request.Debug, request.FillWordBoxes)
+	s.logf("image batch started: id=%s kind=%s files=%d source=%s target=%s output=%s debug=%t", id, selection.Kind, len(selection.Files), request.Source, request.Target, filepath.Base(layout.Root), request.Debug)
 	go func() { defer s.wg.Done(); s.run(jobContext, job) }()
 	return id, nil
 }
@@ -286,9 +286,6 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 			return finish("cancelled", "ocr"), nil, true
 		}
 		stage := "ocr"
-		if strings.Contains(err.Error(), "parse Tesseract TSV") {
-			stage = "parse_ocr"
-		}
 		s.fileFailed(job, report.SourceFile, stage, err)
 		_ = s.writeFailedTranslation(translationPath, outputName, job.request, "failed", safeMessage(err))
 		return finish("failed", stage), nil, false
@@ -441,7 +438,6 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 
 	s.updateStage(job, "clean_background")
 	cleanupStarted := s.now()
-	renderDocument.FillWordBoxes = job.request.FillWordBoxes
 	cleaned, renderDocument, cleanupStats, err := s.renderer.Clean(ctx, prepared.Image, renderDocument)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {

@@ -68,17 +68,15 @@ func run() (runErr error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	executableDir := filepath.Dir(configPath)
-	ocrEngine, err := ocr.NewBackend(executableDir, cfg.OCRBackend.Active, ocr.DefaultTimeout, applicationLogger)
+	ocrEngine, err := ocr.NewPaddleEngine(executableDir, ocr.DefaultTimeout, applicationLogger)
 	if err != nil {
-		return fmt.Errorf("configure OCR backend %q: %w", cfg.OCRBackend.Active, err)
+		return fmt.Errorf("configure PaddleOCR: %w", err)
 	}
 	defer func() {
 		if err := ocrEngine.Close(); err != nil {
 			applicationLogger.Printf("OCR backend shutdown failed: %v", err)
 		}
 	}()
-	applicationLogger.Printf("OCR backend selected: %s", cfg.OCRBackend.Active)
-
 	selectedProvider, localLayout, err := localmodel.SelectProvider(cfg.Provider.Active, executableDir, cfg.LocalModel)
 	if err != nil {
 		return err

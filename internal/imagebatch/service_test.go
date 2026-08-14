@@ -139,7 +139,7 @@ func TestBatchLifecycleSuccessWritesDocumentsAndDebug(t *testing.T) {
 	if report.State != "completed" || report.CompletedAt == nil || len(report.Files) != 1 || report.Files[0].SourceID == "" {
 		t.Fatalf("report=%+v", report)
 	}
-	if !report.Configuration.Debug || report.Configuration.FillWordBoxes || report.Configuration.MinimumFontSize != DefaultRenderConfig().MinimumFontSize || report.Configuration.LineSpacing != DefaultRenderConfig().LineSpacing {
+	if !report.Configuration.Debug || report.Configuration.MinimumFontSize != DefaultRenderConfig().MinimumFontSize || report.Configuration.LineSpacing != DefaultRenderConfig().LineSpacing {
 		t.Fatalf("run configuration was not persisted: %+v", report.Configuration)
 	}
 	if report.Files[0].LayoutDiagnostics.FullPageFallbackBlocks != 0 || report.Files[0].LayoutDiagnostics.CrossedColumnPlacements != 0 || report.Files[0].LayoutDiagnostics.CrossedParentPlacements != 0 {
@@ -416,7 +416,7 @@ func TestBatchShutdownCancelsActiveJob(t *testing.T) {
 func TestBatchPreflightAndExplorerFailure(t *testing.T) {
 	directory := t.TempDir()
 	path := writeBatchImage(t, directory, "page.png")
-	unavailable := newBatchTestService(t, directory, &fakeBatchOCR{capability: translation.ImageCapability{Reason: "missing tesseract"}}, &fakeBatchCompleter{})
+	unavailable := newBatchTestService(t, directory, &fakeBatchOCR{capability: translation.ImageCapability{Reason: "missing OCR models"}}, &fakeBatchCompleter{})
 	selection, _ := unavailable.SelectFiles([]string{path})
 	if _, err := unavailable.Start(StartImageBatchRequest{SelectionID: selection.ID, Source: "en", Target: "ru"}); err == nil {
 		t.Fatal("expected OCR preflight error")

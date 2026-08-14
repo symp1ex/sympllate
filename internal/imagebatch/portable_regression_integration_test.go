@@ -31,10 +31,6 @@ func TestPortableImageRegression(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	backend := strings.TrimSpace(os.Getenv("SYMPLLATE_REGRESSION_OCR"))
-	if backend == "" {
-		backend = config.OCRBackendPaddleOCR
-	}
 	cfg, err := config.Load(filepath.Join(portable, "config.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +40,7 @@ func TestPortableImageRegression(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger := log.New(os.Stdout, "regression: ", log.LstdFlags|log.Lmicroseconds)
-	ocrEngine, err := ocr.NewBackend(portable, backend, time.Duration(cfg.Ollama.TimeoutSeconds)*time.Second, logger)
+	ocrEngine, err := ocr.NewPaddleEngine(portable, time.Duration(cfg.Ollama.TimeoutSeconds)*time.Second, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +92,7 @@ func TestPortableImageRegression(t *testing.T) {
 			t.Fatal(statusErr)
 		}
 		if status.State == "completed" || status.State == "completed_with_errors" || status.State == "cancelled" || status.State == "failed" {
-			t.Logf("portable regression backend=%s state=%s processed=%d rendered=%d partial=%d failed=%d output=%s error=%s", backend, status.State, status.Processed, status.Rendered, status.Partial, status.Failed, status.OutputDirectory, status.Error)
+			t.Logf("portable regression state=%s processed=%d rendered=%d partial=%d failed=%d output=%s error=%s", status.State, status.Processed, status.Rendered, status.Partial, status.Failed, status.OutputDirectory, status.Error)
 			if status.State != "completed" && status.State != "completed_with_errors" {
 				t.Fatalf("regression job did not complete: %+v", status)
 			}
