@@ -196,7 +196,8 @@ html, body { width:100%; height:100%; margin:0; overflow:hidden; font-family:"Se
 .window { height:100%; border:1px solid var(--outline-variant); background:var(--background); }
 .titlebar { height:44px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--outline-variant); padding-left:16px; background:var(--surface-container); }
 .title { font-size:14px; font-weight:650; letter-spacing:.02em; }
-.close { width:48px; height:43px; display:inline-flex; align-items:center; justify-content:center; border:0; background:transparent; color:var(--on-surface-variant); font-size:22px; line-height:1; cursor:pointer; box-shadow:var(--focus-shadow, none); }
+.close { width:48px; height:43px; display:inline-flex; align-items:center; justify-content:center; border:0; background:transparent; color:var(--on-surface-variant); cursor:pointer; box-shadow:var(--focus-shadow, none); }
+.close svg { width:16px; height:16px; display:block; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; pointer-events:none; }
 .close:hover { background:var(--error-container); color:var(--on-error-container); box-shadow:var(--focus-shadow, inset 0 0 0 0 transparent), inset 0 0 0 100px rgba(var(--state-rgb), var(--state-hover)); }
 .close:active { box-shadow:var(--focus-shadow, inset 0 0 0 0 transparent), inset 0 0 0 100px rgba(var(--state-rgb), var(--state-pressed)); }
 .close:focus-visible { --focus-shadow:inset 0 0 0 1px var(--primary); outline:none; }
@@ -212,7 +213,7 @@ p { margin:7px 0 0; color:var(--on-surface-variant); font-size:13px; line-height
 <main class="window">
   <header class="titlebar" onpointerdown="if(event.button===0)window.WindowDrag()">
     <span class="title">Sympllate</span>
-    <button class="close" aria-label="Close" title="Close" onpointerdown="event.stopPropagation()" onclick="window.WindowClose()">&#215;</button>
+    <button class="close" aria-label="Close" title="Close" onpointerdown="event.stopPropagation()" onclick="window.WindowClose()"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4.5 4.5 7 7m0-7-7 7"/></svg></button>
   </header>
   <section class="content">
     <span class="spinner" role="status" aria-label="Loading"></span>

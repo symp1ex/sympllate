@@ -214,24 +214,35 @@ export function WindowChrome({ children, mode, onSettings, lockContentOverflow =
         }}
       >
         <div className="custom-titlebar__brand">
-          <span className={titleClassName}>{windowTitles[mode]}</span>
-          {mode === 'main' && versionText && (
-            <button
-              type="button"
-              className={`custom-titlebar__version custom-titlebar__version--${updateState}`}
-              aria-label={versionAriaLabel}
-              aria-disabled={updateState === 'disabled' || updateState === 'checking' || updateState === 'installing'}
-              title={updateMessage || versionAriaLabel}
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={activateVersionAction}
-            >
-              {versionText}
-            </button>
+          <div className="custom-titlebar__brand-row">
+            <span className={titleClassName}>{windowTitles[mode]}</span>
+            {mode === 'main' && versionText && (
+              <button
+                type="button"
+                className={`custom-titlebar__version custom-titlebar__version--${updateState}`}
+                aria-label={versionAriaLabel}
+                aria-disabled={updateState === 'disabled' || updateState === 'checking' || updateState === 'installing'}
+                title={updateMessage || versionAriaLabel}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={activateVersionAction}
+              >
+                {versionText}
+              </button>
+            )}
+            {mode === 'main' && spinnerVisible && (
+              <span
+                className="custom-titlebar__spinner"
+                role="status"
+                aria-label={updateState === 'installing' ? 'Starting update installation' : 'Checking for updates'}
+              />
+            )}
+          </div>
+
+          {mode === 'main' && updateMessage && (
+            <span className="visually-hidden" aria-live="polite">
+              {updateMessage}
+            </span>
           )}
-          {mode === 'main' && spinnerVisible && (
-            <span className="custom-titlebar__spinner" role="status" aria-label={updateState === 'installing' ? 'Starting update installation' : 'Checking for updates'} />
-          )}
-          {mode === 'main' && updateMessage && <span className="visually-hidden" aria-live="polite">{updateMessage}</span>}
         </div>
         <div className="custom-titlebar__actions">
           {mode === 'main' && onSettings && (
@@ -243,7 +254,10 @@ export function WindowChrome({ children, mode, onSettings, lockContentOverflow =
               onPointerDown={(event) => event.stopPropagation()}
               onClick={onSettings}
             >
-              ⚙
+              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <path d="M6.4 1.5h3.2l.4 1.6 1.4.8 1.5-.6 1.6 2.8-1.1 1.2v1.6l1.1 1.2-1.6 2.8-1.5-.6-1.4.8-.4 1.6H6.4L6 12.9l-1.4-.8-1.5.6-1.6-2.8 1.1-1.2V7.1L1.5 5.9l1.6-2.8 1.5.6L6 2.9l.4-1.4Z" />
+                <circle cx="8" cy="8" r="2.1" />
+              </svg>
             </button>
           )}
           <button
@@ -254,7 +268,9 @@ export function WindowChrome({ children, mode, onSettings, lockContentOverflow =
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => void window.WindowMinimize()}
           >
-            −
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="M3.5 8h9" />
+            </svg>
           </button>
           <button
             type="button"
@@ -264,7 +280,9 @@ export function WindowChrome({ children, mode, onSettings, lockContentOverflow =
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => void window.WindowToggleMaximize()}
           >
-            □
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <rect x="4" y="4" width="8" height="8" />
+            </svg>
           </button>
           <button
             type="button"
@@ -274,7 +292,9 @@ export function WindowChrome({ children, mode, onSettings, lockContentOverflow =
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => void window.WindowClose()}
           >
-            ×
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="m4.5 4.5 7 7m0-7-7 7" />
+            </svg>
           </button>
         </div>
       </header>

@@ -90,6 +90,13 @@ button, input, select, textarea { font: inherit; }
   letter-spacing: 0.2px;
   pointer-events: none;
 }
+
+.custom-titlebar__brand-row {
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+}
+
 .custom-titlebar__name {
   min-width: 0;
   overflow: hidden;
@@ -104,7 +111,7 @@ button, input, select, textarea { font: inherit; }
   margin-left: 2.5px;
   border: 0;
   border-radius: var(--radius-small);
-  padding: 1px 4px;
+  padding: 0 4px;
   color: var(--on-surface-variant);
   background: transparent;
   font-size: 10px;
@@ -127,11 +134,12 @@ button, input, select, textarea { font: inherit; }
 .custom-titlebar__spinner {
   width: 8px;
   height: 8px;
+  align-self: center;
   margin-left: -0.5px;
   border: 1px solid var(--outline-variant);
   border-top-color: var(--on-surface);
   border-radius: 50%;
-  animation: titlebar-spinner 760ms linear infinite;
+  animation: titlebar-spinner 0.76s linear infinite;
   pointer-events: none;
 }
 
@@ -165,6 +173,7 @@ button, input, select, textarea { font: inherit; }
 }
 .custom-titlebar__button--maximize { font-size: 14px; }
 .custom-titlebar__button--settings { font-size: 15px; }
+.custom-titlebar__button svg { width: 14px; height: 14px; display: block; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .custom-titlebar button.custom-titlebar__button--close:hover { background: var(--error-container); color: var(--on-error-container); }
 
 button, select {
