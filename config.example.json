@@ -9,6 +9,7 @@
   },
   "localModel": {
     "modelFile": "",
+    "profile": "translategemma",
     "startupTimeoutSeconds": 180,
     "fitTargetMiB": 1024
   },

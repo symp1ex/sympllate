@@ -26,6 +26,8 @@ function settingTitle(value: string) {
 
 export function SettingsPanel({ onBack }: Props) {
   const [config, setConfig] = useState<JsonSettingObject | null>(null)
+  const [models, setModels] = useState<string[]>([])
+  const [modelsError, setModelsError] = useState('')
   const [status, setStatus] = useState('Loading settings...')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -35,6 +37,13 @@ export function SettingsPanel({ onBack }: Props) {
     try {
       setConfig(await window.GetSettingsConfig())
       setStatus('Settings loaded')
+      try {
+        setModels(await window.GetLocalModels())
+        setModelsError('')
+      } catch (caught) {
+        setModels([])
+        setModelsError(`Model list unavailable: ${errorMessage(caught)}`)
+      }
     } catch (caught) {
       setConfig(null)
       setStatus(`Loading error: ${errorMessage(caught)}`)
@@ -97,6 +106,21 @@ export function SettingsPanel({ onBack }: Props) {
 
   const renderPrimitive = (path: string[], label: string, value: JsonSettingValue) => {
     const key = path.join('.')
+    if (typeof value === 'string' && (key === 'localModel.modelFile' || key === 'localModel.profile')) {
+      const modelSetting = key === 'localModel.modelFile'
+      const options = modelSetting ? models : ['translategemma', 'generic']
+      return (
+        <label key={key} className="settings-field">
+          <span>{settingTitle(label)}</span>
+          <select value={value} onChange={(event) => updatePrimitive(path, event.target.value)}>
+            {modelSetting && <option value="">{models.length === 1 ? `Automatic: ${models[0]}` : 'Automatic (requires exactly one GGUF)'}</option>}
+            {value && !options.includes(value) && <option value={value}>{value} (configured path)</option>}
+            {options.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+          {modelSetting && modelsError && <span role="alert">{modelsError}</span>}
+        </label>
+      )
+    }
     if (typeof value === 'boolean') {
       return (
         <label key={key} className="settings-checkbox-row">

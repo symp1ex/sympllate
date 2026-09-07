@@ -3,11 +3,67 @@ package localmodel
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/sympllate/translator/internal/config"
 )
+
+func TestListModelsIsDynamicAndResolutionIsExplicit(t *testing.T) {
+	t.Parallel()
+	base := t.TempDir()
+	list, err := ListModels(base)
+	if err != nil || list == nil || len(list) != 0 {
+		t.Fatalf("missing directory list = %v, %v", list, err)
+	}
+	models := filepath.Join(base, "models")
+	if err := os.Mkdir(models, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveModel(base, ""); err == nil {
+		t.Fatal("empty directory resolved a model")
+	}
+	if err := os.Mkdir(filepath.Join(models, "directory.gguf"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"gemma-3-1b-it-Q8_0.gguf", "translategemma.GGUF", "notes.txt"} {
+		if err := os.WriteFile(filepath.Join(models, name), []byte("test"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := []string{filepath.Join("models", "gemma-3-1b-it-Q8_0.gguf"), filepath.Join("models", "translategemma.GGUF")}
+	list, err = ListModels(base)
+	if err != nil || !reflect.DeepEqual(list, want) {
+		t.Fatalf("list = %v, %v; want %v", list, err, want)
+	}
+	if _, err := ResolveModel(base, ""); err == nil {
+		t.Fatal("multiple models resolved without selection")
+	}
+	for _, selected := range []string{want[0], filepath.Join(base, want[1])} {
+		got, err := ResolveModel(base, selected)
+		expected := selected
+		if !filepath.IsAbs(expected) {
+			expected = filepath.Join(base, expected)
+		}
+		if err != nil || got != expected {
+			t.Fatalf("explicit selection = %q, %v", got, err)
+		}
+	}
+	if err := os.Remove(filepath.Join(base, want[1])); err != nil {
+		t.Fatal(err)
+	}
+	list, err = ListModels(base)
+	if err != nil || !reflect.DeepEqual(list, want[:1]) {
+		t.Fatalf("stale model list = %v, %v", list, err)
+	}
+	if _, err := ResolveModel(base, want[1]); err == nil || !strings.Contains(err.Error(), "unavailable") {
+		t.Fatalf("missing explicit model silently replaced: %v", err)
+	}
+	if got, err := ResolveModel(base, ""); err != nil || got != filepath.Join(base, want[0]) {
+		t.Fatalf("single model auto selection = %q, %v", got, err)
+	}
+}
 
 func TestResolveModelFindsExactlyOneGGUF(t *testing.T) {
 	t.Parallel()

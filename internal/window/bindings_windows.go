@@ -11,6 +11,7 @@ import (
 	"github.com/sympllate/translator/internal/clipboard"
 	"github.com/sympllate/translator/internal/config"
 	"github.com/sympllate/translator/internal/language"
+	"github.com/sympllate/translator/internal/localmodel"
 	"github.com/sympllate/translator/internal/translation"
 )
 
@@ -21,6 +22,13 @@ func bindMainSettings(w webview.WebView, mainWindow *MainWindow) error {
 	}{
 		{"GetInitialView", func() string { return mainWindow.currentView() }},
 		{"GetSettingsConfig", func() (config.Config, error) { return config.Load(mainWindow.cfgPath) }},
+		{"GetLocalModels", func() ([]string, error) {
+			directory, err := config.ExecutableDir()
+			if err != nil {
+				return nil, err
+			}
+			return localmodel.ListModels(directory)
+		}},
 		{"SaveSettingsConfig", func(cfg config.Config) error {
 			if err := config.Save(mainWindow.cfgPath, cfg); err != nil {
 				return err

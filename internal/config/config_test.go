@@ -1,11 +1,68 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
+
+func TestLocalModelProfileDefaultsAndLegacyConfig(t *testing.T) {
+	t.Parallel()
+	want := Default()
+	if want.LocalModel.Profile != "translategemma" || want.LocalModel.ModelFile != "" || want.LocalModel.StartupTimeoutSeconds != 180 || want.LocalModel.FitTargetMiB != 1024 {
+		t.Fatalf("unexpected local defaults: %+v", want.LocalModel)
+	}
+	data, err := json.Marshal(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := strings.Replace(string(data), `"profile":"translategemma",`, "", 1)
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("legacy config changed defaults: %+v, %v", got, err)
+	}
+}
+
+func TestLocalModelProfilesValidateAndRoundTrip(t *testing.T) {
+	t.Parallel()
+	for _, profile := range []string{"translategemma", "generic", "auto", "unknown", "", "Generic"} {
+		t.Run(profile, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.json")
+			cfg := Default()
+			cfg.LocalModel.Profile = profile
+			cfg.LocalModel.ModelFile = "models/gemma-3-1b-it-Q8_0.gguf"
+			err := Save(path, cfg)
+			if profile != "translategemma" && profile != "generic" {
+				if err == nil || !strings.Contains(err.Error(), "localModel.profile") {
+					t.Fatalf("invalid profile accepted: %v", err)
+				}
+				data := `{"localModel":{"profile":` + strconv.Quote(profile) + `}}`
+				if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := Load(path); err == nil {
+					t.Fatal("Load accepted invalid profile")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			loaded, err := Load(path)
+			if err != nil || !reflect.DeepEqual(loaded, cfg) {
+				t.Fatalf("round trip = %+v, %v", loaded, err)
+			}
+		})
+	}
+}
 
 func TestLoadValidConfig(t *testing.T) {
 	t.Parallel()

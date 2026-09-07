@@ -5,6 +5,8 @@ package localmodel
 import (
 	"context"
 	"errors"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +17,58 @@ import (
 
 	"github.com/sympllate/translator/internal/translation"
 )
+
+func TestRuntimePassesProfileToClient(t *testing.T) {
+	for _, profile := range []string{"", "translategemma", "generic"} {
+		t.Run(profile, func(t *testing.T) {
+			process := &fakeProcess{done: make(chan struct{})}
+			var server *httptest.Server
+			starter := func(_ string, args []string, _ string, _ io.Writer) (managedProcess, error) {
+				var port, key string
+				for i, arg := range args {
+					if arg == "--port" {
+						port = args[i+1]
+					}
+					if arg == "--api-key" {
+						key = args[i+1]
+					}
+				}
+				listener, err := net.Listen("tcp", "127.0.0.1:"+port)
+				if err != nil {
+					return nil, err
+				}
+				server = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.Header.Get("Authorization") != "Bearer "+key {
+						t.Error("lost API key")
+					}
+					w.WriteHeader(http.StatusOK)
+				}))
+				server.Listener.Close()
+				server.Listener = listener
+				server.Start()
+				return process, nil
+			}
+			runtime, err := startWith(t.Context(), RuntimeConfig{
+				Profile: profile, StartupTimeout: time.Second, RequestTimeout: time.Second,
+				NumCtx: 2048, NumPredict: 100, FitTargetMiB: 1024, MaxInputCharacters: 1000,
+			}, io.Discard, starter)
+			if server != nil {
+				defer server.Close()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer runtime.Close()
+			want := profile
+			if want == "" {
+				want = "translategemma"
+			}
+			if runtime.Client().profile != want {
+				t.Fatalf("client profile = %q, want %s", runtime.Client().profile, want)
+			}
+		})
+	}
+}
 
 type configuredImageExtractor struct{}
 

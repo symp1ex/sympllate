@@ -110,6 +110,7 @@ func run() (runErr error) {
 		defer instanceLock.Close()
 		localRuntime, err = localmodel.Start(ctx, localmodel.RuntimeConfig{
 			Layout:             localLayout,
+			Profile:            cfg.LocalModel.Profile,
 			ExecutableDir:      executableDir,
 			StartupTimeout:     time.Duration(cfg.LocalModel.StartupTimeoutSeconds) * time.Second,
 			RequestTimeout:     time.Duration(cfg.Ollama.TimeoutSeconds) * time.Second,

@@ -66,6 +66,7 @@ declare global {
     OpenImageBatchWindow(): Promise<void>
     GetInitialView(): Promise<'main' | 'settings'>
     GetSettingsConfig(): Promise<JsonSettingObject>
+    GetLocalModels(): Promise<string[]>
     SaveSettingsConfig(config: JsonSettingObject): Promise<void>
     WindowMinimize(): Promise<void>
     WindowToggleMaximize(): Promise<boolean>

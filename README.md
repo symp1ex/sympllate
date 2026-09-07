@@ -13,6 +13,12 @@ Sympllate собирается в двух вариантах для Windows x64
 
 Если `localModel.modelFile` пуст, в каталоге `models` должна находиться ровно одна модель с расширением `.gguf`. Относительный `modelFile` всегда разрешается относительно каталога `translator.exe`.
 
+В Settings поля `localModel.modelFile` и `localModel.profile` выбираются из списков. Список GGUF перечитывается из `models` при открытии Settings и по Restore, не записывается в config. Пустой `modelFile` сохраняет автоматический выбор единственной модели; сохранённый отсутствующий файл другой моделью не заменяется. Save применяет настройки через существующий перезапуск приложения.
+
+Профиль задаётся явно: `translategemma` (default, включая старые config без поля) или `generic` для обычных instruct GGUF. Имя файла профиль не определяет. `translategemma` отправляет [native structured content Google](https://huggingface.co/google/translategemma-4b-it#usage) с буквальным исходным текстом и требует конкретного source language: `auto` возвращает понятную ошибку, в том числе после OCR одиночного изображения. `generic` использует текстовый translation prompt и сохраняет поддержку `auto`.
+
+Ограничение runtime: проверенный bundled llama-server `10282 (a035a8887)` с неизменным `--no-jinja` принимает structured content, но теряет `source_lang_code`/`target_lang_code`: `/apply-template` даёт одинаковый prompt для разных target languages. Поэтому корректность native client payload не означает работающий TranslateGemma inference на этой сборке. Backend и флаги не изменены; автоматического fallback на generic нет. Batch-images сохраняет отдельный JSON-протокол `StructuredTranslator → Complete()`, который требует instruction-following модели и не получает native TranslateGemma семантику.
+
 Portable layout:
 
 ```text

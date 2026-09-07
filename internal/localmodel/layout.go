@@ -47,14 +47,32 @@ func ResolveModel(executableDir, configuredPath string) (string, error) {
 	}
 
 	modelsDir := filepath.Join(executableDir, "models")
+	matches, err := ListModels(executableDir)
+	if err != nil {
+		return "", err
+	}
+	switch len(matches) {
+	case 0:
+		return "", fmt.Errorf("no GGUF model found in %q", modelsDir)
+	case 1:
+		return filepath.Join(executableDir, matches[0]), nil
+	default:
+		return "", fmt.Errorf("multiple GGUF models found in %q; specify localModel.modelFile", modelsDir)
+	}
+}
+
+// ListModels reads the current models directory, returning paths relative to
+// the executable directory, suitable for localModel.modelFile.
+func ListModels(executableDir string) ([]string, error) {
+	modelsDir := filepath.Join(executableDir, "models")
 	entries, err := os.ReadDir(modelsDir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", fmt.Errorf("no GGUF model found in %q", modelsDir)
+			return []string{}, nil
 		}
-		return "", fmt.Errorf("read models directory %q: %w", modelsDir, err)
+		return nil, fmt.Errorf("read models directory %q: %w", modelsDir, err)
 	}
-	var matches []string
+	matches := []string{}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".gguf") {
 			continue
@@ -63,16 +81,9 @@ func ResolveModel(executableDir, configuredPath string) (string, error) {
 		if infoErr != nil || !info.Mode().IsRegular() {
 			continue
 		}
-		matches = append(matches, filepath.Join(modelsDir, entry.Name()))
+		matches = append(matches, filepath.Join("models", entry.Name()))
 	}
-	switch len(matches) {
-	case 0:
-		return "", fmt.Errorf("no GGUF model found in %q", modelsDir)
-	case 1:
-		return matches[0], nil
-	default:
-		return "", fmt.Errorf("multiple GGUF models found in %q; specify localModel.modelFile", modelsDir)
-	}
+	return matches, nil
 }
 
 func SelectProvider(provider, executableDir string, cfg config.LocalModelConfig) (string, Layout, error) {

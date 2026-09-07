@@ -21,6 +21,7 @@ import (
 
 type RuntimeConfig struct {
 	Layout             Layout
+	Profile            string
 	ExecutableDir      string
 	StartupTimeout     time.Duration
 	RequestTimeout     time.Duration
@@ -86,6 +87,9 @@ func startWith(ctx context.Context, cfg RuntimeConfig, output io.Writer, starter
 	runtime.client = NewClientWithImageTextExtractor(
 		baseURL, apiKey, cfg.NumPredict, cfg.Temperature, cfg.MaxInputCharacters, cfg.RequestTimeout, cfg.ImageTextExtractor,
 	)
+	if cfg.Profile != "" {
+		runtime.client.profile = cfg.Profile
+	}
 	return runtime, nil
 }
 

@@ -26,15 +26,15 @@ func TestClientTranslateRequest(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer test-key" {
 			t.Errorf("Authorization = %q", got)
 		}
-		var body chatRequest
+		var body translateGemmaRequest
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
 		if body.Model != ModelAlias || body.Stream || body.MaxTokens != 321 || body.Temperature != 0.25 || len(body.Messages) != 1 {
 			t.Errorf("unexpected body: %+v", body)
 		}
-		if !strings.Contains(body.Messages[0].Content, `"Привет"`) {
-			t.Errorf("prompt does not safely encode text: %s", body.Messages[0].Content)
+		if body.Messages[0].Role != "user" || len(body.Messages[0].Content) != 1 || body.Messages[0].Content[0] != (translateGemmaContent{Type: "text", SourceLangCode: "ru", TargetLangCode: "en", Text: "Привет"}) {
+			t.Errorf("unexpected native content: %+v", body.Messages)
 		}
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"Translation: Hello"}}]}`))
 	}))
@@ -130,14 +130,14 @@ func TestClientReportsUnsupportedImageInput(t *testing.T) {
 func TestClientTranslateImageSendsOnlyOCRTextToLocalServer(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var request chatRequest
+		var request translateGemmaRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Error(err)
 			return
 		}
-		content := request.Messages[0].Content
-		if !strings.Contains(content, `"recognized source"`) {
-			t.Errorf("OCR text missing from prompt: %s", content)
+		content := request.Messages[0].Content[0].Text
+		if content != "recognized source" {
+			t.Errorf("unexpected native OCR text: %s", content)
 		}
 		if strings.Contains(content, "iVBOR") || strings.Contains(content, "data:image") {
 			t.Errorf("image data leaked to local server request: %s", content)
