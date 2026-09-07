@@ -1,67 +1,270 @@
 # Sympllate
 
-Sympllate собирается в двух вариантах для Windows x64.
+## Описание
 
-- **Lite** использует Ollama, уже установленную и настроенную пользователем. GGUF-модель и llama.cpp в поставку не входят; локальные LaMa/ONNX Runtime для image cleanup добавляются в обе редакции только при передаче соответствующих путей скрипту сборки.
-- **Portable** запускает поставленный `llama-server.exe` и GGUF-модель. Приложение не устанавливает и не скачивает Ollama, llama.cpp, модель или драйверы во время работы.
+Sympllate — локальный переводчик для Windows x64. Переводит текст, выделение в сторонних приложениях и изображения. Для модели используется установленный Ollama либо локальный комплект из GGUF-модели и `llama.cpp`.
 
-Оба варианта используют Microsoft Edge WebView2 Runtime, установленный в Windows. Сборка с локальным image cleanup дополнительно использует CPU-only ONNX Runtime 1.26.0 для удаления текста с изображений. Portable также требует рабочий драйвер GPU; выбор GPU backend определяется только содержимым поставленного runtime llama.cpp и доступными драйверами. LaMa не подключает CUDA или DirectML и не занимает GPU переводчика.
+Собираются две редакции:
 
-## Конфигурация provider
+- **Lite** — работает с Ollama, установленной в системе. В поставку не входят модель и runtime.
+- **Portable** — запускает поставленные GGUF-модель и `llama-server.exe`; Ollama на целевом компьютере не требуется.
 
-Активный provider задаётся в `provider.active`; поддерживаются `"auto"`, `"ollama"` и `"local"`. Массив `provider.list` содержит варианты для выпадающего списка окна настроек. В режиме `auto` полный локальный layout выбирает local provider, иначе используется Ollama. В режиме `local` отсутствие runtime или модели является ошибкой.
+### Быстрый перевод
 
-Если `localModel.modelFile` пуст, в каталоге `models` должна находиться ровно одна модель с расширением `.gguf`. Относительный `modelFile` всегда разрешается относительно каталога `translator.exe`.
+В главном окне можно перевести текст вручную. Для работы с выделением в другой программе используются две комбинации из `config.json`:
 
-В Settings поля `localModel.modelFile` и `localModel.profile` выбираются из списков. Список GGUF перечитывается из `models` при открытии Settings и по Restore, не записывается в config. Пустой `modelFile` сохраняет автоматический выбор единственной модели; сохранённый отсутствующий файл другой моделью не заменяется. Save применяет настройки через существующий перезапуск приложения.
+- `hotkeys.showTranslation` — показывает перевод выделенного текста в отдельном окне;
+- `hotkeys.replaceSelection` — заменяет выделение переводом.
 
-Профиль `generic` используется по умолчанию, в том числе для старых config без поля `localModel.profile`. При обычном запуске ранее сохранённый `translategemma` автоматически заменяется на `generic` с записью обновлённого `config.json`, а Settings предлагает только `generic`. Запуск `translator.exe -debug` сохраняет `translategemma` и открывает в Settings выбор обоих профилей; этот флаг относится только к текущему запуску и сохраняется при перезапуске после Save. Имя файла профиль не определяет. `translategemma` отправляет [native structured content Google](https://huggingface.co/google/translategemma-4b-it#usage) с буквальным исходным текстом и требует конкретного source language: `auto` возвращает понятную ошибку, в том числе после OCR одиночного изображения. `generic` использует текстовый translation prompt и сохраняет поддержку `auto`.
+Текст для быстрого перевода берётся из буфера обмена. Исходный язык определяется автоматически, целевой выбирается в окне перевода.
 
-Ограничение runtime: проверенный bundled llama-server `10282 (a035a8887)` при запуске с `--no-jinja` принимает structured content, но теряет `source_lang_code`/`target_lang_code`: `/apply-template` даёт одинаковый prompt для разных target languages. Поэтому `--no-jinja` сохраняется для `generic`, но не передаётся для debug-профиля `translategemma`, чтобы будущий совместимый runtime мог применить встроенный model template. Это не гарантирует совместимость текущего bundled runtime с TranslateGemma; debug-режим лишь позволяет тестировать новые версии runtime без пересборки приложения. Автоматического fallback на generic нет. Batch-images сохраняет отдельный JSON-протокол `StructuredTranslator → Complete()`, который требует instruction-following модели и не получает native TranslateGemma семантику.
+### Перевод изображений
 
-Portable layout:
+Одиночное изображение PNG или JPEG можно вставить в окно через `Ctrl+V` или перетащить мышью. Для Lite изображение передаётся модели Ollama. Для Portable требуется локальный OCR-комплект.
+
+Пакетный перевод открывается кнопкой с иконкой изображений рядом с **Copy**. Можно выбрать несколько PNG, JPEG, WebP, TIFF или BMP-файлов либо каталог. Результаты создаются рядом с `translator.exe`:
+
+```text
+_output/
+└── YYYY-MM-DD_HH-MM-SS/
+    ├── images/          # копии оригиналов
+    ├── translated/      # изображения с переведённым текстом
+    ├── ocr/             # результат распознавания
+    ├── translations/    # результат перевода
+    ├── job.json
+    └── errors.json      # создаётся при ошибках отдельных файлов
+```
+
+Оригинальные файлы не изменяются. Для замены текста на сложном фоне используется LaMa; если её нет в поставке, пакетный перевод изображений не поддерживается.
+
+## Установка и настройка
+
+### Требования
+
+- Windows x64.
+- Microsoft Edge WebView2 Runtime. Обычно уже установлен в Windows; при необходимости доступен на [странице WebView2](https://developer.microsoft.com/microsoft-edge/webview2/).
+- Для Lite: [Ollama для Windows](https://ollama.com/download/windows) и загруженная модель.
+- Для Portable: драйвер, соответствующий выбранной сборке `llama.cpp`, если используется GPU runtime.
+
+### Lite
+
+После установки Ollama скачайте TranslateGemma:
+
+```powershell
+ollama pull translategemma:latest
+```
+
+Модель `translategemma:latest` занимает около 3,3 ГБ. Другие варианты модели и их размер указаны на [странице TranslateGemma в Ollama](https://ollama.com/library/translategemma).
+
+Запустите `translator.exe`. При первом запуске рядом с ним создаётся `config.json`.
+
+### Portable
+
+Portable нельзя переносить частями: рядом с `translator.exe` должны быть папки `models` и `runtime`. Минимальная структура поставки:
 
 ```text
 Sympllate/
 ├── translator.exe
 ├── config.json
-├── bin/                     # если переданы оба inpaint-пути
-│   ├── inpaint/
-│   │   └── inpainting_lama.onnx
-│   └── OCR/
-│       ├── det.onnx + det.yml
-│       └── *_rec.onnx + *_rec.yml
 ├── models/
 │   └── <model>.gguf
 └── runtime/
-    ├── onnx/
-    │   └── onnxruntime.dll
     └── llama/
         ├── llama-server.exe
-        └── DLL и остальные файлы одной версии llama.cpp
+        └── DLL и остальные файлы из того же runtime
 ```
+
+Запустите `translator.exe`. Если в `config.json` выбран `provider.active = "auto"`, приложение использует Portable при наличии полного комплекта файлов, иначе пытается подключиться к Ollama.
+
+### OCR и очистка изображений
+
+Для Portable-перевода изображений рядом с программой должны находиться OCR-модели, ONNX Runtime и, для очистки фона, LaMa:
+
+```text
+Sympllate/
+├── bin/
+│   ├── OCR/
+│   │   ├── det.onnx
+│   │   ├── det.yml
+│   │   └── *_rec.onnx + *_rec.yml
+│   └── inpaint/
+│       └── inpainting_lama.onnx
+└── runtime/
+    └── onnx/
+        └── onnxruntime.dll
+```
+
+Модель LaMa и `onnxruntime.dll` добавляются скриптом сборки, параметры приведены в разделе **Сборка**. OCR-файлы должны быть подготовлены в составе Portable-поставки.
+
+## Конфигурация
+
+### config.json
+
+Файл `config.json` находится рядом с `translator.exe`. Настройки можно изменить в интерфейсе приложения либо вручную при закрытой программе.
+
+<details>
+<summary>Пример <b>config.json</b></summary>
+
+```json
+{
+  "provider": {
+    "active": "auto",
+    "list": [
+      "auto",
+      "ollama",
+      "local"
+    ]
+  },
+  "localModel": {
+    "modelFile": "",
+    "profile": "generic",
+    "startupTimeoutSeconds": 180,
+    "fitTargetMiB": 1024
+  },
+  "ollama": {
+    "baseUrl": "http://127.0.0.1:11434",
+    "model": "translategemma:latest",
+    "timeoutSeconds": 120,
+    "keepAlive": "10m",
+    "numCtx": 2048,
+    "numPredict": 1024,
+    "temperature": 0
+  },
+  "hotkeys": {
+    "showTranslation": "Ctrl+Alt+T",
+    "replaceSelection": "Ctrl+Alt+R"
+  },
+  "defaultLanguagePair": {
+    "first": {
+      "active": "ru",
+      "list": ["ru", "en", "de", "fr", "es", "uk", "pl", "it", "pt", "tr", "zh", "ja", "ko", "ar"]
+    },
+    "second": {
+      "active": "en",
+      "list": ["ru", "en", "de", "fr", "es", "uk", "pl", "it", "pt", "tr", "zh", "ja", "ko", "ar"]
+    }
+  },
+  "fallbackTargetLanguage": {
+    "active": "ru",
+    "list": ["ru", "en", "de", "fr", "es", "uk", "pl", "it", "pt", "tr", "zh", "ja", "ko", "ar"]
+  },
+  "ui": {
+    "mainWindowWidth": 900,
+    "mainWindowHeight": 620,
+    "popupWidth": 520,
+    "popupHeight": 360,
+    "alwaysOnTopPopup": true
+  },
+  "limits": {
+    "maxInputCharacters": 12000,
+    "clipboardWaitMilliseconds": 800
+  },
+  "updater": {
+    "enabled": true
+  },
+  "logs": {
+    "log_level": {
+      "active": "warning",
+      "list": ["debug", "info", "warning", "error"]
+    },
+    "store_days": 2
+  },
+  "imageBatch": {
+    "minimumFontSize": 7,
+    "maximumFontSize": 48,
+    "lineSpacing": 1.15,
+    "jpegQuality": 92
+  }
+}
+```
+
+Параметры provider:
+
+- `active`: выбранный способ работы с моделью: `auto`, `ollama` или `local`.
+- `list`: варианты, доступные в окне настроек.
+
+Параметры localModel:
+
+- `modelFile`: путь к GGUF-модели. Относительный путь считается от каталога `translator.exe`. Если значение пустое, в папке `models` должна быть ровно одна `.gguf`-модель.
+- `profile`: профиль модели. Для обычной работы используется `generic`.
+- `startupTimeoutSeconds`: максимальное время запуска локальной модели.
+- `fitTargetMiB`: объём памяти, на который ориентируется запуск модели.
+
+Параметры Ollama:
+
+- `baseUrl`: адрес API Ollama. Для Ollama на этом же компьютере — `http://127.0.0.1:11434`.
+- `model`: имя модели из `ollama list`.
+- `timeoutSeconds`: максимальное время ожидания ответа.
+- `keepAlive`: время, в течение которого Ollama сохраняет модель в памяти.
+- `numCtx`, `numPredict`, `temperature`: параметры запроса к модели.
+
+Параметры горячих клавиш:
+
+- `showTranslation`: показать перевод выделения.
+- `replaceSelection`: заменить выделение переводом.
+
+Параметры языков:
+
+- `defaultLanguagePair.first.active`: исходный язык в главном окне.
+- `defaultLanguagePair.second.active`: целевой язык в главном окне.
+- `fallbackTargetLanguage.active`: язык быстрого перевода по умолчанию.
+- `list`: список языков в выпадающем списке.
+
+Прочие параметры:
+
+- `ui`: размеры главного окна и окна быстрого перевода.
+- `limits.maxInputCharacters`: максимальный размер текста в символах.
+- `limits.clipboardWaitMilliseconds`: ожидание появления выделенного текста в буфере обмена.
+- `updater.enabled`: включение проверки обновлений.
+- `logs.log_level.active`: уровень логирования; `logs.store_days`: срок хранения логов в днях.
+- `imageBatch`: минимальный и максимальный размер шрифта, межстрочный интервал и качество JPEG при пакетном переводе.
+</details>
 
 ## Сборка
 
-Для сборки нужен MinGW-w64 GCC с UCRT (скрипт автоматически использует `C:\msys64\ucrt64\bin\gcc.exe`, если `gcc` отсутствует в `PATH`). Запуск без параметров создаёт минимальную Lite-сборку: `translator.exe`, шрифт `bin\fonts\regular.ttf` и его лицензию `bin\fonts\LICENSE.txt`:
+### Требования для сборки
+
+- [Node.js LTS](https://nodejs.org/en/download).
+- [Go 1.24 или новее](https://go.dev/dl/).
+- MinGW-w64 GCC с UCRT. Если установлен MSYS2, скрипт использует `C:\msys64\ucrt64\bin\gcc.exe`, когда `gcc` отсутствует в `PATH`.
+
+Скрипт собирает интерфейс и приложение, результаты помещает в `dist`. Внешние модели и runtime он не скачивает.
+
+### Lite
 
 ```powershell
 .\build.ps1
 ```
 
-Чтобы добавить локальный image cleanup, пути к LaMa-модели и CPU DLL передаются вместе. Эти файлы не скачиваются автоматически:
+Создаётся `dist\lite`. Для запуска этой редакции на целевом компьютере нужны Ollama и модель, указанные в разделе **Lite**.
 
-- LaMa: скачайте [`inpainting_lama_2025jan.onnx` из OpenCV Zoo](https://github.com/opencv/opencv_zoo/raw/refs/heads/main/models/inpainting_lama/inpainting_lama_2025jan.onnx) и переименуйте файл в `inpainting_lama.onnx`.
-- ONNX Runtime: скачайте [CPU-архив ONNX Runtime 1.26.0 для Windows x64](https://github.com/microsoft/onnxruntime/releases/download/v1.26.0/onnxruntime-win-x64-1.26.0.zip); нужный `onnxruntime.dll` находится в каталоге `lib` архива.
+### Portable
+
+Для Portable нужен существующий GGUF-файл и распакованный Windows x64 runtime `llama.cpp` с `llama-server.exe`. Runtime можно скачать в [релизах llama.cpp](https://github.com/ggml-org/llama.cpp/releases).
 
 ```powershell
 .\build.ps1 `
-  -Edition Lite `
-  -InpaintModelPath C:\models\inpainting_lama.onnx `
-  -OnnxRuntimePath C:\runtime\onnxruntime.dll
+  -Edition Portable `
+  -ModelPath C:\models\translator.gguf `
+  -LlamaRuntimePath C:\runtime\llama
 ```
 
-Portable из заранее подготовленных локальных ресурсов:
+Создаётся `dist\portable`. Модель копируется в `models`, runtime — в `runtime\llama`; `config.json` настраивается на локальную модель.
+
+### Обе редакции
+
+```powershell
+.\build.ps1 `
+  -Edition All `
+  -ModelPath C:\models\translator.gguf `
+  -LlamaRuntimePath C:\runtime\llama
+```
+
+Создаются `dist\lite` и `dist\portable`.
+
+### Локальная очистка изображений
+
+Нужно скачать [`inpainting_lama_2025jan.onnx` из OpenCV Zoo](https://github.com/opencv/opencv_zoo/raw/refs/heads/main/models/inpainting_lama/inpainting_lama_2025jan.onnx), переименовать его в `inpainting_lama.onnx` и скачать [ONNX Runtime 1.26.0 для Windows x64](https://github.com/microsoft/onnxruntime/releases/download/v1.26.0/onnxruntime-win-x64-1.26.0.zip). Из архива ONNX Runtime используется файл `lib\onnxruntime.dll`.
 
 ```powershell
 .\build.ps1 `
@@ -72,73 +275,11 @@ Portable из заранее подготовленных локальных р�
   -OnnxRuntimePath C:\runtime\onnxruntime.dll
 ```
 
-Обе директории за один вызов создаются через `-Edition All` с теми же Portable-параметрами. Результаты находятся в `dist\lite` и `dist\portable`. Скрипт не создаёт ZIP или установщик, не включает WebView2 Runtime и не загружает внешние ресурсы.
+`-InpaintModelPath` и `-OnnxRuntimePath` передаются только вместе. Если их не указывать, каталог `bin\inpaint` не создаётся.
 
-Если `-InpaintModelPath` и `-OnnxRuntimePath` не указаны, каталог `bin\inpaint` не создаётся. Указать только один из этих параметров нельзя.
+## Примечания
 
-## Перевод изображений
-
-Приложение использует единственную встроенную OCR-реализацию — PaddleOCR. Локальный PP-OCRv5 detector и language-specific recognizers работают через общую CPU ONNX Runtime 1.26.0; Python, сервер и сетевые загрузки не используются. Модели располагаются в `bin\OCR`, а общая DLL для PaddleOCR и LaMa — в `runtime\onnx\onnxruntime.dll`.
-
-Одиночное изображение PNG или JPEG можно вставить через `Ctrl+V` либо передать Drag-and-Drop. Local provider извлекает текст через PaddleOCR и переводит его той же TranslateGemma. Ollama image provider этот pipeline не использует: исходное изображение передаётся непосредственно vision-модели Ollama.
-
-Local и batch OCR используют один и тот же PaddleOCR pipeline: PP-OCRv5 detector, recognizer для выбранного языка или автоматический выбор recognizer по региону, Paddle-specific tiling, объединение регионов и построение строк/абзацев. Пользовательского выбора OCR engine нет.
-
-OCR runtime разрешается только относительно каталога EXE:
-
-```text
-Sympllate/
-├── translator.exe
-├── bin/
-│   ├── OCR/
-│   │   ├── det.onnx
-│   │   ├── det.yml
-│   │   └── *_rec.onnx + *_rec.yml
-│   └── ffmpeg/
-│       └── ffmpeg.exe
-└── runtime/
-    └── onnx/
-        └── onnxruntime.dll
-```
-
-## Пакетный перевод изображений
-
-Кнопка с иконкой изображений и стрелок перевода справа от **Copy** открывает отдельное окно **Batch image translation**. В нём можно выбрать несколько PNG, JPEG, WebP, TIFF или BMP-файлов либо один каталог. Закрытие прячет окно по аналогии с quick translate popup; активное задание продолжает выполняться, а повторное открытие показывает его текущий статус. Каталог просматривается нерекурсивно; скрытые, временные, symbolic-link/junction entries и неподдерживаемые расширения пропускаются. Файлы сортируются natural sort (`page-2.png` перед `page-10.png`). Абсолютные пути выбранных файлов хранятся только на стороне Go в краткоживущем selection record и не передаются в WebView.
-
-Задание выполняет файлы последовательно: проверяет и копирует оригинал без перекодирования, запускает PaddleOCR, сохраняет детерминированные строки/абзацы и переводит их через TranslateGemma. После layout renderer анализирует кольцо пикселей вокруг OCR-области. Однородный фон очищается точной дешёвой заливкой; градиенты, рамки, UI и текстуры направляются в shared CPU-session LaMa. Для LaMa строится маска пикселей текста по foreground/background contrast с dilation в один пиксель. Близкие маски объединяются, получают 48 px контекста и aspect-ratio preserving letterbox до 512×512; целая страница не уменьшается.
-
-Размер исходного текста оценивается по OCR line boxes и ink bounds встроенного TTF; используется медиана строк, word boxes служат fallback, а высота paragraph box никогда не считается высотой одной строки, если известна многострочная структура. Полученный preferred font size ограничивается прежними `minimumFontSize`/`maximumFontSize`. Layout сначала проверяет исходный bbox при preferred size, затем безопасные расширения при том же размере и лишь после этого уменьшает шрифт с шагом 0.25 px. Обычный диапазон уменьшения ограничен 70% preferred size; дальнейшее уменьшение до hard minimum возможно только как диагностируемый emergency fallback. Расширение bbox не увеличивает font size.
-
-Перенос сохраняет явные переводы строк, выполняется по словам, слегка балансирует слишком короткую последнюю строку и безопасно разбивает слишком длинные URL/идентификаторы по rune boundary. Text box ограниченно расширяется вниз, затем по горизонтали, без пересечения соседних OCR-блоков. Блок, который нельзя безопасно восстановить, не очищается; файл получает статус `partial`. Минимальный размер шрифта и emergency shrink остаются предупреждениями. Если для сложного фона нельзя безопасно построить text mask или LaMa inference завершается ошибкой, файл получает явную ошибку `clean_background`; прямоугольная заливка как скрытый fallback не используется.
-
-Параллельные модельные запросы и несколько FFmpeg-процессов не выполняются. Задание можно отменить во время подготовки, layout, cleanup, render и encoding; уже записанные результаты сохраняются, временные файлы удаляются, а незавершённый итоговый файл не публикуется.
-
-Результаты создаются рядом с EXE, а не в текущем рабочем каталоге:
-
-```text
-_output/
-└── YYYY-MM-DD_HH-MM-SS[_N]/
-    ├── images/          # неизменённые копии оригиналов
-    ├── translated/      # итоговые изображения с заменённым текстом
-    ├── ocr/             # *.ocr.json
-    ├── translations/    # *.translation.json
-    ├── debug/           # опциональные *.ocr.png, *.cleaned.png, *.layout.png, *.render.json
-    ├── job.json
-    └── errors.json
-```
-
-Каждый OCR JSON имеет `schemaVersion: 1`, размеры и media type изображения, все raw OCR words (включая confidence и флаг `accepted`) и сгруппированные строки/абзацы с bounding boxes. Stable IDs имеют вид `p1-b2-par3`, `p1-b2-par3-l4`, `p1-b2-par3-l4-w5`. Confidence строки и абзаца — обычное среднее confidence входящих принятых слов.
-
-Translation JSON также имеет `schemaVersion: 1`. Для каждого абзаца он сохраняет тот же ID, исходный и переведённый текст, confidence и координаты. Ответ модели принимается только как один JSON object с точным множеством ID; допустимо снять один Markdown JSON fence. При нарушении формата выполняется один repair retry. Большие страницы делятся на последовательные chunks с 20% резервом character budget для ответа; слишком большой абзац сначала делится по OCR-строкам и после перевода собирается обратно. Использованные стабильные дочерние `*-part-N` units сохраняются в `parts` родительского translation block.
-
-Если принятого OCR-текста нет, модель, cleanup и renderer не вызываются; файл в `translated` является byte-for-byte копией оригинала, а translation status равен `no_text`. Ошибка отдельного файла записывается в `errors.json` и не останавливает остальные файлы; системная недоступность OCR, модели или обязательного шрифта завершает задание. После `completed` и `completed_with_errors` каталог автоматически открывается в Explorer. Ошибка Explorer не меняет успешный статус.
-
-PNG и JPEG для renderer декодируются и кодируются pure Go один раз. JPEG quality задаётся в `imageBatch.jpegQuality`. Для WebP, TIFF и BMP `bin\ffmpeg\ffmpeg.exe` нормализует вход в один временный PNG и один раз кодирует готовый PNG обратно в исходное расширение. Команды запускаются без shell, с timeout/cancellation, ограниченным stderr и проверкой результата. Оригинал в `images` никогда не заменяется.
-
-Renderer использует Go Regular из `golang.org/x/image/font/gofont/goregular` (BSD-3-Clause). Сборка детерминированно создаёт `bin\fonts\regular.ttf` рядом с EXE и кладёт рядом текст лицензии; системные Windows fonts не используются. Один TTF парсится один раз, faces кэшируются по размеру. Проверены латиница, кириллица, цифры и символы, присутствующие в шрифте. Сложный shaping арабского письма, вертикальный текст, блоки 90°/270° и произвольный rotation текущим pure-Go renderer не поддерживаются.
-
-Debug mode создаёт OCR overlay, изображение после hybrid cleanup (`*.cleaned.png`), итоговый layout overlay с source/cleanup/text boxes (`*.layout.png`) и фактический `RenderDocument` (`*.render.json`). Overlay показывает ID, preferred/final size, число строк и флаги bbox expansion/font reduction. JSON дополнительно содержит source/translated text, обе области, font metrics, line baselines, score и fallback reason. Ошибка debug-файла не отменяет основной результат.
-
-Параметры `imageBatch` в `config.json`: `minimumFontSize`, `maximumFontSize`, `lineSpacing` и `jpegQuality`. Порог однородности, sampling, mask dilation, crop padding и tensor preprocessing являются тестируемыми деталями реализации и не вынесены в пользовательский config.
-
-ONNX environment, LaMa session и фиксированные tensors создаются один раз при запуске приложения, переиспользуются всеми изображениями и освобождаются после отмены/завершения batch jobs при shutdown. Одновременно выполняется не более одного inference. Alpha исходника сохраняется вне маски и предсказуемо сохраняется внутри восстановленных пикселей.
+- В Lite название в `ollama.model` должно совпадать с моделью, показанной командой `ollama list`.
+- В Portable `localModel.modelFile` должен указывать на существующую `.gguf`-модель. При пустом значении в `models` допускается только один GGUF-файл.
+- Ошибка подключения к Ollama обычно означает, что Ollama не запущена, модель не загружена или изменён `ollama.baseUrl`.
+- Ошибка запуска Portable обычно означает, что перенесён только `translator.exe` либо в `runtime\llama` отсутствуют DLL из того же архива, что и `llama-server.exe`.
