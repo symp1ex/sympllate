@@ -4,25 +4,25 @@
   background: var(--background);
   color-scheme: dark;
   font-synthesis: none;
-  --background: #121416;
-  --surface: #121416;
-  --surface-container: #1b1e21;
-  --surface-container-high: #25292d;
-  --surface-container-highest: #30353a;
-  --primary: #bec7d0;
-  --on-primary: #242b32;
-  --primary-container: #3c4853;
-  --on-primary-container: #dce4ed;
-  --on-surface: #e4e7eb;
-  --on-surface-variant: #bec4cb;
-  --outline: #8c959f;
-  --outline-variant: #444b53;
+  --background: #11161a;
+  --surface: #11161a;
+  --surface-container: #171d22;
+  --surface-container-high: #1c2329;
+  --surface-container-highest: #222a31;
+  --primary: #a9bac8;
+  --on-primary: #172028;
+  --primary-container: #344653;
+  --on-primary-container: #dce6ed;
+  --on-surface: #e6ebef;
+  --on-surface-variant: #aab4bd;
+  --outline: #53606b;
+  --outline-variant: #323c45;
   --error: #ffb4ab;
   --error-container: #93000a;
   --on-error-container: #ffdad6;
   --disabled-content: #9fa7af;
-  --disabled-container: #30363c;
-  --state-rgb: 228, 231, 235;
+  --disabled-container: var(--surface-container-highest);
+  --state-rgb: 230, 235, 239;
   --state-hover: 0.08;
   --state-pressed: 0.12;
   --radius-small: 2px;
@@ -82,14 +82,13 @@ button, input, select, textarea { font: inherit; }
   min-width: 0;
   flex: 1 1 auto;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   padding-left: 10.5px;
   color: var(--on-surface);
   font-size: 19px;
   font-weight: 600;
   letter-spacing: 0.2px;
   pointer-events: none;
-  transform: translateY(2px);
 }
 .custom-titlebar__name {
   min-width: 0;
@@ -110,7 +109,7 @@ button, input, select, textarea { font: inherit; }
   font-size: 10px;
   line-height: 1;
   font-weight: 500;
-  align-self: baseline;
+  align-self: center;
   pointer-events: auto;
   cursor: pointer;
 }
@@ -129,8 +128,7 @@ button, input, select, textarea { font: inherit; }
   width: 8px;
   height: 8px;
   margin-left: -0.5px;
-  align-self: baseline;
-  margin-bottom: 1px;
+  align-self: center;
   border: 1px solid var(--outline-variant);
   border-top-color: var(--on-surface);
   border-radius: 50%;
@@ -153,6 +151,9 @@ button, input, select, textarea { font: inherit; }
   width: 29px;
   height: 24px;
   flex: 0 0 29px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
   border-radius: var(--radius-small);
   padding: 0;
@@ -164,7 +165,6 @@ button, input, select, textarea { font: inherit; }
   cursor: pointer;
   transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;
 }
-.custom-titlebar button.custom-titlebar__button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .custom-titlebar__button--maximize { font-size: 14px; line-height: 16px; }
 .custom-titlebar__button--settings { font-size: 15px; line-height: 18px; }
 .custom-titlebar button.custom-titlebar__button--close:hover { background: var(--error-container); color: var(--on-error-container); }
@@ -177,12 +177,19 @@ button, select {
   transition: border-color 140ms ease, background 140ms ease, color 140ms ease, box-shadow 140ms ease;
 }
 button { padding: 9px 14px; border-radius: var(--radius-medium); cursor: pointer; }
-button:hover:not(:disabled):not([aria-disabled="true"]) { box-shadow: inset 0 0 0 100px rgba(var(--state-rgb), var(--state-hover)); }
-button:active:not(:disabled):not([aria-disabled="true"]) { box-shadow: inset 0 0 0 100px rgba(var(--state-rgb), var(--state-pressed)); }
-button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+button:hover:not(:disabled):not([aria-disabled="true"]) { box-shadow: var(--focus-shadow, inset 0 0 0 0 transparent), inset 0 0 0 100px rgba(var(--state-rgb), var(--state-hover)); }
+button:active:not(:disabled):not([aria-disabled="true"]) { box-shadow: var(--focus-shadow, inset 0 0 0 0 transparent), inset 0 0 0 100px rgba(var(--state-rgb), var(--state-pressed)); }
+button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible { outline: none; border-color: var(--primary); }
+button:focus-visible { box-shadow: var(--focus-shadow, none); }
+.custom-titlebar__button:focus-visible,
+.custom-titlebar__version:focus-visible,
+.settings-back-button:focus-visible { --focus-shadow: inset 0 0 0 1px var(--primary); }
+.primary:focus-visible { border-color: var(--on-primary); }
+.settings-save-button:focus-visible { --focus-shadow: inset 0 0 0 1px var(--on-primary); }
+input[type="checkbox"]:focus-visible { outline: 1px solid var(--primary); outline-offset: 1px; }
 .primary,
 .settings-save-button {
-  --state-rgb: 36, 43, 50;
+  --state-rgb: 23, 32, 40;
   border-color: transparent;
   background: var(--primary);
   color: var(--on-primary);
@@ -236,10 +243,6 @@ textarea::placeholder, input::placeholder { color: var(--on-surface-variant); op
   background: var(--surface-container-high);
 }
 
-.language-select select:focus {
-  border-color: var(--primary);
-}
-
 .swap {
   position: absolute;
   left: 50%;
@@ -284,7 +287,6 @@ textarea {
   line-height: 1.5;
   transition: border-color 160ms ease, background 160ms ease;
 }
-textarea:focus { border-color: var(--primary); background: var(--surface-container-highest); }
 textarea[readonly] { background: var(--surface-container); }
 .actions { min-height: 48px; flex: 0 0 auto; display: flex; align-items: center; gap: 10px; margin-top: 14px; }
 .batch-window-launcher { width: 38px; height: 36px; flex: 0 0 38px; display: inline-grid; place-items: center; padding: 0; }
@@ -393,8 +395,8 @@ textarea[readonly] { background: var(--surface-container); }
   color: var(--on-surface);
   transition: border-color 160ms ease, background 160ms ease;
 }
-.settings-field input:focus,
-.settings-field select:focus { border-color: var(--primary); background: var(--surface-container-highest); }
+.settings-field input:focus-visible,
+.settings-field select:focus-visible { border-color: var(--primary); }
 .settings-field select { cursor: pointer; }
 .settings-field option { background: var(--surface-container-high); color: var(--on-surface); }
 .settings-checkbox-row { width: fit-content; display: inline-flex; align-items: center; gap: 10px; color: var(--on-surface); font-size: 16px; font-weight: 500; cursor: pointer; }
