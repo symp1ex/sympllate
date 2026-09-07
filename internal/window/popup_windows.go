@@ -199,6 +199,18 @@ func (p *Popup) ChangeQuickTranslationTarget(target string) error {
 	}
 	return handler.ChangeQuickTranslationTarget(target)
 }
+
+func (p *Popup) ReplaceQuickTranslation() error {
+	p.mu.RLock()
+	handler := p.handler
+	p.mu.RUnlock()
+	if handler == nil {
+		return errors.New("quick translation handler is not configured")
+	}
+	handler.ReplaceSelection()
+	return nil
+}
+
 func (p *Popup) State() app.PopupState { p.mu.RLock(); defer p.mu.RUnlock(); return p.state }
 func (p *Popup) Close() {
 	p.mu.RLock()

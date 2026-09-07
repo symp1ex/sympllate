@@ -16,7 +16,9 @@ import (
 func TestValidateImageRequestPNG(t *testing.T) {
 	t.Parallel()
 	data := encodeTestImage(t, "png")
-	validated, err := ValidateImageRequest(imageRequest(data, "image/png"))
+	req := imageRequest(data, "image/png")
+	req.Source = "auto"
+	validated, err := ValidateImageRequest(req)
 	if err != nil || validated.MediaType != "image/png" || validated.Width != 2 || validated.Height != 3 || validated.ByteLength != len(data) {
 		t.Fatalf("ValidateImageRequest() = %+v, %v", validated, err)
 	}

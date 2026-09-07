@@ -32,6 +32,11 @@ export function TranslationPopup({ languages }: { languages: Language[]; config:
     catch (caught) { setState((current) => ({ ...current, error: errorMessage(caught) })) }
   }
 
+  const replaceTranslation = async () => {
+    try { await window.ReplaceQuickTranslation() }
+    catch (caught) { setState((current) => ({ ...current, error: errorMessage(caught) })) }
+  }
+
   return (
     <main className="popup-shell">
       <section className="language-row popup-languages">
@@ -43,6 +48,7 @@ export function TranslationPopup({ languages }: { languages: Language[]; config:
       <div className="actions popup-actions">
         <button onClick={() => void copyTranslation()} disabled={state.loading || !state.translatedText}>Copy</button>
         <button onClick={() => void window.HidePopup()}>Close</button>
+        <button onClick={() => void replaceTranslation()} disabled={state.loading || !state.translatedText}>Replace</button>
       </div>
     </main>
   )

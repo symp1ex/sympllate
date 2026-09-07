@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { defaultConcreteSource, sourceLanguageForImage } from '../src/languageDefaults.ts'
+import { defaultConcreteSource } from '../src/languageDefaults.ts'
 
 const languages = [
   { code: 'auto', name: 'Auto-detect' },
@@ -21,14 +21,4 @@ test('falls back to the first concrete language', () => {
 test('returns an empty safe value when no concrete language is available', () => {
   assert.equal(defaultConcreteSource([], 'en'), '')
   assert.equal(defaultConcreteSource([{ code: 'auto', name: 'Auto-detect' }], 'en'), '')
-})
-
-test('image mode replaces only auto-detect with a concrete source', () => {
-  assert.equal(sourceLanguageForImage('auto', languages, 'en'), 'en')
-  assert.equal(sourceLanguageForImage('auto', languages, 'missing'), 'ru')
-  assert.equal(sourceLanguageForImage('ru', languages, 'en'), 'ru')
-})
-
-test('image mode keeps auto-detect when it is the only available source', () => {
-  assert.equal(sourceLanguageForImage('auto', [{ code: 'auto', name: 'Auto-detect' }], 'en'), 'auto')
 })

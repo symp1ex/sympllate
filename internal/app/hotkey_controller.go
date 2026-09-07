@@ -55,6 +55,7 @@ type Popup interface {
 
 type QuickTranslationHandler interface {
 	ChangeQuickTranslationTarget(target string) error
+	ReplaceSelection()
 	EndQuickTranslation()
 }
 

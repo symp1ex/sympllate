@@ -107,6 +107,12 @@ func bindCommon(w webview.WebView, mode string, cfg config.Config, service *app.
 			}
 			return popup.ChangeQuickTranslationTarget(target)
 		}},
+		{"ReplaceQuickTranslation", func() error {
+			if popup == nil {
+				return errors.New("quick translation popup is unavailable")
+			}
+			return popup.ReplaceQuickTranslation()
+		}},
 		{"GetPopupState", func() app.PopupState {
 			if popup == nil {
 				return app.PopupState{}

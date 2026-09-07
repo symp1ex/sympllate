@@ -75,6 +75,7 @@ declare global {
     CopyText(text: string): Promise<void>
     HidePopup(): Promise<void>
     SetQuickTranslationTarget(target: string): Promise<void>
+    ReplaceQuickTranslation(): Promise<void>
     GetPopupState(): Promise<PopupState>
     getApplicationInfo?: () => ApplicationInfo | Promise<ApplicationInfo>
     checkApplicationUpdate?: () => CheckApplicationUpdateResult | Promise<CheckApplicationUpdateResult>
