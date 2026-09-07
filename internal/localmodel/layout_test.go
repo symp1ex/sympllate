@@ -148,9 +148,9 @@ func TestSelectProvider(t *testing.T) {
 	}
 }
 
-func TestBuildArgumentsRequiresAutomaticGPUFit(t *testing.T) {
+func TestBuildArgumentsUsesProfileAndRequiresAutomaticGPUFit(t *testing.T) {
 	t.Parallel()
-	args := BuildArguments(Layout{ModelPath: `C:\app\models\m.gguf`}, 4321, "secret", 2048, 1024)
+	args := BuildArguments(Layout{ModelPath: `C:\app\models\m.gguf`}, config.ProfileGeneric, 4321, "secret", 2048, 1024)
 	joined := strings.Join(args, " ")
 	for _, required := range []string{
 		"--host 127.0.0.1", "--port 4321", "--alias " + ModelAlias,
@@ -163,5 +163,9 @@ func TestBuildArgumentsRequiresAutomaticGPUFit(t *testing.T) {
 	}
 	if strings.Contains(joined, "--gpu-layers all") {
 		t.Fatalf("unsafe gpu layer mode: %s", joined)
+	}
+	translateGemmaArgs := BuildArguments(Layout{ModelPath: `C:\app\models\m.gguf`}, config.ProfileTranslateGemma, 4321, "secret", 2048, 1024)
+	if strings.Contains(strings.Join(translateGemmaArgs, " "), "--no-jinja") {
+		t.Fatalf("TranslateGemma arguments disable Jinja: %v", translateGemmaArgs)
 	}
 }

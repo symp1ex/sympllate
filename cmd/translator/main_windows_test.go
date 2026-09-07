@@ -6,10 +6,74 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/sympllate/translator/internal/config"
 )
+
+func TestNormalizeLocalModelProfileForNormalMode(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "config.json")
+	cfg := config.Default()
+	cfg.LocalModel.Profile = config.ProfileTranslateGemma
+	if err := config.Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	got, err := normalizeLocalModelProfile(path, cfg, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LocalModel.Profile != config.ProfileGeneric {
+		t.Fatalf("normalized profile = %q", got.LocalModel.Profile)
+	}
+	saved, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.LocalModel.Profile != config.ProfileGeneric {
+		t.Fatalf("saved profile = %q", saved.LocalModel.Profile)
+	}
+}
+
+func TestNormalizeLocalModelProfileKeepsDebugProfile(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "config.json")
+	cfg := config.Default()
+	cfg.LocalModel.Profile = config.ProfileTranslateGemma
+	if err := config.Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	got, err := normalizeLocalModelProfile(path, cfg, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LocalModel.Profile != config.ProfileTranslateGemma {
+		t.Fatalf("debug profile = %q", got.LocalModel.Profile)
+	}
+	saved, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.LocalModel.Profile != config.ProfileTranslateGemma {
+		t.Fatalf("saved debug profile = %q", saved.LocalModel.Profile)
+	}
+}
+
+func TestNormalizeLocalModelProfileReturnsSaveError(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.LocalModel.Profile = config.ProfileTranslateGemma
+	_, err := normalizeLocalModelProfile(t.TempDir(), cfg, false)
+	if err == nil {
+		t.Fatal("expected profile normalization save error")
+	}
+	var pathError *os.PathError
+	if !errors.As(err, &pathError) {
+		t.Fatalf("normalization error = %v", err)
+	}
+}
 
 func TestStartupUIRequiredForSelectedProvider(t *testing.T) {
 	t.Parallel()

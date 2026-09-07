@@ -68,7 +68,7 @@ func startWith(ctx context.Context, cfg RuntimeConfig, output io.Writer, starter
 	if err != nil {
 		return nil, err
 	}
-	args := BuildArguments(cfg.Layout, port, apiKey, cfg.NumCtx, cfg.FitTargetMiB)
+	args := BuildArguments(cfg.Layout, cfg.Profile, port, apiKey, cfg.NumCtx, cfg.FitTargetMiB)
 	process, err := starter(cfg.Layout.ServerPath, args, cfg.Layout.RuntimeDir, output)
 	if err != nil {
 		return nil, fmt.Errorf("start llama-server: %w", err)

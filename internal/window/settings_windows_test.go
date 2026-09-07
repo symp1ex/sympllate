@@ -50,7 +50,7 @@ func TestSettingsBindingsModelListAndProfileSave(t *testing.T) {
 		t.Fatalf("models = %v, %v", models, err)
 	}
 	cfg, err := get()
-	if err != nil || cfg.LocalModel.Profile != "translategemma" || cfg.LocalModel.ModelFile != "" {
+	if err != nil || cfg.LocalModel.Profile != config.ProfileGeneric || cfg.LocalModel.ModelFile != "" {
 		t.Fatalf("defaults = %+v, %v", cfg.LocalModel, err)
 	}
 	cfg.LocalModel.Profile = "generic"
@@ -74,5 +74,28 @@ func TestSettingsBindingsModelListAndProfileSave(t *testing.T) {
 	loaded, err = get()
 	if err != nil || loaded.LocalModel.Profile != "generic" {
 		t.Fatalf("invalid save changed config: %+v, %v", loaded, err)
+	}
+}
+
+func TestSettingsProfileOptionsFollowDebugMode(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name  string
+		debug bool
+		want  []string
+	}{
+		{name: "normal", want: []string{config.ProfileGeneric}},
+		{name: "debug", debug: true, want: []string{config.ProfileGeneric, config.ProfileTranslateGemma}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			view := &settingsWebView{bindings: make(map[string]any)}
+			if err := bindMainSettings(view, &MainWindow{debug: test.debug}); err != nil {
+				t.Fatal(err)
+			}
+			profiles := view.bindings["GetLocalModelProfiles"].(func() []string)()
+			if !reflect.DeepEqual(profiles, test.want) {
+				t.Fatalf("profiles = %v, want %v", profiles, test.want)
+			}
+		})
 	}
 }

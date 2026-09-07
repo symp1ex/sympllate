@@ -107,22 +107,26 @@ func SelectProvider(provider, executableDir string, cfg config.LocalModelConfig)
 	}
 }
 
-func BuildArguments(layout Layout, port int, apiKey string, numCtx, fitTargetMiB int) []string {
-	return []string{
+func BuildArguments(layout Layout, profile string, port int, apiKey string, numCtx, fitTargetMiB int) []string {
+	args := []string{
 		"--model", layout.ModelPath,
 		"--alias", ModelAlias,
 		"--host", "127.0.0.1",
 		"--port", fmt.Sprintf("%d", port),
 		"--api-key", apiKey,
 		"--no-webui",
-		"--no-jinja",
+	}
+	if profile != config.ProfileTranslateGemma {
+		args = append(args, "--no-jinja")
+	}
+	return append(args,
 		"--offline",
 		"--parallel", "1",
 		"--ctx-size", fmt.Sprintf("%d", numCtx),
 		"--gpu-layers", "auto",
 		"--fit", "on",
 		"--fit-target", fmt.Sprintf("%d", fitTargetMiB),
-	}
+	)
 }
 
 func requireFile(path string) error {

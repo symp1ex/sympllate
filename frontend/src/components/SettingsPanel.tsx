@@ -27,6 +27,7 @@ function settingTitle(value: string) {
 export function SettingsPanel({ onBack }: Props) {
   const [config, setConfig] = useState<JsonSettingObject | null>(null)
   const [models, setModels] = useState<string[]>([])
+  const [profiles, setProfiles] = useState<string[]>([])
   const [modelsError, setModelsError] = useState('')
   const [status, setStatus] = useState('Loading settings...')
   const [loading, setLoading] = useState(true)
@@ -35,7 +36,12 @@ export function SettingsPanel({ onBack }: Props) {
   const loadConfig = async () => {
     setLoading(true)
     try {
-      setConfig(await window.GetSettingsConfig())
+      const [loadedConfig, loadedProfiles] = await Promise.all([
+        window.GetSettingsConfig(),
+        window.GetLocalModelProfiles(),
+      ])
+      setConfig(loadedConfig)
+      setProfiles(loadedProfiles)
       setStatus('Settings loaded')
       try {
         setModels(await window.GetLocalModels())
@@ -108,13 +114,13 @@ export function SettingsPanel({ onBack }: Props) {
     const key = path.join('.')
     if (typeof value === 'string' && (key === 'localModel.modelFile' || key === 'localModel.profile')) {
       const modelSetting = key === 'localModel.modelFile'
-      const options = modelSetting ? models : ['translategemma', 'generic']
+      const options = modelSetting ? models : profiles
       return (
         <label key={key} className="settings-field">
           <span>{settingTitle(label)}</span>
           <select value={value} onChange={(event) => updatePrimitive(path, event.target.value)}>
             {modelSetting && <option value="">{models.length === 1 ? `Automatic: ${models[0]}` : 'Automatic (requires exactly one GGUF)'}</option>}
-            {value && !options.includes(value) && <option value={value}>{value} (configured path)</option>}
+            {modelSetting && value && !options.includes(value) && <option value={value}>{value} (configured path)</option>}
             {options.map((option) => <option key={option} value={option}>{option}</option>)}
           </select>
           {modelSetting && modelsError && <span role="alert">{modelsError}</span>}

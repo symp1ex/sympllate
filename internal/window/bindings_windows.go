@@ -29,6 +29,7 @@ func bindMainSettings(w webview.WebView, mainWindow *MainWindow) error {
 			}
 			return localmodel.ListModels(directory)
 		}},
+		{"GetLocalModelProfiles", func() []string { return localModelProfiles(mainWindow.debug) }},
 		{"SaveSettingsConfig", func(cfg config.Config) error {
 			if err := config.Save(mainWindow.cfgPath, cfg); err != nil {
 				return err
@@ -48,6 +49,14 @@ func bindMainSettings(w webview.WebView, mainWindow *MainWindow) error {
 		}
 	}
 	return nil
+}
+
+func localModelProfiles(debug bool) []string {
+	profiles := []string{config.ProfileGeneric}
+	if debug {
+		profiles = append(profiles, config.ProfileTranslateGemma)
+	}
+	return profiles
 }
 
 type ClientConfig struct {

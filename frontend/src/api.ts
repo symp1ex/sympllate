@@ -67,6 +67,7 @@ declare global {
     GetInitialView(): Promise<'main' | 'settings'>
     GetSettingsConfig(): Promise<JsonSettingObject>
     GetLocalModels(): Promise<string[]>
+    GetLocalModelProfiles(): Promise<string[]>
     SaveSettingsConfig(config: JsonSettingObject): Promise<void>
     WindowMinimize(): Promise<void>
     WindowToggleMaximize(): Promise<boolean>

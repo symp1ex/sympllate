@@ -31,13 +31,15 @@ type Config struct {
 var Cfg = Default()
 
 const (
-	ProviderAuto    = "auto"
-	ProviderOllama  = "ollama"
-	ProviderLocal   = "local"
-	LogLevelDebug   = "debug"
-	LogLevelInfo    = "info"
-	LogLevelWarning = "warning"
-	LogLevelError   = "error"
+	ProviderAuto          = "auto"
+	ProviderOllama        = "ollama"
+	ProviderLocal         = "local"
+	ProfileGeneric        = "generic"
+	ProfileTranslateGemma = "translategemma"
+	LogLevelDebug         = "debug"
+	LogLevelInfo          = "info"
+	LogLevelWarning       = "warning"
+	LogLevelError         = "error"
 )
 
 type SelectSetting struct {
@@ -134,7 +136,7 @@ func Default() Config {
 	languages := supportedTargetLanguages()
 	return Config{
 		Provider:               newSelectSetting(ProviderAuto, []string{ProviderAuto, ProviderOllama, ProviderLocal}),
-		LocalModel:             LocalModelConfig{ModelFile: "", Profile: "translategemma", StartupTimeoutSeconds: 180, FitTargetMiB: 1024},
+		LocalModel:             LocalModelConfig{ModelFile: "", Profile: ProfileGeneric, StartupTimeoutSeconds: 180, FitTargetMiB: 1024},
 		Ollama:                 OllamaConfig{BaseURL: "http://127.0.0.1:11434", Model: "translategemma:latest", TimeoutSeconds: 120, KeepAlive: "10m", NumCtx: 2048, NumPredict: 1024, Temperature: 0},
 		Hotkeys:                HotkeyConfig{ShowTranslation: "Ctrl+Win+X", ReplaceSelection: "Ctrl+Win+R"},
 		DefaultLanguagePair:    LanguagePair{First: newSelectSetting("ru", languages), Second: newSelectSetting("en", languages)},
@@ -265,7 +267,7 @@ func unwrapPathError(err error) error {
 }
 
 func (c Config) Validate() error {
-	if c.LocalModel.Profile != "translategemma" && c.LocalModel.Profile != "generic" {
+	if c.LocalModel.Profile != ProfileTranslateGemma && c.LocalModel.Profile != ProfileGeneric {
 		return errors.New("localModel.profile must be translategemma or generic")
 	}
 	if err := validateSelectSetting("provider", c.Provider); err != nil {

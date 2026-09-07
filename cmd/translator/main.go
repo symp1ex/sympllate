@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -33,10 +34,12 @@ import (
 )
 
 var errRestartRequested = errors.New("application restart requested")
-var version = "0.4.1.4"
+var version = "0.4.2.0"
+var debugMode = flag.Bool("debug", false, "enable experimental application features")
 
 func main() {
-	if err := run(); errors.Is(err, errRestartRequested) {
+	flag.Parse()
+	if err := run(*debugMode); errors.Is(err, errRestartRequested) {
 		if restartErr := restartApplication(); restartErr != nil {
 			showError(restartErr)
 			os.Exit(1)
@@ -47,12 +50,16 @@ func main() {
 	}
 }
 
-func run() (runErr error) {
+func run(debugMode bool) (runErr error) {
 	configPath, err := config.ExecutablePath()
 	if err != nil {
 		return err
 	}
 	cfg, created, err := config.LoadOrCreate(configPath)
+	if err != nil {
+		return err
+	}
+	cfg, err = normalizeLocalModelProfile(configPath, cfg, debugMode)
 	if err != nil {
 		return err
 	}
@@ -242,7 +249,7 @@ func run() (runErr error) {
 		default:
 		}
 	}
-	mainWindow := window.NewMainWindow(cfg, configPath, version, html, service, batchWindow, clip, popup, applicationLogger, showError, requestRestart)
+	mainWindow := window.NewMainWindow(cfg, configPath, version, html, service, batchWindow, clip, popup, applicationLogger, debugMode, showError, requestRestart)
 	systemTray := tray.New(mainWindow.Open, mainWindow.OpenSettings, applicationLogger)
 	var cleanupOnce sync.Once
 	cleanup := func() {
@@ -302,6 +309,17 @@ func run() (runErr error) {
 		return errRestartRequested
 	}
 	return nil
+}
+
+func normalizeLocalModelProfile(configPath string, cfg config.Config, debugMode bool) (config.Config, error) {
+	if debugMode || cfg.LocalModel.Profile != config.ProfileTranslateGemma {
+		return cfg, nil
+	}
+	cfg.LocalModel.Profile = config.ProfileGeneric
+	if err := config.Save(configPath, cfg); err != nil {
+		return config.Config{}, fmt.Errorf("normalize localModel.profile for normal mode: %w", err)
+	}
+	return cfg, nil
 }
 
 func startupUIRequired(selectedProvider string) bool {

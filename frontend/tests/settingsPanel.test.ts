@@ -25,14 +25,15 @@ function elements(node: ReactNode): Element[] {
   return [node, ...elements(node.props.children as ReactNode)]
 }
 
-async function mountSettings(initialModels: string[], modelFile = '', modelError = '') {
+async function mountSettings(initialModels: string[], modelFile = '', modelError = '', profiles = ['generic'], profile = 'generic') {
   let models = initialModels
-  const config: JsonSettingObject = { localModel: { modelFile, profile: 'translategemma', startupTimeoutSeconds: 180 } }
+  const config: JsonSettingObject = { localModel: { modelFile, profile, startupTimeoutSeconds: 180 } }
   const saved: JsonSettingObject[] = []
   let listCalls = 0
   const window = {
     GetSettingsConfig: async () => structuredClone(config),
     GetLocalModels: async () => { listCalls++; if (modelError) throw new Error(modelError); return [...models] },
+    GetLocalModelProfiles: async () => [...profiles],
     SaveSettingsConfig: async (value: JsonSettingObject) => { saved.push(structuredClone(value)) },
   }
   const state: unknown[] = []
@@ -81,16 +82,23 @@ async function mountSettings(initialModels: string[], modelFile = '', modelError
   return { field, change, click, saved, markup: () => renderToStaticMarkup(render()), listCalls: () => listCalls, setModels: (next: string[]) => { models = next } }
 }
 
-test('Settings obtains current models and renders model and default profile selectors', async () => {
+test('normal Settings offers only the generic profile', async () => {
   const panel = await mountSettings(['models/one.gguf', 'models/two.GGUF'])
   assert.equal(panel.listCalls(), 1)
   assert.equal(panel.field('modelFile').props.value, '')
-  assert.equal(panel.field('profile').props.value, 'translategemma')
+  assert.equal(panel.field('profile').props.value, 'generic')
   const markup = panel.markup()
   assert.match(markup, /models\/one.gguf/)
   assert.match(markup, /models\/two.GGUF/)
-  assert.match(markup, /<option value="translategemma" selected="">translategemma/)
+  assert.doesNotMatch(markup, /value="translategemma"/)
+  assert.match(markup, /<option value="generic" selected="">generic/)
+})
+
+test('debug Settings offers generic and translategemma profiles', async () => {
+  const panel = await mountSettings([], '', '', ['generic', 'translategemma'], 'translategemma')
+  const markup = panel.markup()
   assert.match(markup, /<option value="generic">generic/)
+  assert.match(markup, /<option value="translategemma" selected="">translategemma/)
 })
 
 test('Settings saves explicit modelFile and generic without persisting the model list', async () => {
@@ -108,7 +116,7 @@ test('one model retains automatic selection and saves an empty modelFile', async
   assert.match(panel.markup(), /Automatic: models\/only.gguf/)
   assert.equal(panel.field('modelFile').props.value, '')
   await panel.click('Save')
-  assert.deepEqual(panel.saved[0].localModel, { modelFile: '', profile: 'translategemma', startupTimeoutSeconds: 180 })
+  assert.deepEqual(panel.saved[0].localModel, { modelFile: '', profile: 'generic', startupTimeoutSeconds: 180 })
 })
 
 test('Restore refreshes the model list from disk without selecting an arbitrary model', async () => {

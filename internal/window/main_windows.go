@@ -41,6 +41,7 @@ type MainWindow struct {
 	clip        *clipboard.Manager
 	popup       *Popup
 	logger      logger.PrintLogger
+	debug       bool
 	onError     func(error)
 	onRestart   func()
 
@@ -55,7 +56,7 @@ type MainWindow struct {
 	updateCheckRunning bool
 }
 
-func NewMainWindow(cfg config.Config, cfgPath, version, html string, service *app.Service, batchWindow *ImageBatchWindow, clip *clipboard.Manager, popup *Popup, logger logger.PrintLogger, onError func(error), onRestart func()) *MainWindow {
+func NewMainWindow(cfg config.Config, cfgPath, version, html string, service *app.Service, batchWindow *ImageBatchWindow, clip *clipboard.Manager, popup *Popup, logger logger.PrintLogger, debug bool, onError func(error), onRestart func()) *MainWindow {
 	return &MainWindow{
 		cfg:         cfg,
 		cfgPath:     cfgPath,
@@ -66,6 +67,7 @@ func NewMainWindow(cfg config.Config, cfgPath, version, html string, service *ap
 		clip:        clip,
 		popup:       popup,
 		logger:      logger,
+		debug:       debug,
 		onError:     onError,
 		onRestart:   onRestart,
 		state:       mainWindowIdle,
