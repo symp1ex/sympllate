@@ -94,7 +94,37 @@ Sympllate/
         └── onnxruntime.dll
 ```
 
-Модель LaMa и `onnxruntime.dll` добавляются скриптом сборки, параметры приведены в разделе **Сборка**. OCR-файлы должны быть подготовлены в составе Portable-поставки.
+Модель LaMa и `onnxruntime.dll` добавляются скриптом сборки, параметры приведены в разделе **Сборка**. OCR-файлы (PP-OCRv5) должны быть подготовлены в составе Portable-поставки.
+
+<details>
+<summary><strong>Где взять PaddleOCR</strong></summary>
+
+### Модели из OCR-бандла
+
+| Файлы | Модель |
+|---|---|
+| `det.onnx` / `det.yml` | `PP-OCRv5_mobile_det` |
+| `cjk_rec.onnx` / `cjk_rec.yml` | `PP-OCRv5_mobile_rec` |
+| `latin_rec.onnx` / `latin_rec.yml` | `latin_PP-OCRv5_mobile_rec` |
+| `eslav_rec.onnx` / `eslav_rec.yml` | `eslav_PP-OCRv5_mobile_rec` |
+| `arabic_rec.onnx` / `arabic_rec.yml` | `arabic_PP-OCRv5_mobile_rec` |
+| `korean_rec.onnx` / `korean_rec.yml` | `korean_PP-OCRv5_mobile_rec` |
+
+### Источники
+
+- **PaddleOCR:** [PaddlePaddle/PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
+- **Официальные модели:** [PaddlePaddle на Hugging Face](https://huggingface.co/PaddlePaddle)
+
+### Страницы моделей
+
+- [`PP-OCRv5_mobile_det`](https://huggingface.co/PaddlePaddle/PP-OCRv5_mobile_det_onnx)
+- [`PP-OCRv5_mobile_rec`](https://huggingface.co/PaddlePaddle/PP-OCRv5_mobile_rec_onnx)
+- [`latin_PP-OCRv5_mobile_rec`](https://huggingface.co/PaddlePaddle/latin_PP-OCRv5_mobile_rec)
+- [`eslav_PP-OCRv5_mobile_rec`](https://huggingface.co/PaddlePaddle/eslav_PP-OCRv5_mobile_rec)
+- [`arabic_PP-OCRv5_mobile_rec`](https://huggingface.co/PaddlePaddle/arabic_PP-OCRv5_mobile_rec_onnx)
+- [`korean_PP-OCRv5_mobile_rec`](https://huggingface.co/PaddlePaddle/korean_PP-OCRv5_mobile_rec_onnx)
+
+</details>
 
 ## Конфигурация
 
