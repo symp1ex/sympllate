@@ -119,6 +119,7 @@ button, input, select, textarea { font: inherit; }
   font-weight: 500;
   pointer-events: auto;
   cursor: pointer;
+  transform: translateY(-1px);
 }
 .custom-titlebar button.custom-titlebar__version--idle:hover { color: var(--on-surface); }
 .custom-titlebar button.custom-titlebar__version--disabled,
