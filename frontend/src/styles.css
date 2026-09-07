@@ -133,8 +133,8 @@ button, input, select, textarea { font: inherit; }
 .custom-titlebar button.custom-titlebar__version--error { color: var(--error); }
 
 .custom-titlebar__spinner {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   align-self: center;
   margin-left: -0.5px;
   border: 1px solid var(--outline-variant);
@@ -144,7 +144,15 @@ button, input, select, textarea { font: inherit; }
   pointer-events: none;
 }
 
-@keyframes titlebar-spinner { to { transform: rotate(360deg); } }
+@keyframes titlebar-spinner {
+  from {
+    transform: translateY(4px) rotate(0deg);
+  }
+
+  to {
+    transform: translateY(4px) rotate(360deg);
+  }
+}
 .visually-hidden {
   position: absolute;
   width: 1px;
