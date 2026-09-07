@@ -95,6 +95,7 @@ button, input, select, textarea { font: inherit; }
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  line-height: 1;
 }
 .custom-titlebar__name--secondary { font-size: 14px; }
 
@@ -109,7 +110,6 @@ button, input, select, textarea { font: inherit; }
   font-size: 10px;
   line-height: 1;
   font-weight: 500;
-  align-self: center;
   pointer-events: auto;
   cursor: pointer;
 }
@@ -128,7 +128,6 @@ button, input, select, textarea { font: inherit; }
   width: 8px;
   height: 8px;
   margin-left: -0.5px;
-  align-self: center;
   border: 1px solid var(--outline-variant);
   border-top-color: var(--on-surface);
   border-radius: 50%;
@@ -151,9 +150,8 @@ button, input, select, textarea { font: inherit; }
   width: 29px;
   height: 24px;
   flex: 0 0 29px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   border: 0;
   border-radius: var(--radius-small);
   padding: 0;
@@ -161,12 +159,12 @@ button, input, select, textarea { font: inherit; }
   background: transparent;
   font-family: "Segoe UI", Arial, sans-serif;
   font-size: 17px;
-  line-height: 20px;
+  line-height: 1;
   cursor: pointer;
   transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;
 }
-.custom-titlebar__button--maximize { font-size: 14px; line-height: 16px; }
-.custom-titlebar__button--settings { font-size: 15px; line-height: 18px; }
+.custom-titlebar__button--maximize { font-size: 14px; }
+.custom-titlebar__button--settings { font-size: 15px; }
 .custom-titlebar button.custom-titlebar__button--close:hover { background: var(--error-container); color: var(--on-error-container); }
 
 button, select {
