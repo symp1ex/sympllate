@@ -255,7 +255,7 @@ func run(debugMode bool) (runErr error) {
 		}
 	}
 	mainWindow := window.NewMainWindow(cfg, configPath, version, html, service, batchWindow, clip, popup, applicationLogger, debugMode, showError, requestRestart)
-	systemTray := tray.New(mainWindow.Open, mainWindow.OpenSettings, applicationLogger)
+	systemTray := tray.New(mainWindow.Open, mainWindow.OpenSettings, fmt.Sprintf("Sympllate v%s", version), applicationLogger)
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {

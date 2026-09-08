@@ -134,6 +134,7 @@ type Tray struct {
 	logger     logger.PrintLogger
 	onOpen     func()
 	onSettings func()
+	tooltip    string
 	quit       *quitSignal
 
 	mu       sync.Mutex
@@ -150,11 +151,12 @@ type Tray struct {
 	taskbarCreated uint32
 }
 
-func New(onOpen, onSettings func(), logger logger.PrintLogger) *Tray {
+func New(onOpen, onSettings func(), tooltip string, logger logger.PrintLogger) *Tray {
 	return &Tray{
 		logger:     logger,
 		onOpen:     onOpen,
 		onSettings: onSettings,
+		tooltip:    tooltip,
 		quit:       newQuitSignal(),
 		done:       make(chan struct{}),
 	}
@@ -339,7 +341,7 @@ func (t *Tray) notificationData() (notifyIconData, error) {
 		icon:     t.icon,
 	}
 	data.size = uint32(unsafe.Sizeof(data))
-	tip, err := syscall.UTF16FromString("Sympllate")
+	tip, err := syscall.UTF16FromString(t.tooltip)
 	if err != nil {
 		return notifyIconData{}, fmt.Errorf("encode tray tooltip: %w", err)
 	}
