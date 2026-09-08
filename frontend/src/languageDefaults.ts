@@ -5,3 +5,8 @@ export function defaultConcreteSource(languages: Language[], configuredSource: s
   if (configuredSource && realLanguages.some((language) => language.code === configuredSource)) return configuredSource
   return realLanguages[0]?.code ?? ''
 }
+
+export function nonCollidingTarget(source: string, target: string, first: string, second: string): string {
+  if (source === 'auto' || source !== target) return target
+  return source === second ? first : second
+}

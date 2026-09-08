@@ -273,7 +273,7 @@ func TestAutoDetectionRunsOnceBeforeLongTextTranslation(t *testing.T) {
 	}))
 	defer server.Close()
 	client := newClient(server.URL, "key", 140, 30, 0, 5000, time.Second)
-	service := app.NewService(t.Context(), client, identifier, nil)
+	service := app.NewService(t.Context(), client, identifier, "ru", "en", nil)
 	result, err := service.Translate(t.Context(), translation.TranslateRequest{Text: source, Source: "auto", Target: "ru"})
 	if err != nil || result.DetectedLanguage != "de" || classifier.calls != 1 {
 		t.Fatalf("Translate() = %+v, %v; detection calls=%d", result, err, classifier.calls)

@@ -6,10 +6,11 @@ test('text translation uses the text bindings', async () => {
   const calls: string[] = []
   installWindow({
     Translate: async () => { calls.push('Translate'); return 'text-job' },
-    GetTranslation: async (id) => { calls.push(`GetTranslation:${id}`); return { state: 'done', result: { text: 'text result' } } },
+    GetTranslation: async (id) => { calls.push(`GetTranslation:${id}`); return { state: 'done', result: { text: 'text result', targetLanguage: 'en' } } },
   })
   const result = await translate({ text: 'source', source: 'en', target: 'ru' })
   assert.equal(result.text, 'text result')
+  assert.equal(result.targetLanguage, 'en')
   assert.deepEqual(calls, ['Translate', 'GetTranslation:text-job'])
 })
 
@@ -17,10 +18,11 @@ test('image translation uses only the image bindings and preserves an empty resu
   const calls: string[] = []
   installWindow({
     TranslateImage: async () => { calls.push('TranslateImage'); return 'image-job' },
-    GetImageTranslation: async (id) => { calls.push(`GetImageTranslation:${id}`); return { state: 'done', result: { text: '' } } },
+    GetImageTranslation: async (id) => { calls.push(`GetImageTranslation:${id}`); return { state: 'done', result: { text: '', targetLanguage: 'en' } } },
   })
   const result = await translateImage({ dataBase64: 'AA==', mediaType: 'image/png', source: 'auto', target: 'ru' })
   assert.equal(result.text, '')
+  assert.equal(result.targetLanguage, 'en')
   assert.deepEqual(calls, ['TranslateImage', 'GetImageTranslation:image-job'])
 })
 
@@ -37,10 +39,10 @@ test('image provider error is surfaced to the UI caller', async () => {
 
 type WindowOverrides = {
   Translate?: (request: unknown) => Promise<string>
-  GetTranslation?: (id: string) => Promise<{ state: 'done'; result: { text: string } }>
+  GetTranslation?: (id: string) => Promise<{ state: 'done'; result: { text: string; targetLanguage?: string } }>
   TranslateImage?: (request: unknown) => Promise<string>
   GetImageTranslation?: (id: string) => Promise<
-    { state: 'done'; result: { text: string } } | { state: 'error'; error: string }
+    { state: 'done'; result: { text: string; targetLanguage?: string } } | { state: 'error'; error: string }
   >
 }
 

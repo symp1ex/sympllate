@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -229,11 +230,49 @@ func TestClientTranslateImageResolvesReliableOCRSource(t *testing.T) {
 	request := localImageRequest(t)
 	request.Source = "auto"
 	result, err := client.TranslateImage(context.Background(), request)
-	if err != nil || result.Text != "translated" || result.DetectedLanguage != "de" {
+	if err != nil || result.Text != "translated" || result.DetectedLanguage != "de" || result.TargetLanguage != "ru" {
 		t.Fatalf("TranslateImage() = %+v, %v", result, err)
 	}
 	if len(extractor.sources) != 1 || extractor.sources[0] != "auto" {
 		t.Fatalf("OCR sources = %+v", extractor.sources)
+	}
+}
+
+func TestClientTranslateImageChangesCollidingDetectedTargetBeforeTranslation(t *testing.T) {
+	t.Parallel()
+	var translationCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		translationCalls.Add(1)
+		var request translateGemmaRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+			return
+		}
+		content := request.Messages[0].Content[0]
+		if content.SourceLangCode != "ru" || content.TargetLangCode != "en" || content.Text != "recognized source" {
+			t.Errorf("translation content = %+v", content)
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"translated"}}]}`))
+	}))
+	defer server.Close()
+	extractor := &trackingImageTextExtractor{text: "recognized source"}
+	identifier := language.NewLanguageIdentifier(localClassifier{detection: language.Detection{Language: "ru", Reliable: true}})
+	client := NewClientWithImageTextExtractor(server.URL, "test-key", 100, 0, 1000, time.Second, extractor, identifier)
+
+	request := localImageRequest(t)
+	request.Source = "auto"
+	request.Target = "ru"
+	request.DefaultLanguageFirst = "ru"
+	request.DefaultLanguageSecond = "en"
+	result, err := client.TranslateImage(context.Background(), request)
+	if err != nil || result.Text != "translated" || result.DetectedLanguage != "ru" || result.TargetLanguage != "en" {
+		t.Fatalf("TranslateImage() = %+v, %v", result, err)
+	}
+	if len(extractor.sources) != 1 || extractor.sources[0] != "auto" {
+		t.Fatalf("OCR sources = %+v", extractor.sources)
+	}
+	if calls := translationCalls.Load(); calls != 1 {
+		t.Fatalf("translation calls = %d, want 1", calls)
 	}
 }
 

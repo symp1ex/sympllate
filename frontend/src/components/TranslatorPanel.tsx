@@ -9,6 +9,7 @@ import {
   releaseImagePreview,
 } from '../imageInput'
 import type { SourceInput } from '../imageInput'
+import { nonCollidingTarget } from '../languageDefaults'
 import { ErrorMessage } from './ErrorMessage'
 import { LanguageSelect } from './LanguageSelect'
 import { LoadingIndicator } from './LoadingIndicator'
@@ -78,6 +79,7 @@ export function TranslatorPanel({ config, languages }: Props) {
           })
         : await translate({ text: sourceInput.text, source, target })
       setTranslatedText(result.text)
+      if (result.targetLanguage) setTarget(result.targetLanguage)
       if (sourceInput.kind === 'image' && result.text === '') {
         setNotice('No text to translate was found in the image.')
       }
@@ -86,6 +88,16 @@ export function TranslatorPanel({ config, languages }: Props) {
     } finally {
       setLoading(false)
     }
+  }
+
+  const selectSource = (nextSource: string) => {
+    setSource(nextSource)
+    setTarget((currentTarget) => nonCollidingTarget(
+      nextSource,
+      currentTarget,
+      config.defaultLanguagePair.first,
+      config.defaultLanguagePair.second,
+    ))
   }
 
   const swap = () => {
@@ -177,7 +189,7 @@ export function TranslatorPanel({ config, languages }: Props) {
     >
       {dragging && <div className="drop-overlay" aria-hidden="true">Drop one PNG or JPEG image</div>}
       <section className="language-row">
-        <LanguageSelect id="source-language" label="Source language" value={source} languages={languages} onChange={setSource} disabled={busy} />
+        <LanguageSelect id="source-language" label="Source language" value={source} languages={languages} onChange={selectSource} disabled={busy} />
         <button
           className="swap"
           onClick={swap}

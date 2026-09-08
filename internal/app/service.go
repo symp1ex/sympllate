@@ -36,22 +36,25 @@ type ImageJobStatus struct {
 }
 
 type Service struct {
-	ctx        context.Context
-	translator Translator
-	identifier *language.LanguageIdentifier
-	logger     logger.PrintLogger
-	manualBusy atomic.Bool
-	nextID     atomic.Uint64
-	mu         sync.Mutex
-	closed     bool
-	jobs       map[string]JobStatus
-	imageJobs  map[string]ImageJobStatus
-	wg         sync.WaitGroup
+	ctx                   context.Context
+	translator            Translator
+	identifier            *language.LanguageIdentifier
+	defaultLanguageFirst  string
+	defaultLanguageSecond string
+	logger                logger.PrintLogger
+	manualBusy            atomic.Bool
+	nextID                atomic.Uint64
+	mu                    sync.Mutex
+	closed                bool
+	jobs                  map[string]JobStatus
+	imageJobs             map[string]ImageJobStatus
+	wg                    sync.WaitGroup
 }
 
-func NewService(ctx context.Context, translator Translator, identifier *language.LanguageIdentifier, logger logger.PrintLogger) *Service {
+func NewService(ctx context.Context, translator Translator, identifier *language.LanguageIdentifier, defaultLanguageFirst, defaultLanguageSecond string, logger logger.PrintLogger) *Service {
 	return &Service{
-		ctx: ctx, translator: translator, identifier: identifier, logger: logger,
+		ctx: ctx, translator: translator, identifier: identifier,
+		defaultLanguageFirst: defaultLanguageFirst, defaultLanguageSecond: defaultLanguageSecond, logger: logger,
 		jobs: make(map[string]JobStatus), imageJobs: make(map[string]ImageJobStatus),
 	}
 }
@@ -102,6 +105,8 @@ func (s *Service) StartImageTranslate(req translation.ImageTranslateRequest) (st
 	}
 	req.DataBase64 = validated.DataBase64
 	req.MediaType = validated.MediaType
+	req.DefaultLanguageFirst = s.defaultLanguageFirst
+	req.DefaultLanguageSecond = s.defaultLanguageSecond
 	if !s.manualBusy.CompareAndSwap(false, true) {
 		return "", errors.New("previous translation is still in progress")
 	}
@@ -125,6 +130,9 @@ func (s *Service) StartImageTranslate(req translation.ImageTranslateRequest) (st
 			provider, validated.MediaType, validated.ByteLength, validated.Width, validated.Height, req.Source, req.Target,
 		)
 		result, translateErr := vision.TranslateImage(s.ctx, req)
+		if translateErr == nil && result.TargetLanguage == "" {
+			result.TargetLanguage = req.Target
+		}
 		status := ImageJobStatus{State: "done", Result: &result}
 		if translateErr != nil {
 			status = ImageJobStatus{State: "error", Error: translateErr.Error()}
@@ -185,6 +193,7 @@ func (s *Service) Translate(ctx context.Context, req translation.TranslateReques
 	originalSource := req.Source
 	resolvedSource, detection := s.identifier.ResolveSource(req.Text, req.Source)
 	req.Source = resolvedSource
+	req.Target = language.NonCollidingTarget(req.Source, req.Target, s.defaultLanguageFirst, s.defaultLanguageSecond)
 	result, err := s.translator.Translate(ctx, req)
 	if err != nil {
 		return translation.TranslateResult{}, err
@@ -195,6 +204,7 @@ func (s *Service) Translate(ctx context.Context, req translation.TranslateReques
 			result.DetectedLanguage = detection.Language
 		}
 	}
+	result.TargetLanguage = req.Target
 	return result, nil
 }
 
@@ -215,7 +225,13 @@ func (s *Service) TranslateImage(ctx context.Context, req translation.ImageTrans
 	}
 	req.DataBase64 = validated.DataBase64
 	req.MediaType = validated.MediaType
-	return vision.TranslateImage(ctx, req)
+	req.DefaultLanguageFirst = s.defaultLanguageFirst
+	req.DefaultLanguageSecond = s.defaultLanguageSecond
+	result, err := vision.TranslateImage(ctx, req)
+	if err == nil && result.TargetLanguage == "" {
+		result.TargetLanguage = req.Target
+	}
+	return result, err
 }
 
 func (s *Service) visionTranslator() (VisionTranslator, error) {

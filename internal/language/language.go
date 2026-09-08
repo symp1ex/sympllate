@@ -42,3 +42,13 @@ func ChooseDirection(detected, first, second, fallback string) Direction {
 		return Direction{Source: detected, Target: fallback, Detected: detected}
 	}
 }
+
+func NonCollidingTarget(source, target, first, second string) string {
+	if source != target {
+		return target
+	}
+	if source == second {
+		return first
+	}
+	return second
+}

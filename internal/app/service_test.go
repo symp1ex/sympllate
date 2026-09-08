@@ -24,11 +24,15 @@ type fakeTranslator struct {
 
 type fakeVisionTranslator struct {
 	fakeTranslator
-	imageResult string
-	imageErr    error
+	imageResult   string
+	imageErr      error
+	imageRequests *[]translation.ImageTranslateRequest
 }
 
-func (f fakeVisionTranslator) TranslateImage(context.Context, translation.ImageTranslateRequest) (translation.ImageTranslateResult, error) {
+func (f fakeVisionTranslator) TranslateImage(_ context.Context, request translation.ImageTranslateRequest) (translation.ImageTranslateResult, error) {
+	if f.imageRequests != nil {
+		*f.imageRequests = append(*f.imageRequests, request)
+	}
 	return translation.ImageTranslateResult{Text: f.imageResult}, f.imageErr
 }
 
@@ -68,9 +72,9 @@ func testIdentifier(detection language.Detection) *language.LanguageIdentifier {
 func TestServiceTranslateDetectsAutoLanguage(t *testing.T) {
 	t.Parallel()
 	var requests []translation.TranslateRequest
-	service := NewService(context.Background(), fakeTranslator{result: "Hello", requests: &requests}, testIdentifier(language.Detection{Language: "ru", Reliable: true}), log.New(io.Discard, "", 0))
+	service := NewService(context.Background(), fakeTranslator{result: "Hello", requests: &requests}, testIdentifier(language.Detection{Language: "ru", Reliable: true}), "ru", "en", log.New(io.Discard, "", 0))
 	result, err := service.Translate(context.Background(), translation.TranslateRequest{Text: "Привет", Source: "auto", Target: "en"})
-	if err != nil || result.DetectedLanguage != "ru" || len(requests) != 1 || requests[0].Source != "ru" || requests[0].Target != "en" {
+	if err != nil || result.DetectedLanguage != "ru" || result.TargetLanguage != "en" || len(requests) != 1 || requests[0].Source != "ru" || requests[0].Target != "en" {
 		t.Fatalf("Translate() = %+v, %v", result, err)
 	}
 }
@@ -78,7 +82,7 @@ func TestServiceTranslateDetectsAutoLanguage(t *testing.T) {
 func TestServiceTranslateKeepsAutoWhenDetectionIsUnreliable(t *testing.T) {
 	t.Parallel()
 	var requests []translation.TranslateRequest
-	service := NewService(context.Background(), fakeTranslator{result: "Hello", detected: "de", requests: &requests}, testIdentifier(language.Detection{Language: "de", Reliable: false}), log.New(io.Discard, "", 0))
+	service := NewService(context.Background(), fakeTranslator{result: "Hello", detected: "de", requests: &requests}, testIdentifier(language.Detection{Language: "de", Reliable: false}), "ru", "en", log.New(io.Discard, "", 0))
 	result, err := service.Translate(context.Background(), translation.TranslateRequest{Text: "test", Source: "auto", Target: "en"})
 	if err != nil || result.DetectedLanguage != "" || len(requests) != 1 || requests[0].Source != "auto" || requests[0].Target != "en" {
 		t.Fatalf("Translate() = %+v, %v; requests = %+v", result, err, requests)
@@ -90,17 +94,43 @@ func TestServiceTranslateExplicitSourceBypassesIdentification(t *testing.T) {
 	calls := 0
 	var requests []translation.TranslateRequest
 	identifier := language.NewLanguageIdentifier(testClassifier{detection: language.Detection{Language: "de", Reliable: true}, calls: &calls})
-	service := NewService(context.Background(), fakeTranslator{result: "Bonjour", requests: &requests}, identifier, log.New(io.Discard, "", 0))
+	service := NewService(context.Background(), fakeTranslator{result: "Bonjour", requests: &requests}, identifier, "ru", "en", log.New(io.Discard, "", 0))
 	result, err := service.Translate(context.Background(), translation.TranslateRequest{Text: "Bonjour", Source: "fr", Target: "en"})
-	if err != nil || calls != 0 || result.DetectedLanguage != "" || len(requests) != 1 || requests[0].Source != "fr" || requests[0].Target != "en" {
+	if err != nil || calls != 0 || result.DetectedLanguage != "" || result.TargetLanguage != "en" || len(requests) != 1 || requests[0].Source != "fr" || requests[0].Target != "en" {
 		t.Fatalf("Translate() = %+v, %v; calls = %d, requests = %+v", result, err, calls, requests)
+	}
+}
+
+func TestServiceTranslateChangesCollidingDetectedTargetBeforeTranslation(t *testing.T) {
+	t.Parallel()
+	var requests []translation.TranslateRequest
+	service := NewService(context.Background(), fakeTranslator{result: "Hello", requests: &requests}, testIdentifier(language.Detection{Language: "ru", Reliable: true}), "ru", "en", log.New(io.Discard, "", 0))
+	result, err := service.Translate(context.Background(), translation.TranslateRequest{Text: "Привет", Source: "auto", Target: "ru"})
+	if err != nil || result.DetectedLanguage != "ru" || result.TargetLanguage != "en" {
+		t.Fatalf("Translate() = %+v, %v", result, err)
+	}
+	if len(requests) != 1 || requests[0].Source != "ru" || requests[0].Target != "en" {
+		t.Fatalf("translator requests = %+v", requests)
+	}
+}
+
+func TestServiceTranslateChangesCollidingExplicitTargetBeforeTranslation(t *testing.T) {
+	t.Parallel()
+	var requests []translation.TranslateRequest
+	service := NewService(context.Background(), fakeTranslator{result: "Hello", requests: &requests}, testIdentifier(language.Detection{}), "ru", "en", log.New(io.Discard, "", 0))
+	result, err := service.Translate(context.Background(), translation.TranslateRequest{Text: "Hello", Source: "en", Target: "en"})
+	if err != nil || result.TargetLanguage != "ru" {
+		t.Fatalf("Translate() = %+v, %v", result, err)
+	}
+	if len(requests) != 1 || requests[0].Source != "en" || requests[0].Target != "ru" {
+		t.Fatalf("translator requests = %+v", requests)
 	}
 }
 
 func TestServiceReturnsTranslatorError(t *testing.T) {
 	t.Parallel()
 	want := errors.New("offline")
-	service := NewService(context.Background(), fakeTranslator{err: want}, testIdentifier(language.Detection{}), log.New(io.Discard, "", 0))
+	service := NewService(context.Background(), fakeTranslator{err: want}, testIdentifier(language.Detection{}), "ru", "en", log.New(io.Discard, "", 0))
 	_, err := service.Translate(context.Background(), translation.TranslateRequest{Text: "x", Source: "en", Target: "ru"})
 	if !errors.Is(err, want) {
 		t.Fatalf("Translate() error = %v", err)
@@ -109,7 +139,7 @@ func TestServiceReturnsTranslatorError(t *testing.T) {
 
 func TestServiceRejectsWorkAfterClose(t *testing.T) {
 	t.Parallel()
-	service := NewService(context.Background(), fakeTranslator{result: "Hello"}, testIdentifier(language.Detection{}), log.New(io.Discard, "", 0))
+	service := NewService(context.Background(), fakeTranslator{result: "Hello"}, testIdentifier(language.Detection{}), "ru", "en", log.New(io.Discard, "", 0))
 	service.Close()
 	if _, err := service.StartTranslate(translation.TranslateRequest{Text: "x", Source: "en", Target: "ru"}); err == nil {
 		t.Fatal("StartTranslate() expected shutdown error")
@@ -121,21 +151,38 @@ func TestServiceRejectsWorkAfterClose(t *testing.T) {
 
 func TestServiceRunsImageJobAndAllowsEmptyResult(t *testing.T) {
 	t.Parallel()
-	service := NewService(context.Background(), fakeVisionTranslator{}, testIdentifier(language.Detection{}), log.New(io.Discard, "", 0))
+	var requests []translation.ImageTranslateRequest
+	service := NewService(context.Background(), fakeVisionTranslator{imageRequests: &requests}, testIdentifier(language.Detection{}), "ru", "en", log.New(io.Discard, "", 0))
 	id, err := service.StartImageTranslate(validImageServiceRequest(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	service.Wait()
 	status, err := service.ImageJob(id)
-	if err != nil || status.State != "done" || status.Result == nil || status.Result.Text != "" {
+	if err != nil || status.State != "done" || status.Result == nil || status.Result.Text != "" || status.Result.TargetLanguage != "ru" {
 		t.Fatalf("ImageJob() = %+v, %v", status, err)
+	}
+	if len(requests) != 1 || requests[0].DefaultLanguageFirst != "ru" || requests[0].DefaultLanguageSecond != "en" {
+		t.Fatalf("image translator requests = %+v", requests)
+	}
+}
+
+func TestServiceTranslateImagePassesDefaultPair(t *testing.T) {
+	t.Parallel()
+	var requests []translation.ImageTranslateRequest
+	service := NewService(context.Background(), fakeVisionTranslator{imageResult: "translated", imageRequests: &requests}, testIdentifier(language.Detection{}), "ru", "en", log.New(io.Discard, "", 0))
+	result, err := service.TranslateImage(context.Background(), validImageServiceRequest(t))
+	if err != nil || result.Text != "translated" || result.TargetLanguage != "ru" {
+		t.Fatalf("TranslateImage() = %+v, %v", result, err)
+	}
+	if len(requests) != 1 || requests[0].DefaultLanguageFirst != "ru" || requests[0].DefaultLanguageSecond != "en" {
+		t.Fatalf("image translator requests = %+v", requests)
 	}
 }
 
 func TestServiceRejectsImageWorkAfterClose(t *testing.T) {
 	t.Parallel()
-	service := NewService(context.Background(), fakeVisionTranslator{}, testIdentifier(language.Detection{}), log.New(io.Discard, "", 0))
+	service := NewService(context.Background(), fakeVisionTranslator{}, testIdentifier(language.Detection{}), "ru", "en", log.New(io.Discard, "", 0))
 	service.Close()
 	if _, err := service.StartImageTranslate(validImageServiceRequest(t)); err == nil {
 		t.Fatal("StartImageTranslate() expected shutdown error")

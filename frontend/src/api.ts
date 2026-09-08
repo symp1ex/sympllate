@@ -8,10 +8,10 @@ export interface ClientConfig {
   maxImageBase64Characters: number
 }
 export interface TranslateRequest { text: string; source: string; target: string }
-export interface TranslateResult { text: string; detectedLanguage?: string }
+export interface TranslateResult { text: string; detectedLanguage?: string; targetLanguage?: string }
 export interface JobStatus { state: 'pending' | 'done' | 'error'; result?: TranslateResult; error?: string }
 export interface ImageTranslateRequest { dataBase64: string; mediaType: string; source: string; target: string }
-export interface ImageTranslateResult { text: string; detectedLanguage?: string }
+export interface ImageTranslateResult { text: string; detectedLanguage?: string; targetLanguage?: string }
 export interface ImageJobStatus { state: 'pending' | 'done' | 'error'; result?: ImageTranslateResult; error?: string }
 export type BatchSelectionKind = 'files' | 'directory'
 export interface BatchSelection { id: string; kind: BatchSelectionKind; displayName: string; fileCount: number }

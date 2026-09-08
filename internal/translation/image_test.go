@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"hash/crc32"
 	"image"
 	"image/color"
@@ -21,6 +22,24 @@ func TestValidateImageRequestPNG(t *testing.T) {
 	validated, err := ValidateImageRequest(req)
 	if err != nil || validated.MediaType != "image/png" || validated.Width != 2 || validated.Height != 3 || validated.ByteLength != len(data) {
 		t.Fatalf("ValidateImageRequest() = %+v, %v", validated, err)
+	}
+}
+
+func TestImageTranslateRequestDoesNotSerializeDefaultLanguages(t *testing.T) {
+	t.Parallel()
+	payload, err := json.Marshal(ImageTranslateRequest{
+		DataBase64: "AA==", MediaType: "image/png", Source: "auto", Target: "ru",
+		DefaultLanguageFirst: "ru", DefaultLanguageSecond: "en",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(payload, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if len(fields) != 4 || fields["dataBase64"] != "AA==" || fields["mediaType"] != "image/png" || fields["source"] != "auto" || fields["target"] != "ru" {
+		t.Fatalf("serialized request = %s", payload)
 	}
 }
 

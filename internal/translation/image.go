@@ -19,15 +19,18 @@ const (
 )
 
 type ImageTranslateRequest struct {
-	DataBase64 string `json:"dataBase64"`
-	MediaType  string `json:"mediaType"`
-	Source     string `json:"source"`
-	Target     string `json:"target"`
+	DataBase64            string `json:"dataBase64"`
+	MediaType             string `json:"mediaType"`
+	Source                string `json:"source"`
+	Target                string `json:"target"`
+	DefaultLanguageFirst  string `json:"-"`
+	DefaultLanguageSecond string `json:"-"`
 }
 
 type ImageTranslateResult struct {
 	Text             string `json:"text"`
 	DetectedLanguage string `json:"detectedLanguage,omitempty"`
+	TargetLanguage   string `json:"targetLanguage,omitempty"`
 }
 
 type ImageCapability struct {

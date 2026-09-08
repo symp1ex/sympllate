@@ -17,6 +17,7 @@ type TranslateRequest struct {
 type TranslateResult struct {
 	Text             string `json:"text"`
 	DetectedLanguage string `json:"detectedLanguage,omitempty"`
+	TargetLanguage   string `json:"targetLanguage,omitempty"`
 }
 
 func ValidateRequest(req TranslateRequest, maxInputCharacters int) error {

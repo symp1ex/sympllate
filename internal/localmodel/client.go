@@ -284,7 +284,8 @@ func (c *Client) TranslateImage(ctx context.Context, req translation.ImageTransl
 		return translation.ImageTranslateResult{}, nil
 	}
 	resolvedSource, detection := c.languageIdentifier.ResolveSource(text, req.Source)
-	result, err := c.Translate(ctx, translation.TranslateRequest{Text: text, Source: resolvedSource, Target: req.Target})
+	target := language.NonCollidingTarget(resolvedSource, req.Target, req.DefaultLanguageFirst, req.DefaultLanguageSecond)
+	result, err := c.Translate(ctx, translation.TranslateRequest{Text: text, Source: resolvedSource, Target: target})
 	if err != nil {
 		return translation.ImageTranslateResult{}, err
 	}
@@ -292,7 +293,7 @@ func (c *Client) TranslateImage(ctx context.Context, req translation.ImageTransl
 	if detection.Reliable {
 		detectedLanguage = detection.Language
 	}
-	return translation.ImageTranslateResult{Text: translation.NormalizeImageTranslation(result.Text), DetectedLanguage: detectedLanguage}, nil
+	return translation.ImageTranslateResult{Text: translation.NormalizeImageTranslation(result.Text), DetectedLanguage: detectedLanguage, TargetLanguage: target}, nil
 }
 
 func (c *Client) ImageCapability() translation.ImageCapability {

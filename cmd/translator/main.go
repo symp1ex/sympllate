@@ -34,7 +34,7 @@ import (
 )
 
 var errRestartRequested = errors.New("application restart requested")
-var version = "0.4.2.7"
+var version = "0.4.2.8"
 var debugMode = flag.Bool("debug", false, "enable experimental application features")
 
 func main() {
@@ -168,7 +168,7 @@ func run(debugMode bool) (runErr error) {
 	if err != nil {
 		return err
 	}
-	service := app.NewService(ctx, translator, identifier, applicationLogger)
+	service := app.NewService(ctx, translator, identifier, cfg.DefaultLanguagePair.First.Active, cfg.DefaultLanguagePair.Second.Active, applicationLogger)
 	completer, ok := translator.(translation.RawCompleter)
 	if !ok {
 		return errors.New("the selected provider does not support structured translation")
