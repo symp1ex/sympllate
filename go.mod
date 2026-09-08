@@ -3,6 +3,7 @@ module github.com/sympllate/translator
 go 1.24.0
 
 require (
+	github.com/abadojack/whatlanggo v1.0.1
 	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
 	github.com/yalue/onnxruntime_go v1.31.0
 	golang.org/x/image v0.36.0

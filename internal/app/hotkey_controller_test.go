@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -66,6 +67,12 @@ type translatorFunc func(context.Context, translation.TranslateRequest) (transla
 
 func (f translatorFunc) Translate(ctx context.Context, request translation.TranslateRequest) (translation.TranslateResult, error) {
 	return f(ctx, request)
+}
+
+type completerFunc func(context.Context, string) (string, error)
+
+func (f completerFunc) Complete(ctx context.Context, prompt string) (string, error) {
+	return f(ctx, prompt)
 }
 
 type pendingTranslation struct {
@@ -174,7 +181,8 @@ func (f *fakeTargets) Activate(context.Context, OriginTarget) error {
 
 func testController(translator Translator, selection *fakeSelection, targets *fakeTargets, popup *fakePopup) *HotkeyController {
 	cfg := config.Default()
-	return NewHotkeyController(context.Background(), cfg, translator, language.SimpleDetector{}, selection, targets, popup, log.New(io.Discard, "", 0))
+	identifier := testIdentifier(language.Detection{Language: "ru", Reliable: true})
+	return NewHotkeyController(context.Background(), cfg, translator, nil, identifier, selection, targets, popup, log.New(io.Discard, "", 0))
 }
 
 func waitTranslation(t *testing.T, translator *pendingTranslator) *pendingTranslation {
@@ -224,6 +232,151 @@ func TestReplaceSelectionWithoutSessionUsesDirectFlow(t *testing.T) {
 	}
 	if selection.pastes[0] != "Hello" {
 		t.Fatalf("pasted text = %q", selection.pastes[0])
+	}
+}
+
+func TestQuickTranslationReliableDetectionUsesChooseDirection(t *testing.T) {
+	tests := []struct {
+		name       string
+		detected   string
+		wantSource string
+		wantTarget string
+	}{
+		{name: "first side", detected: "ru", wantSource: "ru", wantTarget: "en"},
+		{name: "second side", detected: "en", wantSource: "en", wantTarget: "ru"},
+		{name: "third language", detected: "de", wantSource: "de", wantTarget: "ru"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			selection := &fakeSelection{copies: []copyResult{{text: "selection"}}}
+			targets := &fakeTargets{target: OriginTarget{Window: 1}, exists: true}
+			popup := &fakePopup{}
+			var requests []translation.TranslateRequest
+			translator := translatorFunc(func(_ context.Context, request translation.TranslateRequest) (translation.TranslateResult, error) {
+				requests = append(requests, request)
+				return translation.TranslateResult{Text: "translated"}, nil
+			})
+			completerCalls := 0
+			completer := completerFunc(func(context.Context, string) (string, error) {
+				completerCalls++
+				return "", errors.New("unexpected fallback")
+			})
+			controller := NewHotkeyController(
+				context.Background(), config.Default(), translator, completer,
+				testIdentifier(language.Detection{Language: test.detected, Reliable: true}),
+				selection, targets, popup, log.New(io.Discard, "", 0),
+			)
+
+			controller.ShowTranslation()
+			controller.requests.Wait()
+			if len(requests) != 1 || requests[0].Source != test.wantSource || requests[0].Target != test.wantTarget || completerCalls != 0 {
+				t.Fatalf("requests = %+v, completer calls = %d", requests, completerCalls)
+			}
+			state := popup.lastState()
+			if state.Source != test.wantSource || state.Target != test.wantTarget || state.DetectedLanguage != test.detected {
+				t.Fatalf("popup state = %+v", state)
+			}
+		})
+	}
+}
+
+func TestQuickTranslationUnreliableDetectionUsesOneShotFallback(t *testing.T) {
+	tests := []struct {
+		name         string
+		response     string
+		wantSource   string
+		wantTarget   string
+		wantDetected string
+	}{
+		{name: "first side", response: `{"source":"ru","target":"en","translation":"Hello"}`, wantSource: "ru", wantTarget: "en", wantDetected: "ru"},
+		{name: "second side", response: `{"source":"en","target":"ru","translation":"Привет"}`, wantSource: "en", wantTarget: "ru", wantDetected: "en"},
+		{name: "third language", response: `{"source":"de","target":"ru","translation":"Привет"}`, wantSource: "de", wantTarget: "ru", wantDetected: "de"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			selection := &fakeSelection{copies: []copyResult{{text: "ambiguous selection"}}}
+			targets := &fakeTargets{target: OriginTarget{Window: 1}, exists: true}
+			popup := &fakePopup{}
+			translatorCalls := 0
+			translator := translatorFunc(func(context.Context, translation.TranslateRequest) (translation.TranslateResult, error) {
+				translatorCalls++
+				return translation.TranslateResult{}, errors.New("unexpected normal translation")
+			})
+			completerCalls := 0
+			completer := completerFunc(func(_ context.Context, prompt string) (string, error) {
+				completerCalls++
+				if !strings.Contains(prompt, `"ambiguous selection"`) {
+					t.Fatalf("fallback prompt does not contain encoded selection: %s", prompt)
+				}
+				return test.response, nil
+			})
+			controller := NewHotkeyController(
+				context.Background(), config.Default(), translator, completer,
+				testIdentifier(language.Detection{Language: "de", Reliable: false}),
+				selection, targets, popup, log.New(io.Discard, "", 0),
+			)
+
+			controller.ShowTranslation()
+			controller.requests.Wait()
+			if translatorCalls != 0 || completerCalls != 1 {
+				t.Fatalf("translator calls = %d, completer calls = %d", translatorCalls, completerCalls)
+			}
+			state := popup.lastState()
+			if state.Source != test.wantSource || state.Target != test.wantTarget || state.DetectedLanguage != test.wantDetected || state.TranslatedText == "" || state.Error != "" {
+				t.Fatalf("popup state = %+v", state)
+			}
+		})
+	}
+}
+
+func TestQuickTranslationClassifierFailureUsesOneShotFallback(t *testing.T) {
+	selection := &fakeSelection{copies: []copyResult{{text: "ambiguous selection"}}}
+	popup := &fakePopup{}
+	translatorCalls := 0
+	completerCalls := 0
+	identifier := language.NewLanguageIdentifier(testClassifier{panics: true})
+	controller := NewHotkeyController(
+		context.Background(), config.Default(),
+		translatorFunc(func(context.Context, translation.TranslateRequest) (translation.TranslateResult, error) {
+			translatorCalls++
+			return translation.TranslateResult{}, errors.New("unexpected normal translation")
+		}),
+		completerFunc(func(context.Context, string) (string, error) {
+			completerCalls++
+			return `{"source":"en","target":"ru","translation":"перевод"}`, nil
+		}),
+		identifier, selection, &fakeTargets{target: OriginTarget{Window: 1}, exists: true}, popup, log.New(io.Discard, "", 0),
+	)
+
+	controller.ShowTranslation()
+	controller.requests.Wait()
+	if translatorCalls != 0 || completerCalls != 1 || popup.lastState().TranslatedText != "перевод" {
+		t.Fatalf("translator calls = %d, completer calls = %d, state = %+v", translatorCalls, completerCalls, popup.lastState())
+	}
+}
+
+func TestDirectReplaceUnreliableDetectionUsesOneShotFallback(t *testing.T) {
+	selection := &fakeSelection{copies: []copyResult{{text: "ambiguous", snapshot: ClipboardSnapshot{Text: "saved", HasText: true}}}}
+	targets := &fakeTargets{exists: true}
+	translatorCalls := 0
+	completerCalls := 0
+	controller := NewHotkeyController(
+		context.Background(), config.Default(),
+		translatorFunc(func(context.Context, translation.TranslateRequest) (translation.TranslateResult, error) {
+			translatorCalls++
+			return translation.TranslateResult{}, errors.New("unexpected normal translation")
+		}),
+		completerFunc(func(context.Context, string) (string, error) {
+			completerCalls++
+			return `{"source":"de","target":"ru","translation":"перевод"}`, nil
+		}),
+		testIdentifier(language.Detection{Language: "de", Reliable: false}),
+		selection, targets, &fakePopup{}, log.New(io.Discard, "", 0),
+	)
+
+	controller.ReplaceSelection()
+	if translatorCalls != 0 || completerCalls != 1 || len(selection.pastes) != 1 || selection.pastes[0] != "перевод" || selection.pasteSnaps[0].Text != "saved" {
+		t.Fatalf("translator calls = %d, completer calls = %d, pastes = %+v, snapshots = %+v", translatorCalls, completerCalls, selection.pastes, selection.pasteSnaps)
 	}
 }
 

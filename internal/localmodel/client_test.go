@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sympllate/translator/internal/language"
 	"github.com/sympllate/translator/internal/translation"
 )
 
@@ -146,7 +147,7 @@ func TestClientTranslateImageSendsOnlyOCRTextToLocalServer(t *testing.T) {
 	}))
 	defer server.Close()
 	extractor := fakeImageTextExtractor{text: "recognized source"}
-	client := NewClientWithImageTextExtractor(server.URL, "test-key", 100, 0, 1000, time.Second, extractor)
+	client := NewClientWithImageTextExtractor(server.URL, "test-key", 100, 0, 1000, time.Second, extractor, nil)
 	result, err := client.TranslateImage(context.Background(), localImageRequest(t))
 	if err != nil || result.Text != "translated" {
 		t.Fatalf("TranslateImage() = %+v, %v", result, err)
@@ -159,7 +160,7 @@ func TestClientTranslateImageNormalizesImageResultOnly(t *testing.T) {
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"one\\r\\ntwo\\n\\nthree C:\\\\react folder\\nsys"}}]}`))
 	}))
 	defer server.Close()
-	client := NewClientWithImageTextExtractor(server.URL, "test-key", 100, 0, 1000, time.Second, fakeImageTextExtractor{text: "source"})
+	client := NewClientWithImageTextExtractor(server.URL, "test-key", 100, 0, 1000, time.Second, fakeImageTextExtractor{text: "source"}, nil)
 	result, err := client.TranslateImage(context.Background(), localImageRequest(t))
 	if err != nil || result.Text != "one\ntwo\n\nthree C:\\\\react folder\\nsys" {
 		t.Fatalf("TranslateImage() = %q, %v", result.Text, err)
@@ -168,7 +169,7 @@ func TestClientTranslateImageNormalizesImageResultOnly(t *testing.T) {
 
 func TestClientTranslateImageAllowsEmptyOCRResult(t *testing.T) {
 	t.Parallel()
-	client := NewClientWithImageTextExtractor("http://127.0.0.1:1", "test-key", 100, 0, 1000, time.Second, fakeImageTextExtractor{})
+	client := NewClientWithImageTextExtractor("http://127.0.0.1:1", "test-key", 100, 0, 1000, time.Second, fakeImageTextExtractor{}, nil)
 	result, err := client.TranslateImage(context.Background(), localImageRequest(t))
 	if err != nil || result.Text != "" {
 		t.Fatalf("TranslateImage() = %+v, %v", result, err)
@@ -178,6 +179,120 @@ func TestClientTranslateImageAllowsEmptyOCRResult(t *testing.T) {
 type fakeImageTextExtractor struct {
 	text string
 	err  error
+}
+
+type localClassifier struct {
+	detection language.Detection
+	calls     *int
+}
+
+func (f localClassifier) Detect(string) language.Detection {
+	if f.calls != nil {
+		(*f.calls)++
+	}
+	return f.detection
+}
+
+type trackingImageTextExtractor struct {
+	text    string
+	sources []string
+}
+
+func (*trackingImageTextExtractor) Capability() translation.ImageCapability {
+	return translation.ImageCapability{Supported: true}
+}
+
+func (f *trackingImageTextExtractor) Recognize(_ context.Context, _ translation.ValidatedImage, source string) (string, error) {
+	f.sources = append(f.sources, source)
+	return f.text, nil
+}
+
+func TestClientTranslateImageResolvesReliableOCRSource(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request translateGemmaRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+			return
+		}
+		content := request.Messages[0].Content[0]
+		if content.SourceLangCode != "de" || content.TargetLangCode != "ru" || content.Text != "erkannter Text" {
+			t.Errorf("translation content = %+v", content)
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"translated"}}]}`))
+	}))
+	defer server.Close()
+	extractor := &trackingImageTextExtractor{text: "erkannter Text"}
+	identifier := language.NewLanguageIdentifier(localClassifier{detection: language.Detection{Language: "de", Reliable: true}})
+	client := NewClientWithImageTextExtractor(server.URL, "test-key", 100, 0, 1000, time.Second, extractor, identifier)
+
+	request := localImageRequest(t)
+	request.Source = "auto"
+	result, err := client.TranslateImage(context.Background(), request)
+	if err != nil || result.Text != "translated" || result.DetectedLanguage != "de" {
+		t.Fatalf("TranslateImage() = %+v, %v", result, err)
+	}
+	if len(extractor.sources) != 1 || extractor.sources[0] != "auto" {
+		t.Fatalf("OCR sources = %+v", extractor.sources)
+	}
+}
+
+func TestClientTranslateImageKeepsAutoForUnreliableOCRSource(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request chatRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+			return
+		}
+		if len(request.Messages) != 1 || !strings.Contains(request.Messages[0].Content, "from auto to ru") {
+			t.Errorf("generic translation request = %+v", request)
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"translated"}}]}`))
+	}))
+	defer server.Close()
+	extractor := &trackingImageTextExtractor{text: "ambiguous text"}
+	identifier := language.NewLanguageIdentifier(localClassifier{detection: language.Detection{Language: "de", Reliable: false}})
+	client := NewClientWithImageTextExtractor(server.URL, "test-key", 100, 0, 1000, time.Second, extractor, identifier)
+	client.profile = "generic"
+
+	request := localImageRequest(t)
+	request.Source = "auto"
+	result, err := client.TranslateImage(context.Background(), request)
+	if err != nil || result.Text != "translated" || result.DetectedLanguage != "" {
+		t.Fatalf("TranslateImage() = %+v, %v", result, err)
+	}
+	if len(extractor.sources) != 1 || extractor.sources[0] != "auto" {
+		t.Fatalf("OCR sources = %+v", extractor.sources)
+	}
+}
+
+func TestClientTranslateImageExplicitSourceBypassesIdentification(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request translateGemmaRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+			return
+		}
+		if source := request.Messages[0].Content[0].SourceLangCode; source != "en" {
+			t.Errorf("translation source = %q, want en", source)
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"translated"}}]}`))
+	}))
+	defer server.Close()
+	calls := 0
+	extractor := &trackingImageTextExtractor{text: "recognized text"}
+	identifier := language.NewLanguageIdentifier(localClassifier{detection: language.Detection{Language: "de", Reliable: true}, calls: &calls})
+	client := NewClientWithImageTextExtractor(server.URL, "test-key", 100, 0, 1000, time.Second, extractor, identifier)
+
+	result, err := client.TranslateImage(context.Background(), localImageRequest(t))
+	if err != nil || result.Text != "translated" || result.DetectedLanguage != "" || calls != 0 {
+		t.Fatalf("TranslateImage() = %+v, %v; classifier calls = %d", result, err, calls)
+	}
+	if len(extractor.sources) != 1 || extractor.sources[0] != "en" {
+		t.Fatalf("OCR sources = %+v", extractor.sources)
+	}
 }
 
 func (fakeImageTextExtractor) Capability() translation.ImageCapability {

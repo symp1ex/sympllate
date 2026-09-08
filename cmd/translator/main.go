@@ -34,7 +34,7 @@ import (
 )
 
 var errRestartRequested = errors.New("application restart requested")
-var version = "0.4.2.0"
+var version = "0.4.2.3"
 var debugMode = flag.Bool("debug", false, "enable experimental application features")
 
 func main() {
@@ -87,6 +87,11 @@ func run(debugMode bool) (runErr error) {
 			applicationLogger.Printf("OCR backend shutdown failed: %v", err)
 		}
 	}()
+	classifier, err := language.NewWhatlangClassifier()
+	if err != nil {
+		return fmt.Errorf("configure language identification: %w", err)
+	}
+	identifier := language.NewLanguageIdentifier(classifier)
 	selectedProvider, localLayout, err := localmodel.SelectProvider(cfg.Provider.Active, executableDir, cfg.LocalModel)
 	if err != nil {
 		return err
@@ -127,6 +132,7 @@ func run(debugMode bool) (runErr error) {
 			FitTargetMiB:       cfg.LocalModel.FitTargetMiB,
 			MaxInputCharacters: cfg.Limits.MaxInputCharacters,
 			ImageTextExtractor: ocrEngine,
+			LanguageIdentifier: identifier,
 		}, applicationLogger.Writer())
 		if err != nil {
 			return startupError(fmt.Errorf("start local provider: %w", err), startupWindow != nil && startupWindow.WasClosedByUser())
@@ -162,8 +168,7 @@ func run(debugMode bool) (runErr error) {
 	if err != nil {
 		return err
 	}
-	detector := language.SimpleDetector{}
-	service := app.NewService(ctx, translator, detector, applicationLogger)
+	service := app.NewService(ctx, translator, identifier, applicationLogger)
 	completer, ok := translator.(translation.RawCompleter)
 	if !ok {
 		return errors.New("the selected provider does not support structured translation")
@@ -220,7 +225,7 @@ func run(debugMode bool) (runErr error) {
 		return nil
 	}
 	targets := window.NewOriginTargetManager()
-	controller := app.NewHotkeyController(ctx, cfg, service, detector, clip, targets, popup, applicationLogger)
+	controller := app.NewHotkeyController(ctx, cfg, service, completer, identifier, clip, targets, popup, applicationLogger)
 	popup.SetQuickTranslationHandler(controller)
 	hotkeyManager := hotkeys.NewManager(showCombination, replaceCombination, controller.ShowTranslation, controller.ReplaceSelection)
 	if err := hotkeyManager.Start(); err != nil {

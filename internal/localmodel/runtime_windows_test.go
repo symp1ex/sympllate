@@ -155,7 +155,7 @@ func TestRuntimeUsesConfiguredImageExtractor(t *testing.T) {
 	t.Parallel()
 	process := &fakeProcess{done: make(chan struct{})}
 	runtime := newRuntime(process)
-	runtime.client = NewClientWithImageTextExtractor("http://127.0.0.1", "key", 10, 0, 100, time.Second, configuredImageExtractor{})
+	runtime.client = NewClientWithImageTextExtractor("http://127.0.0.1", "key", 10, 0, 100, time.Second, configuredImageExtractor{}, nil)
 	if !runtime.client.ImageCapability().Supported {
 		t.Fatal("configured OCR extractor was not attached to local image client")
 	}

@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/sympllate/translator/internal/language"
 )
 
 type RuntimeConfig struct {
@@ -31,6 +33,7 @@ type RuntimeConfig struct {
 	FitTargetMiB       int
 	MaxInputCharacters int
 	ImageTextExtractor ImageTextExtractor
+	LanguageIdentifier *language.LanguageIdentifier
 }
 
 type managedProcess interface {
@@ -85,7 +88,7 @@ func startWith(ctx context.Context, cfg RuntimeConfig, output io.Writer, starter
 		return nil, fmt.Errorf("llama-server is not ready: %w", err)
 	}
 	runtime.client = NewClientWithImageTextExtractor(
-		baseURL, apiKey, cfg.NumPredict, cfg.Temperature, cfg.MaxInputCharacters, cfg.RequestTimeout, cfg.ImageTextExtractor,
+		baseURL, apiKey, cfg.NumPredict, cfg.Temperature, cfg.MaxInputCharacters, cfg.RequestTimeout, cfg.ImageTextExtractor, cfg.LanguageIdentifier,
 	)
 	if cfg.Profile != "" {
 		runtime.client.profile = cfg.Profile

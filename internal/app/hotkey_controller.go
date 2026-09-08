@@ -75,6 +75,7 @@ type quickTranslationSession struct {
 	replacing         bool
 	requestGeneration uint64
 	cancelRequest     context.CancelFunc
+	directionFallback bool
 }
 
 type translationRequest struct {
@@ -83,6 +84,8 @@ type translationRequest struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	request    translation.TranslateRequest
+	direction  language.Direction
+	fallback   bool
 }
 
 type linkedReplacement struct {
@@ -99,7 +102,8 @@ type HotkeyController struct {
 	ctx         context.Context
 	cfg         config.Config
 	translator  Translator
-	detector    language.Detector
+	completer   translation.RawCompleter
+	identifier  *language.LanguageIdentifier
 	selection   SelectionIO
 	targets     OriginTargets
 	popup       Popup
@@ -115,8 +119,8 @@ type HotkeyController struct {
 	requests       sync.WaitGroup
 }
 
-func NewHotkeyController(ctx context.Context, cfg config.Config, translator Translator, detector language.Detector, selection SelectionIO, targets OriginTargets, popup Popup, logger logger.PrintLogger) *HotkeyController {
-	return &HotkeyController{ctx: ctx, cfg: cfg, translator: translator, detector: detector, selection: selection, targets: targets, popup: popup, logger: logger}
+func NewHotkeyController(ctx context.Context, cfg config.Config, translator Translator, completer translation.RawCompleter, identifier *language.LanguageIdentifier, selection SelectionIO, targets OriginTargets, popup Popup, logger logger.PrintLogger) *HotkeyController {
+	return &HotkeyController{ctx: ctx, cfg: cfg, translator: translator, completer: completer, identifier: identifier, selection: selection, targets: targets, popup: popup, logger: logger}
 }
 
 func (c *HotkeyController) ShowTranslation() {
@@ -146,7 +150,7 @@ func (c *HotkeyController) ShowTranslation() {
 		return
 	}
 
-	direction := c.direction(text)
+	direction, fallback := c.direction(text)
 	c.mu.Lock()
 	if c.closed || c.showGeneration != showGeneration {
 		c.mu.Unlock()
@@ -154,13 +158,14 @@ func (c *HotkeyController) ShowTranslation() {
 	}
 	c.nextSessionID++
 	session := &quickTranslationSession{
-		id:               c.nextSessionID,
-		sourceText:       text,
-		clipboard:        previous,
-		origin:           origin,
-		source:           direction.Source,
-		target:           direction.Target,
-		detectedLanguage: direction.Detected,
+		id:                c.nextSessionID,
+		sourceText:        text,
+		clipboard:         previous,
+		origin:            origin,
+		source:            direction.Source,
+		target:            direction.Target,
+		detectedLanguage:  direction.Detected,
+		directionFallback: fallback,
 	}
 	c.session = session
 	request, state := c.queueTranslationLocked(session)
@@ -213,6 +218,7 @@ func (c *HotkeyController) ChangeQuickTranslationTarget(target string) error {
 		return nil
 	}
 	session.target = target
+	session.directionFallback = false
 	request, state := c.queueTranslationLocked(session)
 	c.popup.Update(state)
 	c.mu.Unlock()
@@ -296,6 +302,8 @@ func (c *HotkeyController) queueTranslationLocked(session *quickTranslationSessi
 		ctx:        requestContext,
 		cancel:     cancel,
 		request:    translation.TranslateRequest{Text: session.sourceText, Source: session.source, Target: session.target},
+		direction:  language.Direction{Source: session.source, Target: session.target, Detected: session.detectedLanguage},
+		fallback:   session.directionFallback,
 	}
 	c.requests.Add(1)
 	return request, c.popupStateLocked(session)
@@ -306,7 +314,8 @@ func (c *HotkeyController) runTranslation(request translationRequest) {
 		defer c.requests.Done()
 		defer request.cancel()
 		started := time.Now()
-		result, err := c.translator.Translate(request.ctx, request.request)
+		outcome, err := c.translateQuick(request.ctx, request.request.Text, request.direction, request.fallback)
+		result := outcome.result
 		if err == nil && strings.TrimSpace(result.Text) == "" {
 			err = errors.New("received an empty translation")
 		}
@@ -328,7 +337,10 @@ func (c *HotkeyController) runTranslation(request translationRequest) {
 			session.translationError = ""
 			session.err = ""
 			session.translatedText = result.Text
-			session.translationTarget = request.request.Target
+			session.source = outcome.direction.Source
+			session.target = outcome.direction.Target
+			session.directionFallback = false
+			session.translationTarget = outcome.direction.Target
 			if result.DetectedLanguage != "" {
 				session.detectedLanguage = result.DetectedLanguage
 			}
@@ -341,7 +353,7 @@ func (c *HotkeyController) runTranslation(request translationRequest) {
 			c.logger.Printf("quick translation failed: source=%s target=%s chars=%d duration=%s error=%v", request.request.Source, request.request.Target, len([]rune(request.request.Text)), time.Since(started), err)
 			return
 		}
-		c.logger.Printf("quick translation completed: source=%s target=%s chars=%d duration=%s", request.request.Source, request.request.Target, len([]rune(request.request.Text)), time.Since(started))
+		c.logger.Printf("quick translation completed: source=%s target=%s chars=%d duration=%s", outcome.direction.Source, outcome.direction.Target, len([]rune(request.request.Text)), time.Since(started))
 	}()
 }
 
@@ -460,22 +472,22 @@ func (c *HotkeyController) replaceDirectly() {
 		c.failReplace(err)
 		return
 	}
-	direction := c.direction(text)
+	direction, fallback := c.direction(text)
 	started := time.Now()
-	result, err := c.translator.Translate(c.ctx, translation.TranslateRequest{Text: text, Source: direction.Source, Target: direction.Target})
+	outcome, err := c.translateQuick(c.ctx, text, direction, fallback)
 	if err != nil {
 		c.failReplace(err)
 		return
 	}
-	if strings.TrimSpace(result.Text) == "" {
+	if strings.TrimSpace(outcome.result.Text) == "" {
 		c.failReplace(errors.New("received an empty translation; the source text was not changed"))
 		return
 	}
-	if err := c.selection.PasteText(c.ctx, result.Text, previous); err != nil {
+	if err := c.selection.PasteText(c.ctx, outcome.result.Text, previous); err != nil {
 		c.failReplace(err)
 		return
 	}
-	c.logger.Printf("replace hotkey translation completed: source=%s target=%s chars=%d duration=%s", direction.Source, direction.Target, len([]rune(text)), time.Since(started))
+	c.logger.Printf("replace hotkey translation completed: source=%s target=%s chars=%d duration=%s", outcome.direction.Source, outcome.direction.Target, len([]rune(text)), time.Since(started))
 }
 
 func (c *HotkeyController) invalidateSessionLocked() {
@@ -500,13 +512,38 @@ func (c *HotkeyController) clipboardWait() time.Duration {
 	return time.Duration(c.cfg.Limits.ClipboardWaitMilliseconds) * time.Millisecond
 }
 
-func (c *HotkeyController) direction(text string) language.Direction {
+func (c *HotkeyController) direction(text string) (language.Direction, bool) {
+	detection := c.identifier.Detect(text)
+	if detection.Reliable {
+		return language.ChooseDirection(
+			detection.Language,
+			c.cfg.DefaultLanguagePair.First.Active,
+			c.cfg.DefaultLanguagePair.Second.Active,
+			c.cfg.FallbackTargetLanguage.Active,
+		), false
+	}
 	return language.ChooseDirection(
-		c.detector.Detect(text),
+		"",
 		c.cfg.DefaultLanguagePair.First.Active,
 		c.cfg.DefaultLanguagePair.Second.Active,
 		c.cfg.FallbackTargetLanguage.Active,
-	)
+	), true
+}
+
+func (c *HotkeyController) translateQuick(ctx context.Context, text string, direction language.Direction, fallback bool) (quickTranslationOutcome, error) {
+	if fallback {
+		return completeQuickTranslation(
+			ctx,
+			c.completer,
+			text,
+			c.cfg.DefaultLanguagePair.First.Active,
+			c.cfg.DefaultLanguagePair.Second.Active,
+			c.cfg.FallbackTargetLanguage.Active,
+			c.cfg.Limits.MaxInputCharacters,
+		)
+	}
+	result, err := c.translator.Translate(ctx, translation.TranslateRequest{Text: text, Source: direction.Source, Target: direction.Target})
+	return quickTranslationOutcome{result: result, direction: direction}, err
 }
 
 func (c *HotkeyController) failReplace(err error) {

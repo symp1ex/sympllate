@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sympllate/translator/internal/language"
 	"github.com/sympllate/translator/internal/translation"
 )
 
@@ -27,6 +28,7 @@ type Client struct {
 	maxInputCharacters int
 	httpClient         *http.Client
 	imageTextExtractor ImageTextExtractor
+	languageIdentifier *language.LanguageIdentifier
 	requestMu          sync.Mutex
 }
 
@@ -189,9 +191,10 @@ func (c *Client) completePayload(ctx context.Context, payload []byte) (string, e
 	return result.Text, nil
 }
 
-func NewClientWithImageTextExtractor(baseURL, apiKey string, numPredict int, temperature float64, maxInputCharacters int, timeout time.Duration, extractor ImageTextExtractor) *Client {
+func NewClientWithImageTextExtractor(baseURL, apiKey string, numPredict int, temperature float64, maxInputCharacters int, timeout time.Duration, extractor ImageTextExtractor, identifier *language.LanguageIdentifier) *Client {
 	client := NewClient(baseURL, apiKey, numPredict, temperature, maxInputCharacters, timeout)
 	client.imageTextExtractor = extractor
+	client.languageIdentifier = identifier
 	return client
 }
 
@@ -211,11 +214,16 @@ func (c *Client) TranslateImage(ctx context.Context, req translation.ImageTransl
 	if strings.TrimSpace(text) == "" {
 		return translation.ImageTranslateResult{}, nil
 	}
-	result, err := c.Translate(ctx, translation.TranslateRequest{Text: text, Source: req.Source, Target: req.Target})
+	resolvedSource, detection := c.languageIdentifier.ResolveSource(text, req.Source)
+	result, err := c.Translate(ctx, translation.TranslateRequest{Text: text, Source: resolvedSource, Target: req.Target})
 	if err != nil {
 		return translation.ImageTranslateResult{}, err
 	}
-	return translation.ImageTranslateResult{Text: translation.NormalizeImageTranslation(result.Text), DetectedLanguage: result.DetectedLanguage}, nil
+	detectedLanguage := ""
+	if detection.Reliable {
+		detectedLanguage = detection.Language
+	}
+	return translation.ImageTranslateResult{Text: translation.NormalizeImageTranslation(result.Text), DetectedLanguage: detectedLanguage}, nil
 }
 
 func (c *Client) ImageCapability() translation.ImageCapability {

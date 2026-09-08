@@ -38,7 +38,7 @@ type ImageJobStatus struct {
 type Service struct {
 	ctx        context.Context
 	translator Translator
-	detector   language.Detector
+	identifier *language.LanguageIdentifier
 	logger     logger.PrintLogger
 	manualBusy atomic.Bool
 	nextID     atomic.Uint64
@@ -49,9 +49,9 @@ type Service struct {
 	wg         sync.WaitGroup
 }
 
-func NewService(ctx context.Context, translator Translator, detector language.Detector, logger logger.PrintLogger) *Service {
+func NewService(ctx context.Context, translator Translator, identifier *language.LanguageIdentifier, logger logger.PrintLogger) *Service {
 	return &Service{
-		ctx: ctx, translator: translator, detector: detector, logger: logger,
+		ctx: ctx, translator: translator, identifier: identifier, logger: logger,
 		jobs: make(map[string]JobStatus), imageJobs: make(map[string]ImageJobStatus),
 	}
 }
@@ -182,12 +182,18 @@ func (s *Service) Translate(ctx context.Context, req translation.TranslateReques
 	if closed {
 		return translation.TranslateResult{}, errors.New("translation service is shutting down")
 	}
+	originalSource := req.Source
+	resolvedSource, detection := s.identifier.ResolveSource(req.Text, req.Source)
+	req.Source = resolvedSource
 	result, err := s.translator.Translate(ctx, req)
 	if err != nil {
 		return translation.TranslateResult{}, err
 	}
-	if req.Source == "auto" {
-		result.DetectedLanguage = s.detector.Detect(req.Text)
+	if originalSource == "auto" {
+		result.DetectedLanguage = ""
+		if detection.Reliable {
+			result.DetectedLanguage = detection.Language
+		}
 	}
 	return result, nil
 }
