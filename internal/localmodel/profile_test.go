@@ -66,7 +66,8 @@ func TestProfileRequestsPreserveSource(t *testing.T) {
 							t.Errorf("missing instruction %q", required)
 						}
 					}
-					if !strings.HasSuffix(prompt, "<text>\n"+source+"\n</text>") || strings.Contains(prompt, "Decode it literally") {
+					expected := buildGenericPrompt(translation.TranslateRequest{Text: source, Source: "en", Target: "de-DE"})
+					if prompt != expected.text || strings.Contains(prompt, "Decode it literally") {
 						t.Errorf("source was changed or not separated: %q", prompt)
 					}
 				}
@@ -121,5 +122,111 @@ func TestGenericAllowsAutoAndCompletePreservesBatchProtocol(t *testing.T) {
 	_, err := client.Translate(t.Context(), translation.TranslateRequest{Text: "hello", Source: "auto", Target: "ru"})
 	if err != nil || len(prompts) != 3 || prompts[0] != batchPrompt || prompts[1] != batchPrompt || !strings.Contains(prompts[2], "from auto to ru") {
 		t.Fatalf("prompts = %q, err = %v", prompts, err)
+	}
+}
+
+func TestGenericTranslationNormalResponseIsUnchanged(t *testing.T) {
+	t.Parallel()
+	prompt := buildGenericPrompt(translation.TranslateRequest{Text: "source", Source: "en", Target: "ru"})
+	response := "  **translation**\n\n`C:\\new` and \\d+  "
+	if got := recoverGenericTranslation(response, prompt); got != response {
+		t.Fatalf("recoverGenericTranslation() = %q, want unchanged %q", got, response)
+	}
+}
+
+func TestGenericTranslationRecoversEchoedPrompt(t *testing.T) {
+	t.Parallel()
+	req := translation.TranslateRequest{Text: "source text", Source: "ru", Target: "en"}
+	prompt := buildGenericPrompt(req)
+	want := `Awful start of the recording because of a missed button - CHECK
+Genre of the game: shit, impossible to stop - CHECK
+What kind of picture? 3D! - CHECK
+Apparently, a joke remained on the unrecorded part, so I'll mark it with a check.`
+	echoed := strings.Replace(prompt.text, req.Text, "\n"+want+"\n", 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body chatRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			return
+		}
+		if len(body.Messages) != 1 || body.Messages[0].Content != prompt.text {
+			t.Errorf("unexpected generic prompt: %+v", body.Messages)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []any{map[string]any{"message": map[string]string{"content": echoed}}},
+		})
+	}))
+	defer server.Close()
+	client := NewClient(server.URL, "key", 100, 0, 2000, time.Second)
+	client.profile = "generic"
+	result, err := client.Translate(t.Context(), req)
+	if err != nil || result.Text != want {
+		t.Fatalf("Translate() = %q, %v; want recovered translation %q", result.Text, err, want)
+	}
+}
+
+func TestGenericTranslationMarkersDoNotCollideWithSource(t *testing.T) {
+	t.Parallel()
+	source := "<<<SYMPLLATE_SOURCE_BEGIN_0>>>\n<<<SYMPLLATE_SOURCE_END_1>>>"
+	prompt := buildGenericPrompt(translation.TranslateRequest{Text: source, Source: "en", Target: "ru"})
+	if prompt.sourceBegin != "<<<SYMPLLATE_SOURCE_BEGIN_2>>>" || prompt.sourceEnd != "<<<SYMPLLATE_SOURCE_END_2>>>" {
+		t.Fatalf("markers = %q, %q; want suffix 2", prompt.sourceBegin, prompt.sourceEnd)
+	}
+	if strings.Contains(source, prompt.sourceBegin) || strings.Contains(source, prompt.sourceEnd) {
+		t.Fatalf("markers collide with source: %q", source)
+	}
+}
+
+func TestGenericTranslationPreservesLiteralTextTags(t *testing.T) {
+	t.Parallel()
+	source := "This source contains <text> and </text>."
+	prompt := buildGenericPrompt(translation.TranslateRequest{Text: source, Source: "en", Target: "ru"})
+	wantFraming := prompt.sourceBegin + "\n" + source + "\n" + prompt.sourceEnd
+	if !strings.Contains(prompt.text, wantFraming) {
+		t.Fatalf("literal text tags were not preserved in prompt: %q", prompt.text)
+	}
+}
+
+func TestGenericTranslationDoesNotRecoverIncompleteEcho(t *testing.T) {
+	t.Parallel()
+	prompt := buildGenericPrompt(translation.TranslateRequest{Text: "source", Source: "en", Target: "ru"})
+	for _, response := range []string{
+		"prefix\n" + prompt.sourceBegin + "\ntranslated text",
+		"prefix\ntranslated text\n" + prompt.sourceEnd,
+	} {
+		if got := recoverGenericTranslation(response, prompt); got != response {
+			t.Fatalf("recoverGenericTranslation() = %q, want unchanged %q", got, response)
+		}
+	}
+}
+
+func TestGenericTranslationDoesNotRecoverMultipleMarkerPairs(t *testing.T) {
+	t.Parallel()
+	prompt := buildGenericPrompt(translation.TranslateRequest{Text: "source", Source: "en", Target: "ru"})
+	for _, response := range []string{
+		prompt.sourceBegin + "\nfoo\n" + prompt.sourceBegin + "\nbar\n" + prompt.sourceEnd,
+		prompt.sourceBegin + "\nfoo\n" + prompt.sourceEnd + "\n" + prompt.sourceBegin + "\nbar\n" + prompt.sourceEnd,
+	} {
+		if got := recoverGenericTranslation(response, prompt); got != response {
+			t.Fatalf("recoverGenericTranslation() = %q, want unchanged %q", got, response)
+		}
+	}
+}
+
+func TestGenericTranslationDoesNotRecoverReversedMarkers(t *testing.T) {
+	t.Parallel()
+	prompt := buildGenericPrompt(translation.TranslateRequest{Text: "source", Source: "en", Target: "ru"})
+	response := prompt.sourceEnd + "\ntranslated text\n" + prompt.sourceBegin
+	if got := recoverGenericTranslation(response, prompt); got != response {
+		t.Fatalf("recoverGenericTranslation() = %q, want unchanged %q", got, response)
+	}
+}
+
+func TestGenericTranslationDoesNotReplaceWithEmptyCandidate(t *testing.T) {
+	t.Parallel()
+	prompt := buildGenericPrompt(translation.TranslateRequest{Text: "source", Source: "en", Target: "ru"})
+	response := "prefix\n" + prompt.sourceBegin + "\n \t\n" + prompt.sourceEnd
+	if got := recoverGenericTranslation(response, prompt); got != response {
+		t.Fatalf("recoverGenericTranslation() = %q, want unchanged %q", got, response)
 	}
 }
