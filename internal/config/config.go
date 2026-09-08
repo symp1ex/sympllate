@@ -143,7 +143,7 @@ func Default() Config {
 		DefaultLanguagePair:    LanguagePair{First: newSelectSetting("ru", languages), Second: newSelectSetting("en", languages)},
 		FallbackTargetLanguage: newSelectSetting("ru", languages),
 		UI:                     UIConfig{MainWindowWidth: 900, MainWindowHeight: 620, PopupWidth: 520, PopupHeight: 360, AlwaysOnTopPopup: true},
-		Limits:                 LimitsConfig{MaxInputCharacters: 12000, ClipboardWaitMilliseconds: 800},
+		Limits:                 LimitsConfig{MaxInputCharacters: 131072, ClipboardWaitMilliseconds: 800},
 		Updater:                UpdaterConfig{Enabled: true},
 		Logs:                   LogsConfig{LogLevel: newSelectSetting(LogLevelWarning, []string{LogLevelDebug, LogLevelInfo, LogLevelWarning, LogLevelError}), StoreDays: 2},
 		ImageBatch:             ImageBatchConfig{MinimumFontSize: 7, MaximumFontSize: 48, LineSpacing: 1.15, JPEGQuality: 92},

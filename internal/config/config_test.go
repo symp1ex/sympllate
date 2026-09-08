@@ -132,6 +132,9 @@ func TestValidateProviders(t *testing.T) {
 func TestDefaultEnablesUpdaterAndConfiguresLogs(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
+	if cfg.Limits.MaxInputCharacters != 131072 {
+		t.Fatalf("default max input characters = %d, want 131072", cfg.Limits.MaxInputCharacters)
+	}
 	if !cfg.Updater.Enabled {
 		t.Fatal("default updater is disabled")
 	}

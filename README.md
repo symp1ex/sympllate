@@ -186,7 +186,7 @@ Sympllate/
     "alwaysOnTopPopup": true
   },
   "limits": {
-    "maxInputCharacters": 12000,
+    "maxInputCharacters": 131072,
     "clipboardWaitMilliseconds": 800
   },
   "updater": {
