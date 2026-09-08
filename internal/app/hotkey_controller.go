@@ -218,7 +218,6 @@ func (c *HotkeyController) ChangeQuickTranslationTarget(target string) error {
 		return nil
 	}
 	session.target = target
-	session.directionFallback = false
 	request, state := c.queueTranslationLocked(session)
 	c.popup.Update(state)
 	c.mu.Unlock()
@@ -339,7 +338,6 @@ func (c *HotkeyController) runTranslation(request translationRequest) {
 			session.translatedText = result.Text
 			session.source = outcome.direction.Source
 			session.target = outcome.direction.Target
-			session.directionFallback = false
 			session.translationTarget = outcome.direction.Target
 			if result.DetectedLanguage != "" {
 				session.detectedLanguage = result.DetectedLanguage
@@ -514,35 +512,25 @@ func (c *HotkeyController) clipboardWait() time.Duration {
 
 func (c *HotkeyController) direction(text string) (language.Direction, bool) {
 	detection := c.identifier.Detect(text)
-	if detection.Reliable {
-		return language.ChooseDirection(
-			detection.Language,
-			c.cfg.DefaultLanguagePair.First.Active,
-			c.cfg.DefaultLanguagePair.Second.Active,
-			c.cfg.FallbackTargetLanguage.Active,
-		), false
+	candidate := detection.Language
+	if candidate == "auto" || !language.IsSupported(candidate) {
+		candidate = ""
 	}
-	return language.ChooseDirection(
-		"",
+	direction := language.ChooseDirection(
+		candidate,
 		c.cfg.DefaultLanguagePair.First.Active,
 		c.cfg.DefaultLanguagePair.Second.Active,
 		c.cfg.FallbackTargetLanguage.Active,
-	), true
+	)
+	return direction, !detection.Reliable || candidate == ""
 }
 
 func (c *HotkeyController) translateQuick(ctx context.Context, text string, direction language.Direction, fallback bool) (quickTranslationOutcome, error) {
+	source := direction.Source
 	if fallback {
-		return completeQuickTranslation(
-			ctx,
-			c.completer,
-			text,
-			c.cfg.DefaultLanguagePair.First.Active,
-			c.cfg.DefaultLanguagePair.Second.Active,
-			c.cfg.FallbackTargetLanguage.Active,
-			c.cfg.Limits.MaxInputCharacters,
-		)
+		source = "auto"
 	}
-	result, err := c.translator.Translate(ctx, translation.TranslateRequest{Text: text, Source: direction.Source, Target: direction.Target})
+	result, err := c.translator.Translate(ctx, translation.TranslateRequest{Text: text, Source: source, Target: direction.Target})
 	return quickTranslationOutcome{result: result, direction: direction}, err
 }
 
