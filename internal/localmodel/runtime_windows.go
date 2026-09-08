@@ -87,9 +87,9 @@ func startWith(ctx context.Context, cfg RuntimeConfig, output io.Writer, starter
 		}
 		return nil, fmt.Errorf("llama-server is not ready: %w", err)
 	}
-	runtime.client = NewClientWithImageTextExtractor(
-		baseURL, apiKey, cfg.NumPredict, cfg.Temperature, cfg.MaxInputCharacters, cfg.RequestTimeout, cfg.ImageTextExtractor, cfg.LanguageIdentifier,
-	)
+	runtime.client = newClient(baseURL, apiKey, cfg.NumCtx, cfg.NumPredict, cfg.Temperature, cfg.MaxInputCharacters, cfg.RequestTimeout)
+	runtime.client.imageTextExtractor = cfg.ImageTextExtractor
+	runtime.client.languageIdentifier = cfg.LanguageIdentifier
 	if cfg.Profile != "" {
 		runtime.client.profile = cfg.Profile
 	}

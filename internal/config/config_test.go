@@ -13,7 +13,7 @@ import (
 func TestLocalModelProfileDefaultsAndLegacyConfig(t *testing.T) {
 	t.Parallel()
 	want := Default()
-	if want.LocalModel.Profile != "generic" || want.LocalModel.ModelFile != "" || want.LocalModel.StartupTimeoutSeconds != 180 || want.LocalModel.FitTargetMiB != 1024 {
+	if want.LocalModel.Profile != "generic" || want.LocalModel.ModelFile != "" || want.LocalModel.ContextSize != 2048 || want.LocalModel.StartupTimeoutSeconds != 180 || want.LocalModel.FitTargetMiB != 1024 {
 		t.Fatalf("unexpected local defaults: %+v", want.LocalModel)
 	}
 	data, err := json.Marshal(want)
@@ -21,6 +21,7 @@ func TestLocalModelProfileDefaultsAndLegacyConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacy := strings.Replace(string(data), `"profile":"generic",`, "", 1)
+	legacy = strings.Replace(legacy, `"contextSize":2048,`, "", 1)
 	path := filepath.Join(t.TempDir(), "config.json")
 	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
 		t.Fatal(err)
@@ -28,6 +29,32 @@ func TestLocalModelProfileDefaultsAndLegacyConfig(t *testing.T) {
 	got, err := Load(path)
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("legacy config changed defaults: %+v, %v", got, err)
+	}
+}
+
+func TestLocalModelContextIsIndependentFromOllama(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	cfg.Ollama.NumCtx = 8192
+	if cfg.LocalModel.ContextSize != 2048 {
+		t.Fatalf("local context = %d after Ollama change, want 2048", cfg.LocalModel.ContextSize)
+	}
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil || loaded.LocalModel.ContextSize != 2048 || loaded.Ollama.NumCtx != 8192 {
+		t.Fatalf("Load() = local %d, Ollama %d, %v", loaded.LocalModel.ContextSize, loaded.Ollama.NumCtx, err)
+	}
+}
+
+func TestValidateLocalModelContextSize(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	cfg.LocalModel.ContextSize = 0
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "localModel.contextSize") {
+		t.Fatalf("Validate() error = %v", err)
 	}
 }
 

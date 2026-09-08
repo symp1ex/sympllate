@@ -20,9 +20,11 @@ const maxResponseBytes = 4 << 20
 
 type Client struct {
 	endpoint           string
+	tokenCountEndpoint string
 	apiKey             string
 	model              string
 	profile            string
+	contextSize        int
 	numPredict         int
 	temperature        float64
 	maxInputCharacters int
@@ -38,9 +40,14 @@ type ImageTextExtractor interface {
 }
 
 func NewClient(baseURL, apiKey string, numPredict int, temperature float64, maxInputCharacters int, timeout time.Duration) *Client {
+	return newClient(baseURL, apiKey, defaultLocalContextSize, numPredict, temperature, maxInputCharacters, timeout)
+}
+
+func newClient(baseURL, apiKey string, contextSize, numPredict int, temperature float64, maxInputCharacters int, timeout time.Duration) *Client {
+	baseURL = strings.TrimRight(baseURL, "/")
 	return &Client{
-		endpoint: strings.TrimRight(baseURL, "/") + "/v1/chat/completions",
-		apiKey:   apiKey, model: ModelAlias, profile: "translategemma", numPredict: numPredict, temperature: temperature,
+		endpoint: baseURL + "/v1/chat/completions", tokenCountEndpoint: baseURL + "/v1/chat/completions/input_tokens",
+		apiKey: apiKey, model: ModelAlias, profile: "translategemma", contextSize: contextSize, numPredict: numPredict, temperature: temperature,
 		maxInputCharacters: maxInputCharacters, httpClient: &http.Client{Timeout: timeout},
 	}
 }
@@ -93,6 +100,14 @@ func (c *Client) Translate(ctx context.Context, req translation.TranslateRequest
 	if err := translation.ValidateRequest(req, c.maxInputCharacters); err != nil {
 		return translation.TranslateResult{}, err
 	}
+	text, err := c.translateDocument(ctx, req)
+	if err != nil {
+		return translation.TranslateResult{}, err
+	}
+	return translation.TranslateResult{Text: text}, nil
+}
+
+func (c *Client) translateOnce(ctx context.Context, req translation.TranslateRequest) (string, error) {
 	var text string
 	var err error
 	switch c.profile {
@@ -105,18 +120,26 @@ func (c *Client) Translate(ctx context.Context, req translation.TranslateRequest
 			text = recoverGenericTranslation(text, prompt)
 		}
 	default:
-		return translation.TranslateResult{}, fmt.Errorf("unsupported local model profile %q", c.profile)
+		return "", fmt.Errorf("unsupported local model profile %q", c.profile)
 	}
 	if err != nil {
-		return translation.TranslateResult{}, err
+		return "", err
 	}
-	return translation.TranslateResult{Text: translation.CleanResultForSource(text, req.Text)}, nil
+	return text, nil
 }
 
 func (c *Client) translateTranslateGemma(ctx context.Context, req translation.TranslateRequest) (string, error) {
 	if strings.EqualFold(req.Source, "auto") {
 		return "", errors.New("TranslateGemma requires an explicit source language; select a source language instead of auto")
 	}
+	payload, err := c.marshalTranslateGemmaRequest(req)
+	if err != nil {
+		return "", err
+	}
+	return c.completePayload(ctx, payload)
+}
+
+func (c *Client) marshalTranslateGemmaRequest(req translation.TranslateRequest) ([]byte, error) {
 	payload, err := json.Marshal(translateGemmaRequest{
 		Model: c.model, Stream: false, MaxTokens: c.numPredict, Temperature: c.temperature,
 		Messages: []translateGemmaMessage{{Role: "user", Content: []translateGemmaContent{{
@@ -124,9 +147,9 @@ func (c *Client) translateTranslateGemma(ctx context.Context, req translation.Tr
 		}}}},
 	})
 	if err != nil {
-		return "", fmt.Errorf("marshal local request: %w", err)
+		return nil, fmt.Errorf("marshal local request: %w", err)
 	}
-	return c.completePayload(ctx, payload)
+	return payload, nil
 }
 
 // Keep the shared BuildPrompt unchanged: Ollama also uses it.
@@ -184,14 +207,22 @@ func (c *Client) Complete(ctx context.Context, prompt string) (string, error) {
 	if strings.TrimSpace(prompt) == "" {
 		return "", errors.New("model prompt is empty")
 	}
+	payload, err := c.marshalChatRequest(prompt)
+	if err != nil {
+		return "", err
+	}
+	return c.completePayload(ctx, payload)
+}
+
+func (c *Client) marshalChatRequest(prompt string) ([]byte, error) {
 	payload, err := json.Marshal(chatRequest{
 		Model: c.model, Messages: []chatMessage{{Role: "user", Content: prompt}}, Stream: false,
 		MaxTokens: c.numPredict, Temperature: c.temperature,
 	})
 	if err != nil {
-		return "", fmt.Errorf("marshal local request: %w", err)
+		return nil, fmt.Errorf("marshal local request: %w", err)
 	}
-	return c.completePayload(ctx, payload)
+	return payload, nil
 }
 
 // Serialize all model traffic, including native, generic, and batch requests.
@@ -285,6 +316,9 @@ func ParseChatResponse(statusCode int, body []byte) (translation.TranslateResult
 		message := strings.TrimSpace(decoded.Error.Message)
 		if message == "" {
 			message = http.StatusText(statusCode)
+		}
+		if overflow := parseContextOverflowError(statusCode, message); overflow != nil {
+			return translation.TranslateResult{}, overflow
 		}
 		return translation.TranslateResult{}, fmt.Errorf("the local model returned HTTP %d: %s", statusCode, message)
 	}

@@ -34,7 +34,7 @@ import (
 )
 
 var errRestartRequested = errors.New("application restart requested")
-var version = "0.4.2.5"
+var version = "0.4.2.6"
 var debugMode = flag.Bool("debug", false, "enable experimental application features")
 
 func main() {
@@ -126,7 +126,7 @@ func run(debugMode bool) (runErr error) {
 			ExecutableDir:      executableDir,
 			StartupTimeout:     time.Duration(cfg.LocalModel.StartupTimeoutSeconds) * time.Second,
 			RequestTimeout:     time.Duration(cfg.Ollama.TimeoutSeconds) * time.Second,
-			NumCtx:             cfg.Ollama.NumCtx,
+			NumCtx:             cfg.LocalModel.ContextSize,
 			NumPredict:         cfg.Ollama.NumPredict,
 			Temperature:        cfg.Ollama.Temperature,
 			FitTargetMiB:       cfg.LocalModel.FitTargetMiB,

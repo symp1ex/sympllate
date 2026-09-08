@@ -79,6 +79,7 @@ func (s *SelectSetting) UnmarshalJSON(data []byte) error {
 type LocalModelConfig struct {
 	ModelFile             string `json:"modelFile"`
 	Profile               string `json:"profile"`
+	ContextSize           int    `json:"contextSize"`
 	StartupTimeoutSeconds int    `json:"startupTimeoutSeconds"`
 	FitTargetMiB          int    `json:"fitTargetMiB"`
 }
@@ -136,7 +137,7 @@ func Default() Config {
 	languages := supportedTargetLanguages()
 	return Config{
 		Provider:               newSelectSetting(ProviderAuto, []string{ProviderAuto, ProviderOllama, ProviderLocal}),
-		LocalModel:             LocalModelConfig{ModelFile: "", Profile: ProfileGeneric, StartupTimeoutSeconds: 180, FitTargetMiB: 1024},
+		LocalModel:             LocalModelConfig{ModelFile: "", Profile: ProfileGeneric, ContextSize: 2048, StartupTimeoutSeconds: 180, FitTargetMiB: 1024},
 		Ollama:                 OllamaConfig{BaseURL: "http://127.0.0.1:11434", Model: "translategemma:latest", TimeoutSeconds: 120, KeepAlive: "10m", NumCtx: 2048, NumPredict: 1024, Temperature: 0},
 		Hotkeys:                HotkeyConfig{ShowTranslation: "Ctrl+Win+X", ReplaceSelection: "Ctrl+Win+R"},
 		DefaultLanguagePair:    LanguagePair{First: newSelectSetting("ru", languages), Second: newSelectSetting("en", languages)},
@@ -286,6 +287,9 @@ func (c Config) Validate() error {
 		}
 	}
 	if c.Provider.Active == ProviderAuto || c.Provider.Active == ProviderLocal {
+		if c.LocalModel.ContextSize <= 0 {
+			return errors.New("localModel.contextSize must be greater than zero")
+		}
 		if c.LocalModel.StartupTimeoutSeconds <= 0 {
 			return errors.New("localModel.startupTimeoutSeconds must be greater than zero")
 		}

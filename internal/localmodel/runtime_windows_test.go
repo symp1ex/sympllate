@@ -66,6 +66,9 @@ func TestRuntimePassesProfileToClient(t *testing.T) {
 			if runtime.Client().profile != want {
 				t.Fatalf("client profile = %q, want %s", runtime.Client().profile, want)
 			}
+			if runtime.Client().contextSize != 2048 {
+				t.Fatalf("client context size = %d, want 2048", runtime.Client().contextSize)
+			}
 		})
 	}
 }

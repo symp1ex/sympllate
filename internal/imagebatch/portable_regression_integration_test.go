@@ -52,7 +52,7 @@ func TestPortableImageRegression(t *testing.T) {
 		Layout: layout, ExecutableDir: portable,
 		StartupTimeout: time.Duration(cfg.LocalModel.StartupTimeoutSeconds) * time.Second,
 		RequestTimeout: time.Duration(cfg.Ollama.TimeoutSeconds) * time.Second,
-		NumCtx:         cfg.Ollama.NumCtx, NumPredict: cfg.Ollama.NumPredict, Temperature: cfg.Ollama.Temperature,
+		NumCtx:         cfg.LocalModel.ContextSize, NumPredict: cfg.Ollama.NumPredict, Temperature: cfg.Ollama.Temperature,
 		FitTargetMiB: cfg.LocalModel.FitTargetMiB, MaxInputCharacters: cfg.Limits.MaxInputCharacters,
 		ImageTextExtractor: ocrEngine,
 	}, os.Stdout)
