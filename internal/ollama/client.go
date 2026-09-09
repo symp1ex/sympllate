@@ -20,6 +20,8 @@ import (
 type TranslateRequest = translation.TranslateRequest
 type TranslateResult = translation.TranslateResult
 
+const ollamaRequestTokenOverhead = 256
+
 type Client struct {
 	endpoint           string
 	model              string
@@ -68,15 +70,53 @@ func (c *Client) Translate(ctx context.Context, req TranslateRequest) (Translate
 	if err := translation.ValidateRequest(req, c.maxInputCharacters); err != nil {
 		return TranslateResult{}, err
 	}
+	emptyRequest := req
+	emptyRequest.Text = ""
+	requestOverhead, err := c.requestTokenEstimate(emptyRequest)
+	if err != nil {
+		return TranslateResult{}, err
+	}
+	text, err := translation.TranslateLongText(ctx, req, translation.LongTextOptions{
+		RequestFits:   c.requestFits,
+		TranslateOnce: c.translateOnce,
+		SuggestedChunkSize: func(text string, measuredTokens int) int {
+			return translation.SuggestedChunkRunes(text, measuredTokens, c.inputTokenBudget(), requestOverhead)
+		},
+	})
+	if err != nil {
+		return TranslateResult{}, err
+	}
+	return TranslateResult{Text: text}, nil
+}
+
+func (c *Client) translateOnce(ctx context.Context, req TranslateRequest) (string, error) {
 	prompt, err := BuildPrompt(req.Text, req.Source, req.Target)
 	if err != nil {
-		return TranslateResult{}, err
+		return "", err
 	}
-	text, err := c.Complete(ctx, prompt)
+	return c.Complete(ctx, prompt)
+}
+
+func (c *Client) requestFits(_ context.Context, req TranslateRequest) (bool, int, error) {
+	estimate, err := c.requestTokenEstimate(req)
 	if err != nil {
-		return TranslateResult{}, err
+		return false, 0, err
 	}
-	return TranslateResult{Text: translation.CleanResultForSource(text, req.Text)}, nil
+	return estimate <= c.inputTokenBudget(), estimate, nil
+}
+
+func (c *Client) requestTokenEstimate(req TranslateRequest) (int, error) {
+	encoded, err := json.Marshal(req.Text)
+	if err != nil {
+		return 0, err
+	}
+	// Count JSON escaping in the source and retain the conservative fixed
+	// prompt allowance used by the Local generic profile.
+	return len(encoded) + ollamaRequestTokenOverhead, nil
+}
+
+func (c *Client) inputTokenBudget() int {
+	return translation.SafeInputTokenBudget(c.numCtx, c.numPredict)
 }
 
 // Complete runs one raw TranslateGemma prompt. generate serializes all model

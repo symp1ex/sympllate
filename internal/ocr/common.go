@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	DefaultTimeout       = 30 * time.Second
+	DefaultTimeout       = 180 * time.Second
 	maximumTileGridCells = 8
 )
 

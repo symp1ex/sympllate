@@ -11,8 +11,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/sympllate/translator/internal/config"
 	"github.com/sympllate/translator/internal/translation"
@@ -20,7 +18,6 @@ import (
 
 const (
 	defaultLocalContextSize = 2048
-	maxChunkSplitDepth      = 16
 	tokenCountResponseLimit = 64 << 10
 )
 
@@ -71,26 +68,12 @@ func (c *Client) translateDocument(ctx context.Context, req translation.Translat
 	if err := c.validateProfileRequest(req); err != nil {
 		return "", err
 	}
-	fits, tokenCount, err := c.requestFits(ctx, req)
-	if err != nil {
-		return "", err
-	}
-	if !fits {
-		if tokenCount == 0 {
-			tokenCount = -1
-		}
-		return c.translateChunk(ctx, req, 0, tokenCount, nil)
-	}
-
-	text, err := c.translateOnce(ctx, req)
-	if err == nil {
-		return translation.CleanResultForSource(text, req.Text), nil
-	}
-	var overflow *ContextOverflowError
-	if !errors.As(err, &overflow) {
-		return "", err
-	}
-	return c.translateChunk(ctx, req, 0, 0, overflow)
+	return translation.TranslateLongText(ctx, req, translation.LongTextOptions{
+		RequestFits:        c.requestFits,
+		TranslateOnce:      c.translateOnce,
+		ContextOverflow:    contextOverflow,
+		SuggestedChunkSize: c.suggestedChunkRunes,
+	})
 }
 
 func (c *Client) validateProfileRequest(req translation.TranslateRequest) error {
@@ -107,78 +90,12 @@ func (c *Client) validateProfileRequest(req translation.TranslateRequest) error 
 	}
 }
 
-func (c *Client) translateChunk(ctx context.Context, req translation.TranslateRequest, depth, tokenCount int, cause error) (string, error) {
-	if err := ctx.Err(); err != nil {
-		return "", err
+func contextOverflow(err error) error {
+	var overflow *ContextOverflowError
+	if errors.As(err, &overflow) {
+		return overflow
 	}
-	prefix, source, suffix := outerWhitespace(req.Text)
-	if source == "" {
-		return req.Text, nil
-	}
-	req.Text = source
-
-	if cause == nil && tokenCount == 0 {
-		fits, measured, err := c.requestFits(ctx, req)
-		if err != nil {
-			return "", err
-		}
-		if fits {
-			text, translateErr := c.translateOnce(ctx, req)
-			if translateErr == nil {
-				return prefix + translation.CleanResultForSource(text, source) + suffix, nil
-			}
-			var overflow *ContextOverflowError
-			if !errors.As(translateErr, &overflow) {
-				return "", translateErr
-			}
-			cause = overflow
-			tokenCount = 0
-		} else {
-			tokenCount = measured
-		}
-	}
-
-	if depth >= maxChunkSplitDepth || utf8.RuneCountInString(source) < 2 {
-		if cause != nil {
-			return "", cause
-		}
-		text, err := c.translateOnce(ctx, req)
-		if err != nil {
-			return "", err
-		}
-		return prefix + translation.CleanResultForSource(text, source) + suffix, nil
-	}
-
-	if tokenCount < 0 {
-		tokenCount = 0
-	}
-	limit := c.suggestedChunkRunes(source, tokenCount)
-	parts := splitText(source, limit)
-	if len(parts) < 2 {
-		if cause != nil {
-			return "", cause
-		}
-		text, err := c.translateOnce(ctx, req)
-		if err != nil {
-			return "", err
-		}
-		return prefix + translation.CleanResultForSource(text, source) + suffix, nil
-	}
-
-	var result strings.Builder
-	result.Grow(len(req.Text))
-	result.WriteString(prefix)
-	for _, part := range parts {
-		partRequest := req
-		partRequest.Text = part
-		translated, err := c.translateChunk(ctx, partRequest, depth+1, 0, nil)
-		if err != nil {
-			return "", err
-		}
-		result.WriteString(translated)
-	}
-	result.WriteString(suffix)
-	return result.String(), nil
+	return nil
 }
 
 func (c *Client) requestFits(ctx context.Context, req translation.TranslateRequest) (bool, int, error) {
@@ -208,25 +125,7 @@ func (c *Client) inputTokenBudget() int {
 	if contextSize <= 0 {
 		contextSize = defaultLocalContextSize
 	}
-	reservedOutput := c.numPredict
-	if reservedOutput < 1 {
-		reservedOutput = 1
-	}
-	if reservedOutput > contextSize/2 {
-		reservedOutput = contextSize / 2
-	}
-	safetyMargin := contextSize / 16
-	if safetyMargin < 32 {
-		safetyMargin = 32
-	}
-	if safetyMargin > contextSize/4 {
-		safetyMargin = contextSize / 4
-	}
-	budget := contextSize - reservedOutput - safetyMargin
-	if budget < 1 {
-		return 1
-	}
-	return budget
+	return translation.SafeInputTokenBudget(contextSize, c.numPredict)
 }
 
 func (c *Client) fallbackRequestTokenEstimate(req translation.TranslateRequest) int {
@@ -240,30 +139,9 @@ func (c *Client) fallbackRequestTokenEstimate(req translation.TranslateRequest) 
 }
 
 func (c *Client) suggestedChunkRunes(text string, measuredTokens int) int {
-	runeCount := utf8.RuneCountInString(text)
-	if runeCount < 2 {
-		return 1
-	}
 	budget := c.inputTokenBudget()
-	limit := runeCount / 2
-	if measuredTokens > budget {
-		limit = runeCount * budget / measuredTokens
-		limit = limit * 9 / 10
-	} else if measuredTokens == 0 {
-		overhead := c.fallbackRequestTokenEstimate(translation.TranslateRequest{})
-		sourceBudget := budget - overhead
-		if sourceBudget > 0 && len([]byte(text)) > sourceBudget {
-			limit = runeCount * sourceBudget / len([]byte(text))
-			limit = limit * 9 / 10
-		}
-	}
-	if limit < 1 {
-		limit = 1
-	}
-	if limit >= runeCount {
-		limit = runeCount / 2
-	}
-	return limit
+	overhead := c.fallbackRequestTokenEstimate(translation.TranslateRequest{})
+	return translation.SuggestedChunkRunes(text, measuredTokens, budget, overhead)
 }
 
 func (c *Client) translationPayload(req translation.TranslateRequest) ([]byte, error) {
@@ -326,17 +204,4 @@ func (c *Client) countInputTokens(ctx context.Context, payload []byte) (int, err
 		return 0, errors.New("local token counting returned an invalid response")
 	}
 	return decoded.InputTokens, nil
-}
-
-func outerWhitespace(value string) (prefix, text, suffix string) {
-	runes := []rune(value)
-	start := 0
-	for start < len(runes) && unicode.IsSpace(runes[start]) {
-		start++
-	}
-	end := len(runes)
-	for end > start && unicode.IsSpace(runes[end-1]) {
-		end--
-	}
-	return string(runes[:start]), string(runes[start:end]), string(runes[end:])
 }

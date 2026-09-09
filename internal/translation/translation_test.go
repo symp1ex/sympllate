@@ -16,6 +16,26 @@ func TestBuildPromptSeparatesUserText(t *testing.T) {
 	}
 }
 
+func TestSafeInputTokenBudget(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name                    string
+		contextSize, numPredict int
+		want                    int
+	}{
+		{name: "normal reservation and margin", contextSize: 2048, numPredict: 256, want: 1664},
+		{name: "output reservation is capped", contextSize: 2048, numPredict: 4096, want: 896},
+		{name: "margin is capped for small contexts", contextSize: 100, numPredict: 25, want: 50},
+		{name: "budget is always positive", contextSize: 1, numPredict: 1, want: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := SafeInputTokenBudget(test.contextSize, test.numPredict); got != test.want {
+				t.Fatalf("SafeInputTokenBudget(%d, %d) = %d, want %d", test.contextSize, test.numPredict, got, test.want)
+			}
+		})
+	}
+}
+
 func TestValidateRequest(t *testing.T) {
 	t.Parallel()
 	if err := ValidateRequest(TranslateRequest{Text: "hello", Source: "en", Target: "ru"}, 5); err != nil {
