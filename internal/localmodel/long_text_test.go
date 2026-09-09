@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -81,6 +82,118 @@ func TestLongTranslationPreservesProfileProtocolAndStructure(t *testing.T) {
 				t.Fatalf("source chunks = %#v, want %#v", chunks, wantChunks)
 			}
 		})
+	}
+}
+
+func TestNormalizeGenericTranslationNewlines(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "CRLF", input: "line1\r\nline2\r\nline3", want: "line1\nline2\nline3"},
+		{name: "LF", input: "line1\nline2\nline3", want: "line1\nline2\nline3"},
+		{name: "lone CR", input: "line1\rline2", want: "line1\nline2"},
+		{
+			name:  "structured technical text",
+			input: "# Header\r\n\r\nParagraph with `inline_code` and identifier_name.\r\n\r\n```go\r\npath := `R:\\data\\user\\0`\r\nmatched := `^\\w+\\s+$`\r\n```",
+			want:  "# Header\n\nParagraph with `inline_code` and identifier_name.\n\n```go\npath := `R:\\data\\user\\0`\nmatched := `^\\w+\\s+$`\n```",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := normalizeGenericTranslationNewlines(test.input)
+			if got != test.want {
+				t.Fatalf("normalizeGenericTranslationNewlines(%q) = %q; want %q", test.input, got, test.want)
+			}
+			if second := normalizeGenericTranslationNewlines(got); second != got {
+				t.Fatalf("normalization is not idempotent: first=%q second=%q", got, second)
+			}
+		})
+	}
+}
+
+func TestGenericLongTranslationUsesSameChunksForMainLFAndQuickCRLF(t *testing.T) {
+	section := "## Section\n\nParagraph text with enough words to exercise semantic chunk boundaries.\n" +
+		"Keep `inline_code`, R:\\data\\user\\0, and ^\\w+\\s+$ unchanged.\n\n"
+	mainInput := strings.Repeat(section, 5) + "Final line."
+	quickInput := strings.ReplaceAll(mainInput, "\n", "\r\n")
+	if reflect.DeepEqual(splitText(mainInput, 150), splitText(quickInput, 150)) {
+		t.Fatal("raw LF and CRLF inputs unexpectedly produced the same chunks; test does not exercise the regression")
+	}
+	if got := normalizeGenericTranslationNewlines(quickInput); got != mainInput {
+		t.Fatalf("normalized quick input differs from main input:\nquick=%q\nmain=%q", got, mainInput)
+	}
+
+	var mu sync.Mutex
+	var chunks []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		text := requestSource(t, r, config.ProfileGeneric, "ru", "en")
+		if strings.HasSuffix(r.URL.Path, "/input_tokens") {
+			_ = json.NewEncoder(w).Encode(inputTokenCountResponse{InputTokens: utf8.RuneCountInString(text) + 40})
+			return
+		}
+		mu.Lock()
+		chunks = append(chunks, text)
+		mu.Unlock()
+		writeTranslation(t, w, text)
+	}))
+	defer server.Close()
+
+	translateAndCapture := func(input string) []string {
+		t.Helper()
+		mu.Lock()
+		chunks = nil
+		mu.Unlock()
+		client := newClient(server.URL, "key", 220, 40, 0, 5000, time.Second)
+		client.profile = config.ProfileGeneric
+		result, err := client.Translate(t.Context(), translation.TranslateRequest{Text: input, Source: "ru", Target: "en"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Text != mainInput {
+			t.Fatalf("Translate() = %q; want canonical input %q", result.Text, mainInput)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), chunks...)
+	}
+
+	mainChunks := translateAndCapture(mainInput)
+	quickChunks := translateAndCapture(quickInput)
+	if len(mainChunks) < 2 {
+		t.Fatalf("completion chunks = %#v; want long-text path", mainChunks)
+	}
+	if !reflect.DeepEqual(quickChunks, mainChunks) {
+		t.Fatalf("quick chunks differ from main chunks:\nquick=%#v\nmain=%#v", quickChunks, mainChunks)
+	}
+}
+
+func TestRawTranslateGemmaPreservesSourceLineEndings(t *testing.T) {
+	const source = "line1\r\nline2\rline3"
+	var modelSource string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/completion" {
+			t.Errorf("unexpected endpoint: %s", r.URL.Path)
+			return
+		}
+		var body rawCompletionRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			return
+		}
+		modelSource = rawPromptSource(t, body.Prompt)
+		_ = json.NewEncoder(w).Encode(rawCompletionResponse{Content: "translated"})
+	}))
+	defer server.Close()
+	client := newClient(server.URL, "key", 2048, 256, 0, 5000, time.Second)
+	client.profile = config.ProfileTranslateGemmaRaw
+	if _, err := client.Translate(t.Context(), translation.TranslateRequest{Text: source, Source: "en", Target: "ru"}); err != nil {
+		t.Fatal(err)
+	}
+	if modelSource != source {
+		t.Fatalf("raw model source = %q; want unchanged %q", modelSource, source)
 	}
 }
 

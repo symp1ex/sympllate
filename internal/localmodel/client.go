@@ -131,6 +131,9 @@ func (t genericBatchBlockTranslator) Translate(ctx context.Context, req translat
 }
 
 func (c *Client) Translate(ctx context.Context, req translation.TranslateRequest) (translation.TranslateResult, error) {
+	if c.profile == config.ProfileGeneric {
+		req.Text = normalizeGenericTranslationNewlines(req.Text)
+	}
 	if err := translation.ValidateRequest(req, c.maxInputCharacters); err != nil {
 		return translation.TranslateResult{}, err
 	}
@@ -139,6 +142,11 @@ func (c *Client) Translate(ctx context.Context, req translation.TranslateRequest
 		return translation.TranslateResult{}, err
 	}
 	return translation.TranslateResult{Text: text}, nil
+}
+
+func normalizeGenericTranslationNewlines(text string) string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	return strings.ReplaceAll(text, "\r", "\n")
 }
 
 func (c *Client) BatchBlockTranslator() translation.BatchBlockTranslator {

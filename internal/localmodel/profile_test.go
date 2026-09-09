@@ -17,6 +17,10 @@ func TestProfileRequestsPreserveSource(t *testing.T) {
 	for _, profile := range []string{"translategemma", "generic"} {
 		t.Run(profile, func(t *testing.T) {
 			source := "  # Header\n\nThis is **important** and \"quoted\".\n`id_name` {value} https://example.org 12 kg\r\n```go\npath := `C:\\new`\n```\nПривет <tag> & </text>\t"
+			expectedSource := source
+			if profile == "generic" {
+				expectedSource = normalizeGenericTranslationNewlines(source)
+			}
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method != http.MethodPost || r.URL.Path != "/v1/chat/completions" {
 					t.Errorf("unexpected endpoint: %s %s", r.Method, r.URL.Path)
@@ -42,7 +46,7 @@ func TestProfileRequestsPreserveSource(t *testing.T) {
 						return
 					}
 					part := body.Messages[0].Content[0]
-					if len(part) != 4 || part["type"] != "text" || part["source_lang_code"] != "en" || part["target_lang_code"] != "de-DE" || part["text"] != source {
+					if len(part) != 4 || part["type"] != "text" || part["source_lang_code"] != "en" || part["target_lang_code"] != "de-DE" || part["text"] != expectedSource {
 						t.Errorf("unexpected native content: %+v", part)
 					}
 					for _, forbidden := range []string{"You are a machine translation engine", "Source text (JSON string)", "Decode it literally", "Return only", "Rules:", "<text>"} {
@@ -66,7 +70,7 @@ func TestProfileRequestsPreserveSource(t *testing.T) {
 							t.Errorf("missing instruction %q", required)
 						}
 					}
-					expected := buildGenericPrompt(translation.TranslateRequest{Text: source, Source: "en", Target: "de-DE"})
+					expected := buildGenericPrompt(translation.TranslateRequest{Text: expectedSource, Source: "en", Target: "de-DE"})
 					if prompt != expected || strings.Contains(prompt, "Decode it literally") {
 						t.Errorf("source was changed or not separated: %q", prompt)
 					}
