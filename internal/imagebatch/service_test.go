@@ -71,6 +71,24 @@ type sequenceBatchCompleter struct {
 	calls     int
 }
 
+type isolatedBatchCompleter struct {
+	requests []translation.TranslateRequest
+}
+
+func (f *isolatedBatchCompleter) Complete(context.Context, string) (string, error) {
+	return "", errors.New("unexpected structured completion")
+}
+
+func (f *isolatedBatchCompleter) BatchBlockTranslator() translation.BatchBlockTranslator { return f }
+
+func (f *isolatedBatchCompleter) Translate(_ context.Context, req translation.TranslateRequest) (translation.TranslateResult, error) {
+	f.requests = append(f.requests, req)
+	if req.Text == "Second" {
+		return translation.TranslateResult{}, &translation.BlockTranslationError{Err: errors.New("invalid model response")}
+	}
+	return translation.TranslateResult{Text: "Перевод"}, nil
+}
+
 func (f *sequenceBatchCompleter) Complete(context.Context, string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -208,6 +226,32 @@ func TestBatchProtocolFailureFallsBackPerBlockAndRendersPartial(t *testing.T) {
 	var document TranslationDocument
 	readJSON(t, filepath.Join(status.OutputDirectory, "translations", "partial.translation.json"), &document)
 	if document.Status != "partial" || document.Blocks[1].Status != "failed" || document.Blocks[1].TranslatedText != "" {
+		t.Fatalf("translation=%+v", document)
+	}
+}
+
+func TestBatchDirectBlockFailureRendersPartialResult(t *testing.T) {
+	directory := t.TempDir()
+	path := writeBatchImage(t, directory, "direct-partial.png")
+	page := translatedOCRPage()
+	second := page.Paragraphs[0]
+	second.ID, second.Text, second.Box.X = "p1-b2-par1", "Second", 150
+	second.Lines[0].ID, second.Lines[0].Text, second.Lines[0].Box.X = "p1-b2-par1-l1", "Second", 150
+	page.Paragraphs = append(page.Paragraphs, second)
+	completer := &isolatedBatchCompleter{}
+	service := newBatchTestService(t, directory, &fakeBatchOCR{pages: []ocr.OCRPage{page}}, completer)
+	selection, _ := service.SelectFiles([]string{path})
+	id, err := service.Start(StartImageBatchRequest{SelectionID: selection.ID, Source: "en", Target: "ru"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := waitBatch(t, service, id)
+	if status.State != "completed" || status.Partial != 1 || status.Rendered != 1 || status.Failed != 0 || len(completer.requests) != 2 {
+		t.Fatalf("status=%+v requests=%+v", status, completer.requests)
+	}
+	var document TranslationDocument
+	readJSON(t, filepath.Join(status.OutputDirectory, "translations", "direct-partial.translation.json"), &document)
+	if document.Status != "partial" || len(document.Blocks) != 2 || document.Blocks[0].ID != "p1-b1-par1" || document.Blocks[0].Status != "translated" || document.Blocks[0].TranslatedText != "Перевод" || document.Blocks[1].ID != "p1-b2-par1" || document.Blocks[1].Status != "failed" || document.Blocks[1].TranslatedText != "" {
 		t.Fatalf("translation=%+v", document)
 	}
 }

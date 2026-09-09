@@ -339,6 +339,13 @@ func (s *Service) processFile(ctx context.Context, job *batchJob, index int, sou
 	s.updateStage(job, "translate")
 	translated, chunks, err := s.translator.Translate(ctx, job.request.Source, job.request.Target, blocks)
 	failedTranslationIDs := make(map[string]struct{})
+	var partialErr *translation.PartialTranslationError
+	if errors.As(err, &partialErr) {
+		for _, id := range partialErr.FailedBlockIDs {
+			failedTranslationIDs[id] = struct{}{}
+		}
+		err = nil
+	}
 	var protocolErr *translation.ProtocolError
 	if errors.As(err, &protocolErr) {
 		translated, chunks, failedTranslationIDs, err = s.translateBlocksIndividually(ctx, job.request.Source, job.request.Target, blocks)

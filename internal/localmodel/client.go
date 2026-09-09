@@ -114,6 +114,22 @@ type chatResponse struct {
 	} `json:"error"`
 }
 
+type modelResponseError struct{ err error }
+
+func (e *modelResponseError) Error() string { return e.err.Error() }
+func (e *modelResponseError) Unwrap() error { return e.err }
+
+type genericBatchBlockTranslator struct{ client *Client }
+
+func (t genericBatchBlockTranslator) Translate(ctx context.Context, req translation.TranslateRequest) (translation.TranslateResult, error) {
+	result, err := t.client.Translate(ctx, req)
+	var responseErr *modelResponseError
+	if errors.As(err, &responseErr) {
+		return translation.TranslateResult{}, &translation.BlockTranslationError{Err: err}
+	}
+	return result, err
+}
+
 func (c *Client) Translate(ctx context.Context, req translation.TranslateRequest) (translation.TranslateResult, error) {
 	if err := translation.ValidateRequest(req, c.maxInputCharacters); err != nil {
 		return translation.TranslateResult{}, err
@@ -129,6 +145,8 @@ func (c *Client) BatchBlockTranslator() translation.BatchBlockTranslator {
 	switch c.profile {
 	case config.ProfileTranslateGemma, config.ProfileTranslateGemmaRaw:
 		return c
+	case config.ProfileGeneric:
+		return genericBatchBlockTranslator{client: c}
 	default:
 		return nil
 	}
@@ -356,7 +374,7 @@ func (c *Client) completePayload(ctx context.Context, payload []byte) (string, e
 		return "", fmt.Errorf("read local model response: %w", err)
 	}
 	if len(body) > maxResponseBytes {
-		return "", errors.New("the local model response is too large")
+		return "", &modelResponseError{err: errors.New("the local model response is too large")}
 	}
 	result, err := ParseChatResponse(response.StatusCode, body)
 	if err != nil {
@@ -416,7 +434,7 @@ func ParseChatResponse(statusCode int, body []byte) (translation.TranslateResult
 		if statusCode < 200 || statusCode >= 300 {
 			return translation.TranslateResult{}, fmt.Errorf("the local model returned HTTP %d and an invalid response", statusCode)
 		}
-		return translation.TranslateResult{}, fmt.Errorf("the local model returned invalid JSON: %w", err)
+		return translation.TranslateResult{}, &modelResponseError{err: fmt.Errorf("the local model returned invalid JSON: %w", err)}
 	}
 	if statusCode < 200 || statusCode >= 300 {
 		message := strings.TrimSpace(decoded.Error.Message)
@@ -429,11 +447,11 @@ func ParseChatResponse(statusCode int, body []byte) (translation.TranslateResult
 		return translation.TranslateResult{}, fmt.Errorf("the local model returned HTTP %d: %s", statusCode, message)
 	}
 	if len(decoded.Choices) == 0 {
-		return translation.TranslateResult{}, errors.New("the local model returned no translation choices")
+		return translation.TranslateResult{}, &modelResponseError{err: errors.New("the local model returned no translation choices")}
 	}
 	result := translation.CleanResult(decoded.Choices[0].Message.Content)
 	if result == "" {
-		return translation.TranslateResult{}, errors.New("the local model returned an empty translation")
+		return translation.TranslateResult{}, &modelResponseError{err: errors.New("the local model returned an empty translation")}
 	}
 	return translation.TranslateResult{Text: result}, nil
 }

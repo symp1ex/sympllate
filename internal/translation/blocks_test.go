@@ -189,6 +189,32 @@ func TestStructuredTranslatorUsesBatchBlockTranslatorAndPreservesOrder(t *testin
 	}
 }
 
+func TestStructuredTranslatorKeepsOtherDirectBlocksAfterIsolatedError(t *testing.T) {
+	completer := &batchBlockCompleter{translate: func(req TranslateRequest) (TranslateResult, error) {
+		switch req.Text {
+		case "unchanged":
+			return TranslateResult{Text: req.Text}, nil
+		case "bad":
+			return TranslateResult{}, &BlockTranslationError{Err: errors.New("invalid model response")}
+		default:
+			return TranslateResult{Text: "translated:" + req.Text}, nil
+		}
+	}}
+	translator, _ := NewStructuredTranslator(completer, 4000)
+	blocks := []TranslationBlock{{ID: "a", Text: "unchanged"}, {ID: "b", Text: "bad"}, {ID: "c", Text: "last"}}
+	result, requests, err := translator.Translate(t.Context(), "en", "ru", blocks)
+	var partialErr *PartialTranslationError
+	if !errors.As(err, &partialErr) || requests != 3 || len(completer.requests) != 3 {
+		t.Fatalf("result=%+v requests=%d modelRequests=%d err=%v", result, requests, len(completer.requests), err)
+	}
+	if len(partialErr.FailedBlockIDs) != 1 || partialErr.FailedBlockIDs[0] != "b" {
+		t.Fatalf("failed IDs=%v", partialErr.FailedBlockIDs)
+	}
+	if len(result) != 2 || result[0].ID != "a" || result[0].Text != "unchanged" || result[1].ID != "c" || result[1].Text != "translated:last" {
+		t.Fatalf("successful blocks shifted or discarded: %+v", result)
+	}
+}
+
 func TestStructuredTranslatorBatchBlockPathReassemblesOversizedParts(t *testing.T) {
 	completer := &batchBlockCompleter{translate: func(req TranslateRequest) (TranslateResult, error) {
 		return TranslateResult{Text: "translated:" + req.Text}, nil

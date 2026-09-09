@@ -58,6 +58,23 @@ type CompletionError struct{ Err error }
 func (e *CompletionError) Error() string { return e.Err.Error() }
 func (e *CompletionError) Unwrap() error { return e.Err }
 
+// BlockTranslationError marks a model response failure that is isolated to
+// one direct batch block and must not discard translations of other blocks.
+type BlockTranslationError struct{ Err error }
+
+func (e *BlockTranslationError) Error() string { return e.Err.Error() }
+func (e *BlockTranslationError) Unwrap() error { return e.Err }
+
+// PartialTranslationError carries successful direct-block results together
+// with the parent block IDs whose isolated model responses were invalid.
+type PartialTranslationError struct {
+	FailedBlockIDs []string
+	Err            error
+}
+
+func (e *PartialTranslationError) Error() string { return e.Err.Error() }
+func (e *PartialTranslationError) Unwrap() error { return e.Err }
+
 type ProtocolError struct{ Err error }
 
 func (e *ProtocolError) Error() string { return e.Err.Error() }
@@ -105,13 +122,26 @@ func (t *StructuredTranslator) Translate(ctx context.Context, source, target str
 	translated := make(map[string]string, len(expanded))
 	requestCount := 0
 	if blockTranslator := t.batchBlockTranslator(); blockTranslator != nil {
-		requestCount = len(expanded)
+		failedByParent := make(map[string]struct{})
+		failedBlockIDs := make([]string, 0)
+		blockErrors := make([]error, 0)
 		for _, block := range expanded {
+			if _, failed := failedByParent[block.parentID]; failed {
+				continue
+			}
 			if err := ctx.Err(); err != nil {
 				return nil, requestCount, &CompletionError{Err: err}
 			}
+			requestCount++
 			result, translateErr := blockTranslator.Translate(ctx, TranslateRequest{Text: block.Text, Source: source, Target: target})
 			if translateErr != nil {
+				var blockErr *BlockTranslationError
+				if errors.As(translateErr, &blockErr) {
+					failedByParent[block.parentID] = struct{}{}
+					failedBlockIDs = append(failedBlockIDs, block.parentID)
+					blockErrors = append(blockErrors, fmt.Errorf("translate block %q: %w", block.ID, blockErr))
+					continue
+				}
 				return nil, requestCount, &CompletionError{Err: translateErr}
 			}
 			text := NormalizeImageTranslation(result.Text)
@@ -119,6 +149,10 @@ func (t *StructuredTranslator) Translate(ctx context.Context, source, target str
 				return nil, requestCount, &CompletionError{Err: fmt.Errorf("model returned an empty translation for block %q", block.ID)}
 			}
 			translated[block.ID] = text
+		}
+		if len(failedBlockIDs) > 0 {
+			result := t.assembleTranslations(blocks, expanded, translated, failedByParent)
+			return result, requestCount, &PartialTranslationError{FailedBlockIDs: failedBlockIDs, Err: errors.Join(blockErrors...)}
 		}
 	} else {
 		chunks, err := t.chunkBlocks(source, target, expanded)
@@ -136,9 +170,16 @@ func (t *StructuredTranslator) Translate(ctx context.Context, source, target str
 			}
 		}
 	}
+	return t.assembleTranslations(blocks, expanded, translated, nil), requestCount, nil
+}
+
+func (t *StructuredTranslator) assembleTranslations(blocks []TranslationBlock, expanded []expandedBlock, translated map[string]string, failedByParent map[string]struct{}) []TranslatedTextBlock {
 	assembled := make(map[string]string, len(blocks))
 	partsByParent := make(map[string][]TranslatedTextPart)
 	for _, block := range expanded {
+		if _, failed := failedByParent[block.parentID]; failed {
+			continue
+		}
 		if previous := assembled[block.parentID]; previous != "" {
 			assembled[block.parentID] = previous + block.separator + translated[block.ID]
 		} else {
@@ -150,9 +191,12 @@ func (t *StructuredTranslator) Translate(ctx context.Context, source, target str
 	}
 	result := make([]TranslatedTextBlock, 0, len(blocks))
 	for _, block := range blocks {
+		if _, failed := failedByParent[block.ID]; failed {
+			continue
+		}
 		result = append(result, TranslatedTextBlock{ID: block.ID, Text: assembled[block.ID], Parts: partsByParent[block.ID]})
 	}
-	return result, requestCount, nil
+	return result
 }
 
 func (t *StructuredTranslator) batchBlockTranslator() BatchBlockTranslator {
