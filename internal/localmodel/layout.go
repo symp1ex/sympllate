@@ -119,6 +119,9 @@ func BuildArguments(layout Layout, profile string, port int, apiKey string, numC
 	if profile != config.ProfileTranslateGemma {
 		args = append(args, "--no-jinja")
 	}
+	if profile == config.ProfileGeneric {
+		args = append(args, "--reasoning", "off")
+	}
 	return append(args,
 		"--offline",
 		"--parallel", "1",

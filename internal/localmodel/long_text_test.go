@@ -498,19 +498,33 @@ func requestSource(t *testing.T, r *http.Request, profile, wantSource, wantTarge
 		return ""
 	}
 	prompt := body.Messages[0].Content
-	wantDirection := "Translate the following text from " + wantSource + " to " + wantTarget + "."
-	if !strings.Contains(prompt, wantDirection) {
-		t.Errorf("generic prompt direction = %q, want %q", prompt, wantDirection)
+	_, targetLabel := genericLanguage(wantTarget)
+	if !strings.Contains(prompt, targetLabel) {
+		t.Errorf("generic prompt target = %q, want %q", prompt, targetLabel)
 		return ""
 	}
-	begin := strings.Index(prompt, "<<<SYMPLLATE_SOURCE_BEGIN_")
+	if strings.EqualFold(wantSource, "auto") {
+		if !strings.Contains(prompt, "detect the language of the source text") {
+			t.Errorf("generic auto prompt lost detection instruction: %q", prompt)
+			return ""
+		}
+	} else {
+		_, sourceLabel := genericLanguage(wantSource)
+		if !strings.Contains(prompt, sourceLabel+" to "+targetLabel+" translator") {
+			t.Errorf("generic prompt direction = %q", prompt)
+			return ""
+		}
+	}
+	beginMarker := "\n<text>\n"
+	endMarker := "\n</text>"
+	begin := strings.Index(prompt, beginMarker)
 	if begin < 0 {
-		t.Errorf("generic prompt lost source marker: %q", prompt)
+		t.Errorf("generic prompt lost source delimiter: %q", prompt)
 		return ""
 	}
-	begin = strings.Index(prompt[begin:], "\n") + begin + 1
-	end := strings.LastIndex(prompt, "\n<<<SYMPLLATE_SOURCE_END_")
-	if begin <= 0 || end < begin {
+	begin += len(beginMarker)
+	end := strings.LastIndex(prompt, endMarker)
+	if end < begin {
 		t.Errorf("generic prompt has invalid source framing: %q", prompt)
 		return ""
 	}

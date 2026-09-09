@@ -154,7 +154,7 @@ func TestBuildArgumentsUsesProfileAndRequiresAutomaticGPUFit(t *testing.T) {
 	joined := strings.Join(args, " ")
 	for _, required := range []string{
 		"--host 127.0.0.1", "--port 4321", "--alias " + ModelAlias,
-		"--no-webui", "--no-jinja", "--offline", "--parallel 1", "--ctx-size 2048",
+		"--no-webui", "--no-jinja", "--reasoning off", "--offline", "--parallel 1", "--ctx-size 2048",
 		"--gpu-layers auto", "--fit on", "--fit-target 1024",
 	} {
 		if !strings.Contains(joined, required) {
@@ -164,12 +164,41 @@ func TestBuildArgumentsUsesProfileAndRequiresAutomaticGPUFit(t *testing.T) {
 	if strings.Contains(joined, "--gpu-layers all") {
 		t.Fatalf("unsafe gpu layer mode: %s", joined)
 	}
+	if countArgument(args, "--reasoning") != 1 || countArgumentPair(args, "--reasoning", "off") != 1 {
+		t.Fatalf("generic reasoning arguments = %v; want exactly one --reasoning off pair", args)
+	}
 	translateGemmaArgs := BuildArguments(Layout{ModelPath: `C:\app\models\m.gguf`}, config.ProfileTranslateGemma, 4321, "secret", 2048, 1024)
 	if strings.Contains(strings.Join(translateGemmaArgs, " "), "--no-jinja") {
 		t.Fatalf("TranslateGemma arguments disable Jinja: %v", translateGemmaArgs)
+	}
+	if countArgument(translateGemmaArgs, "--reasoning") != 0 {
+		t.Fatalf("TranslateGemma arguments disable reasoning: %v", translateGemmaArgs)
 	}
 	rawArgs := BuildArguments(Layout{ModelPath: `C:\app\models\m.gguf`}, config.ProfileTranslateGemmaRaw, 4321, "secret", 2048, 1024)
 	if !strings.Contains(strings.Join(rawArgs, " "), "--no-jinja") {
 		t.Fatalf("raw TranslateGemma arguments enable Jinja: %v", rawArgs)
 	}
+	if countArgument(rawArgs, "--reasoning") != 0 {
+		t.Fatalf("raw TranslateGemma arguments disable reasoning: %v", rawArgs)
+	}
+}
+
+func countArgument(args []string, name string) int {
+	count := 0
+	for _, argument := range args {
+		if argument == name {
+			count++
+		}
+	}
+	return count
+}
+
+func countArgumentPair(args []string, name, value string) int {
+	count := 0
+	for index := 0; index+1 < len(args); index++ {
+		if args[index] == name && args[index+1] == value {
+			count++
+		}
+	}
+	return count
 }

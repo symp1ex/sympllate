@@ -283,7 +283,7 @@ func (c *Client) translationPayload(req translation.TranslateRequest) ([]byte, e
 		}
 		return payload, nil
 	case "generic":
-		return c.marshalChatRequest(buildGenericPrompt(req).text)
+		return c.marshalChatRequest(buildGenericPrompt(req))
 	default:
 		return nil, fmt.Errorf("unsupported local model profile %q", c.profile)
 	}

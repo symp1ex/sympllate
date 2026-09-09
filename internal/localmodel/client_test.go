@@ -164,7 +164,7 @@ func TestGenericBatchTranslationUsesIndependentGenericPrompts(t *testing.T) {
 		}
 		index := len(prompts)
 		prompts = append(prompts, body.Messages[0].Content)
-		want := buildGenericPrompt(translation.TranslateRequest{Text: blocks[index].Text, Source: "en", Target: "ru"}).text
+		want := buildGenericPrompt(translation.TranslateRequest{Text: blocks[index].Text, Source: "en", Target: "ru"})
 		if body.Messages[0].Content != want {
 			t.Errorf("prompt[%d] = %q; want %q", index, body.Messages[0].Content, want)
 		}
@@ -207,7 +207,9 @@ func TestGenericBatchTranslationAllowsAuto(t *testing.T) {
 	client.profile = config.ProfileGeneric
 	translator, _ := translation.NewStructuredTranslator(client, 4000)
 	result, requests, err := translator.Translate(t.Context(), "auto", "ru", []translation.TranslationBlock{{ID: "block", Text: "source"}})
-	if err != nil || requests != 1 || len(result) != 1 || !strings.Contains(prompt, "from auto to ru") {
+	if err != nil || requests != 1 || len(result) != 1 ||
+		!strings.Contains(prompt, "professional translator into Russian (ru)") ||
+		!strings.Contains(prompt, "detect the language of the source text") {
 		t.Fatalf("result=%+v requests=%d prompt=%q err=%v", result, requests, prompt, err)
 	}
 }
@@ -287,7 +289,7 @@ func TestGenericBatchReassemblesOversizedBlock(t *testing.T) {
 		t.Fatalf("result=%+v requests=%d prompts=%d err=%v", result, requests, len(prompts), err)
 	}
 	for index, part := range result[0].Parts {
-		want := buildGenericPrompt(translation.TranslateRequest{Text: part.SourceText, Source: "en", Target: "ru"}).text
+		want := buildGenericPrompt(translation.TranslateRequest{Text: part.SourceText, Source: "en", Target: "ru"})
 		if prompts[index] != want || strings.Contains(prompts[index], "Input JSON:") || strings.Contains(prompts[index], "<start_of_turn>") {
 			t.Errorf("prompt[%d]=%q; want direct generic prompt %q", index, prompts[index], want)
 		}
@@ -860,7 +862,9 @@ func TestClientTranslateImageKeepsAutoForUnreliableOCRSource(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		if len(request.Messages) != 1 || !strings.Contains(request.Messages[0].Content, "from auto to ru") {
+		if len(request.Messages) != 1 ||
+			!strings.Contains(request.Messages[0].Content, "professional translator into Russian (ru)") ||
+			!strings.Contains(request.Messages[0].Content, "detect the language of the source text") {
 			t.Errorf("generic translation request = %+v", request)
 		}
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"translated"}}]}`))
