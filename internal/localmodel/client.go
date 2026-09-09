@@ -125,6 +125,15 @@ func (c *Client) Translate(ctx context.Context, req translation.TranslateRequest
 	return translation.TranslateResult{Text: text}, nil
 }
 
+func (c *Client) BatchBlockTranslator() translation.BatchBlockTranslator {
+	switch c.profile {
+	case config.ProfileTranslateGemma, config.ProfileTranslateGemmaRaw:
+		return c
+	default:
+		return nil
+	}
+}
+
 func (c *Client) translateOnce(ctx context.Context, req translation.TranslateRequest) (string, error) {
 	var text string
 	var err error
@@ -253,8 +262,8 @@ func recoverGenericTranslation(result string, prompt genericTranslationPrompt) s
 	return candidate
 }
 
-// Complete preserves the raw string prompt protocol used by structured batch
-// translation, independently of the profile used by Translate.
+// Complete preserves the string prompt protocol used by generic structured
+// batch translation and quick-translation fallback.
 func (c *Client) Complete(ctx context.Context, prompt string) (string, error) {
 	if strings.TrimSpace(prompt) == "" {
 		return "", errors.New("model prompt is empty")

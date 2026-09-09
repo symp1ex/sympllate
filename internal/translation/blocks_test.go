@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -12,6 +13,24 @@ type queuedCompleter struct {
 	responses []string
 	err       error
 	prompts   []string
+}
+
+type batchBlockCompleter struct {
+	requests      []TranslateRequest
+	completeCalls int
+	translate     func(TranslateRequest) (TranslateResult, error)
+}
+
+func (c *batchBlockCompleter) Complete(context.Context, string) (string, error) {
+	c.completeCalls++
+	return "", errors.New("unexpected structured completion")
+}
+
+func (c *batchBlockCompleter) BatchBlockTranslator() BatchBlockTranslator { return c }
+
+func (c *batchBlockCompleter) Translate(_ context.Context, req TranslateRequest) (TranslateResult, error) {
+	c.requests = append(c.requests, req)
+	return c.translate(req)
 }
 
 func (c *queuedCompleter) Complete(_ context.Context, prompt string) (string, error) {
@@ -143,6 +162,78 @@ func TestStructuredTranslatorWrapsCompletionFailure(t *testing.T) {
 	_, _, err := translator.Translate(context.Background(), "en", "ru", []TranslationBlock{{ID: "a", Text: "text"}})
 	var completionErr *CompletionError
 	if !errors.As(err, &completionErr) {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestStructuredTranslatorUsesBatchBlockTranslatorAndPreservesOrder(t *testing.T) {
+	completer := &batchBlockCompleter{translate: func(req TranslateRequest) (TranslateResult, error) {
+		return TranslateResult{Text: "translated:" + req.Text}, nil
+	}}
+	translator, _ := NewStructuredTranslator(completer, 4000)
+	blocks := []TranslationBlock{{ID: "b", Text: "second"}, {ID: "a", Text: "first"}}
+	result, requests, err := translator.Translate(t.Context(), "en", "ru", blocks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 || completer.completeCalls != 0 || len(completer.requests) != 2 {
+		t.Fatalf("requests=%d completeCalls=%d modelRequests=%d", requests, completer.completeCalls, len(completer.requests))
+	}
+	if result[0].ID != "b" || result[0].Text != "translated:second" || result[1].ID != "a" || result[1].Text != "translated:first" {
+		t.Fatalf("result=%+v", result)
+	}
+	for index, req := range completer.requests {
+		if req.Source != "en" || req.Target != "ru" || req.Text != blocks[index].Text {
+			t.Errorf("request[%d]=%+v", index, req)
+		}
+	}
+}
+
+func TestStructuredTranslatorBatchBlockPathReassemblesOversizedParts(t *testing.T) {
+	completer := &batchBlockCompleter{translate: func(req TranslateRequest) (TranslateResult, error) {
+		return TranslateResult{Text: "translated:" + req.Text}, nil
+	}}
+	translator, _ := NewStructuredTranslator(completer, 1000)
+	block := TranslationBlock{ID: "large", Text: strings.Repeat("A", 800), Lines: []string{strings.Repeat("B", 400), strings.Repeat("C", 400)}}
+	result, requests, err := translator.Translate(t.Context(), "en", "ru", []TranslationBlock{block})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || len(result[0].Parts) < 2 || requests != len(result[0].Parts) || len(completer.requests) != requests {
+		t.Fatalf("result=%+v requests=%d modelRequests=%d", result, requests, len(completer.requests))
+	}
+	if result[0].ID != block.ID || !strings.Contains(result[0].Text, "\n") {
+		t.Fatalf("reassembled result=%+v", result[0])
+	}
+	for index, part := range result[0].Parts {
+		if part.ID != "large-part-"+strconv.Itoa(index+1) || part.SourceText != completer.requests[index].Text || part.TranslatedText != "translated:"+part.SourceText {
+			t.Errorf("part[%d]=%+v request=%+v", index, part, completer.requests[index])
+		}
+	}
+}
+
+func TestStructuredTranslatorBatchBlockPathHonorsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	completer := &batchBlockCompleter{}
+	completer.translate = func(req TranslateRequest) (TranslateResult, error) {
+		cancel()
+		return TranslateResult{Text: "translated:" + req.Text}, nil
+	}
+	translator, _ := NewStructuredTranslator(completer, 4000)
+	_, _, err := translator.Translate(ctx, "en", "ru", []TranslationBlock{{ID: "a", Text: "one"}, {ID: "b", Text: "two"}})
+	if !errors.Is(err, context.Canceled) || len(completer.requests) != 1 {
+		t.Fatalf("err=%v requests=%d", err, len(completer.requests))
+	}
+}
+
+func TestStructuredTranslatorBatchBlockPathRejectsEmptyTranslation(t *testing.T) {
+	completer := &batchBlockCompleter{translate: func(TranslateRequest) (TranslateResult, error) {
+		return TranslateResult{Text: " \n "}, nil
+	}}
+	translator, _ := NewStructuredTranslator(completer, 4000)
+	_, _, err := translator.Translate(t.Context(), "en", "ru", []TranslationBlock{{ID: "a", Text: "one"}})
+	var completionErr *CompletionError
+	if !errors.As(err, &completionErr) || !strings.Contains(err.Error(), "empty translation") {
 		t.Fatalf("err=%v", err)
 	}
 }

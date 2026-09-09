@@ -15,6 +15,14 @@ type RawCompleter interface {
 	Complete(ctx context.Context, prompt string) (string, error)
 }
 
+type BatchBlockTranslator interface {
+	Translate(ctx context.Context, req TranslateRequest) (TranslateResult, error)
+}
+
+type batchBlockTranslationProvider interface {
+	BatchBlockTranslator() BatchBlockTranslator
+}
+
 type TranslationBlock struct {
 	ID    string
 	Text  string
@@ -94,18 +102,38 @@ func (t *StructuredTranslator) Translate(ctx context.Context, source, target str
 	if err != nil {
 		return nil, 0, err
 	}
-	chunks, err := t.chunkBlocks(source, target, expanded)
-	if err != nil {
-		return nil, 0, err
-	}
 	translated := make(map[string]string, len(expanded))
-	for _, chunk := range chunks {
-		result, chunkErr := t.translateChunk(ctx, source, target, chunk)
-		if chunkErr != nil {
-			return nil, len(chunks), chunkErr
+	requestCount := 0
+	if blockTranslator := t.batchBlockTranslator(); blockTranslator != nil {
+		requestCount = len(expanded)
+		for _, block := range expanded {
+			if err := ctx.Err(); err != nil {
+				return nil, requestCount, &CompletionError{Err: err}
+			}
+			result, translateErr := blockTranslator.Translate(ctx, TranslateRequest{Text: block.Text, Source: source, Target: target})
+			if translateErr != nil {
+				return nil, requestCount, &CompletionError{Err: translateErr}
+			}
+			text := NormalizeImageTranslation(result.Text)
+			if strings.TrimSpace(text) == "" {
+				return nil, requestCount, &CompletionError{Err: fmt.Errorf("model returned an empty translation for block %q", block.ID)}
+			}
+			translated[block.ID] = text
 		}
-		for id, value := range result {
-			translated[id] = value
+	} else {
+		chunks, err := t.chunkBlocks(source, target, expanded)
+		if err != nil {
+			return nil, 0, err
+		}
+		requestCount = len(chunks)
+		for _, chunk := range chunks {
+			result, chunkErr := t.translateChunk(ctx, source, target, chunk)
+			if chunkErr != nil {
+				return nil, requestCount, chunkErr
+			}
+			for id, value := range result {
+				translated[id] = value
+			}
 		}
 	}
 	assembled := make(map[string]string, len(blocks))
@@ -124,7 +152,15 @@ func (t *StructuredTranslator) Translate(ctx context.Context, source, target str
 	for _, block := range blocks {
 		result = append(result, TranslatedTextBlock{ID: block.ID, Text: assembled[block.ID], Parts: partsByParent[block.ID]})
 	}
-	return result, len(chunks), nil
+	return result, requestCount, nil
+}
+
+func (t *StructuredTranslator) batchBlockTranslator() BatchBlockTranslator {
+	provider, ok := t.completer.(batchBlockTranslationProvider)
+	if !ok {
+		return nil
+	}
+	return provider.BatchBlockTranslator()
 }
 
 func (t *StructuredTranslator) expandBlocks(source, target string, blocks []TranslationBlock) ([]expandedBlock, error) {
