@@ -20,7 +20,7 @@ Sympllate — локальный переводчик для Windows x64. Пер
 
 ### Перевод изображений
 
-Одиночное изображение PNG или JPEG можно вставить в окно через `Ctrl+V` или перетащить мышью. Для Lite изображение передаётся модели Ollama. Для Portable требуется локальный OCR-комплект.
+Одиночное изображение PNG или JPEG можно вставить в окно через `Ctrl+V` или перетащить мышью. Для Lite изображение передаётся модели Ollama. Для Portable требуется минимум локальный OCR-комплект + onnx-runtime.
 
 Пакетный перевод открывается кнопкой с иконкой изображений рядом с **Copy**. Можно выбрать несколько PNG, JPEG, WebP, TIFF или BMP-файлов либо каталог. Результаты создаются рядом с `translator.exe`:
 
@@ -35,7 +35,7 @@ _output/
     └── errors.json      # создаётся при ошибках отдельных файлов
 ```
 
-Оригинальные файлы не изменяются. Для замены текста на сложном фоне используется LaMa; если её нет в поставке, пакетный перевод изображений не поддерживается.
+Оригинальные файлы не изменяются. Для обработки изображений используется FFmpeg, для OCR используется PaddleOCR, для замены текста на сложном фоне используется LaMa; если их нет в поставке, пакетный перевод изображений не поддерживается. Подробности есть ниже.
 
 ## Установка и настройка
 
@@ -76,13 +76,15 @@ Sympllate/
 
 Запустите `translator.exe`. Если в `config.json` выбран `provider.active = "auto"`, приложение использует Portable при наличии полного комплекта файлов, иначе пытается подключиться к Ollama.
 
-### OCR и очистка изображений
+### Пакетный перевод изображений: OCR и очистка фона
 
-Для Portable-перевода изображений рядом с программой должны находиться OCR-модели, ONNX Runtime и, для очистки фона, LaMa:
+Для Portable-перевода изображений рядом с программой должны находиться: ffmpeg, OCR-модели, ONNX Runtime и, для очистки фона, LaMa:
 
 ```text
 Sympllate/
 ├── bin/
+│   ├── ffmpeg/
+│   │   └── ffmpeg.exe
 │   ├── OCR/
 │   │   ├── det.onnx
 │   │   ├── det.yml
@@ -94,9 +96,29 @@ Sympllate/
         └── onnxruntime.dll
 ```
 
-Модель LaMa и `onnxruntime.dll` добавляются скриптом сборки, параметры приведены в разделе **Сборка**. OCR-файлы (PP-OCRv5) должны быть подготовлены в составе Portable-поставки.
+Модель LaMa и `onnxruntime.dll` добавляются скриптом сборки, параметры приведены в разделе **Сборка**. FFmpeg и OCR-файлы (PP-OCRv5) должны быть подготовлены заранее в составе Portable-поставки.
+
+Для обработки изображений подойдёт почти любая публичная сборка FFmpeg.
 
 <details>
+<summary><strong>Минимально требуемая конфигурация FFmpeg</strong></summary>
+
+```bash
+ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers
+built with gcc 16.1.0 (Rev5, Built by MSYS2 project)
+configuration: --target-os=mingw32 --arch=x86_64 --enable-static --disable-shared --pkg-config-flags=--static --extra-ldflags='-static -static-libgcc -static-libstdc++' --extra-ldexeflags='-static -static-libgcc -static-libstdc++ /c/Users/sympl/_project/sympllate/_scripts/_ffmpeg_build/manifest/ffmpeg-manifest.o' --disable-autodetect --disable-debug --disable-doc --disable-network --enable-small --disable-runtime-cpudetect --disable-everything --disable-ffplay --disable-ffprobe --disable-avdevice --disable-swresample --enable-ffmpeg --enable-gpl --enable-zlib --enable-libwebp --enable-swscale --enable-protocol=file --enable-demuxer=image_png_pipe --enable-demuxer=image_jpeg_pipe --enable-demuxer=image_webp_pipe --enable-demuxer=image_tiff_pipe --enable-demuxer=image_bmp_pipe --enable-muxer=image2 --enable-muxer=webp --enable-decoder=png --enable-decoder=mjpeg --enable-decoder=webp --enable-decoder=tiff --enable-decoder=bmp --enable-encoder=png --enable-encoder=bmp --enable-encoder=tiff --enable-encoder=libwebp --enable-filter=crop --enable-filter=scale --enable-filter=format --enable-filter=eq --enable-filter=unsharp
+libavutil      60. 26.102 / 60. 26.102
+libavcodec     62. 28.102 / 62. 28.102
+libavformat    62. 12.102 / 62. 12.102
+libavfilter    11. 14.102 / 11. 14.102
+libswscale      9.  5.102 /  9.  5.102
+
+```
+</details>
+
+<details>
+
+
 <summary><strong>Где взять PaddleOCR</strong></summary>
 
 ### Модели из OCR-бандла
