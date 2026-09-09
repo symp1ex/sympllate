@@ -138,7 +138,7 @@ func Default() Config {
 	languages := supportedTargetLanguages()
 	return Config{
 		Provider:               newSelectSetting(ProviderAuto, []string{ProviderAuto, ProviderOllama, ProviderLocal}),
-		LocalModel:             LocalModelConfig{ModelFile: "", Profile: ProfileGeneric, ContextSize: 2048, StartupTimeoutSeconds: 180, FitTargetMiB: 1024},
+		LocalModel:             LocalModelConfig{ModelFile: "", Profile: ProfileTranslateGemmaRaw, ContextSize: 2048, StartupTimeoutSeconds: 180, FitTargetMiB: 1024},
 		Ollama:                 OllamaConfig{BaseURL: "http://127.0.0.1:11434", Model: "translategemma:latest", TimeoutSeconds: 120, KeepAlive: "10m", NumCtx: 2048, NumPredict: 1024, Temperature: 0},
 		Hotkeys:                HotkeyConfig{ShowTranslation: "Ctrl+Win+X", ReplaceSelection: "Ctrl+Win+R"},
 		DefaultLanguagePair:    LanguagePair{First: newSelectSetting("ru", languages), Second: newSelectSetting("en", languages)},

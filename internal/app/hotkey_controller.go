@@ -511,9 +511,9 @@ func (c *HotkeyController) clipboardWait() time.Duration {
 }
 
 func (c *HotkeyController) direction(text string) (language.Direction, bool) {
-	detection := c.identifier.Detect(text)
-	candidate := detection.Language
-	if candidate == "auto" || !language.IsSupported(candidate) {
+	resolvedSource, _ := c.identifier.ResolveSource(text, "auto")
+	candidate := resolvedSource
+	if candidate == "auto" {
 		candidate = ""
 	}
 	direction := language.ChooseDirection(
@@ -522,7 +522,7 @@ func (c *HotkeyController) direction(text string) (language.Direction, bool) {
 		c.cfg.DefaultLanguagePair.Second.Active,
 		c.cfg.FallbackTargetLanguage.Active,
 	)
-	return direction, !detection.Reliable || candidate == ""
+	return direction, candidate == ""
 }
 
 func (c *HotkeyController) translateQuick(ctx context.Context, text string, direction language.Direction, fallback bool) (quickTranslationOutcome, error) {

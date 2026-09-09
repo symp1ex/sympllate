@@ -389,6 +389,88 @@ func TestAutoDetectionRunsOnceBeforeLongTextTranslation(t *testing.T) {
 	}
 }
 
+type fixedClassifier struct {
+	detection language.Detection
+	calls     int
+}
+
+func (c *fixedClassifier) Detect(string) language.Detection {
+	c.calls++
+	return c.detection
+}
+
+func TestAutoDetectionUsesUnreliableCandidateBeforeRawTranslateGemma(t *testing.T) {
+	const source = `Метод LanguageIdentifier.ResolveSource должен передать явный язык для пути /api/v1/translate, сохранив HTTPRequest и PascalCaseIdentifier.`
+	classifier := &fixedClassifier{detection: language.Detection{Language: "ru", Confidence: 0.55, Reliable: false}}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/completion" {
+			t.Errorf("unexpected endpoint: %s", r.URL.Path)
+			return
+		}
+		var body rawCompletionRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			return
+		}
+		if got := rawPromptSource(t, body.Prompt); got != source {
+			t.Errorf("raw prompt source = %q, want %q", got, source)
+		}
+		if !strings.Contains(body.Prompt, "Russian (ru) to English (en)") {
+			t.Errorf("raw prompt did not receive explicit source: %q", body.Prompt)
+		}
+		_ = json.NewEncoder(w).Encode(rawCompletionResponse{Content: "translated"})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "key", 100, 0, 5000, time.Second)
+	client.profile = config.ProfileTranslateGemmaRaw
+	service := app.NewService(t.Context(), client, language.NewLanguageIdentifier(classifier), "ru", "en", nil)
+	result, err := service.Translate(t.Context(), translation.TranslateRequest{Text: source, Source: "auto", Target: "en"})
+	if err != nil || result.Text != "translated" || result.DetectedLanguage != "" || result.TargetLanguage != "en" || classifier.calls != 1 {
+		t.Fatalf("Translate() = %+v, %v; detection calls=%d", result, err, classifier.calls)
+	}
+}
+
+func TestAutoDetectionUsesUnreliableCandidateBeforeTranslateGemma(t *testing.T) {
+	const source = `Метод LanguageIdentifier.ResolveSource должен передать явный язык для пути /api/v1/translate, сохранив HTTPRequest и PascalCaseIdentifier.`
+	classifier := &fixedClassifier{detection: language.Detection{Language: "ru", Confidence: 0.55, Reliable: false}}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := requestSource(t, r, config.ProfileTranslateGemma, "ru", "en"); got != source {
+			t.Errorf("TranslateGemma source = %q, want %q", got, source)
+		}
+		writeTranslation(t, w, "translated")
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "key", 100, 0, 5000, time.Second)
+	client.profile = config.ProfileTranslateGemma
+	service := app.NewService(t.Context(), client, language.NewLanguageIdentifier(classifier), "ru", "en", nil)
+	result, err := service.Translate(t.Context(), translation.TranslateRequest{Text: source, Source: "auto", Target: "en"})
+	if err != nil || result.Text != "translated" || result.DetectedLanguage != "" || result.TargetLanguage != "en" || classifier.calls != 1 {
+		t.Fatalf("Translate() = %+v, %v; detection calls=%d", result, err, classifier.calls)
+	}
+}
+
+func TestAutoDetectionWithoutCandidateKeepsGenericModelFallback(t *testing.T) {
+	const source = "This input is long enough, but the local detector has no language candidate."
+	classifier := &fixedClassifier{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := requestSource(t, r, config.ProfileGeneric, "auto", "ru"); got != source {
+			t.Errorf("generic prompt source = %q, want %q", got, source)
+		}
+		writeTranslation(t, w, "translated")
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "key", 100, 0, 5000, time.Second)
+	client.profile = config.ProfileGeneric
+	service := app.NewService(t.Context(), client, language.NewLanguageIdentifier(classifier), "ru", "en", nil)
+	result, err := service.Translate(t.Context(), translation.TranslateRequest{Text: source, Source: "auto", Target: "ru"})
+	if err != nil || result.Text != "translated" || result.DetectedLanguage != "" || result.TargetLanguage != "ru" || classifier.calls != 1 {
+		t.Fatalf("Translate() = %+v, %v; detection calls=%d", result, err, classifier.calls)
+	}
+}
+
 func requestSource(t *testing.T, r *http.Request, profile, wantSource, wantTarget string) string {
 	t.Helper()
 	payload, err := io.ReadAll(r.Body)

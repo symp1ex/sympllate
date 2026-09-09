@@ -279,7 +279,7 @@ func TestQuickTranslationReliableDetectionUsesChooseDirection(t *testing.T) {
 	}
 }
 
-func TestQuickTranslationUnreliableSupportedDetectionUsesAutoSource(t *testing.T) {
+func TestQuickTranslationUnreliableSupportedDetectionUsesExplicitSource(t *testing.T) {
 	tests := []struct {
 		name       string
 		text       string
@@ -288,7 +288,7 @@ func TestQuickTranslationUnreliableSupportedDetectionUsesAutoSource(t *testing.T
 	}{
 		{name: "first side", text: "ambiguous first language", detected: "ru", wantTarget: "en"},
 		{name: "second side", text: "ambiguous second language", detected: "en", wantTarget: "ru"},
-		{name: "Polish regression", text: "Wyhodząc", detected: "pl", wantTarget: "ru"},
+		{name: "Polish regression", text: "To jest wystarczajaco dlugi polski tekst do tlumaczenia", detected: "pl", wantTarget: "ru"},
 		{name: "Han lining regression", text: "麂皮内衬: 麂皮内衬提供柔软且保护性的表面，防止手表出现划痕和损坏。", detected: "zh", wantTarget: "ru"},
 		{name: "Han product regression", text: "男士女士新款绿色纸质翻盖式防尘耐用波浪纹手表收纳盒，带绒面革内衬，适合户外使用", detected: "zh", wantTarget: "ru"},
 	}
@@ -315,7 +315,7 @@ func TestQuickTranslationUnreliableSupportedDetectionUsesAutoSource(t *testing.T
 
 			controller.ShowTranslation()
 			controller.requests.Wait()
-			if len(requests) != 1 || requests[0].Source != "auto" || requests[0].Target != test.wantTarget || completerCalls != 0 {
+			if len(requests) != 1 || requests[0].Source != test.detected || requests[0].Target != test.wantTarget || completerCalls != 0 {
 				t.Fatalf("requests = %+v, completer calls = %d", requests, completerCalls)
 			}
 			state := popup.lastState()
@@ -323,6 +323,27 @@ func TestQuickTranslationUnreliableSupportedDetectionUsesAutoSource(t *testing.T
 				t.Fatalf("popup state = %+v", state)
 			}
 		})
+	}
+}
+
+func TestQuickTranslationUnreliableShortDetectionKeepsAutoSource(t *testing.T) {
+	selection := &fakeSelection{copies: []copyResult{{text: "test"}}}
+	var requests []translation.TranslateRequest
+	controller := NewHotkeyController(
+		context.Background(), config.Default(),
+		translatorFunc(func(_ context.Context, request translation.TranslateRequest) (translation.TranslateResult, error) {
+			requests = append(requests, request)
+			return translation.TranslateResult{Text: "translated"}, nil
+		}),
+		nil,
+		testIdentifier(language.Detection{Language: "de", Reliable: false}),
+		selection, &fakeTargets{target: OriginTarget{Window: 1}, exists: true}, &fakePopup{}, log.New(io.Discard, "", 0),
+	)
+
+	controller.ShowTranslation()
+	controller.requests.Wait()
+	if len(requests) != 1 || requests[0].Source != "auto" || requests[0].Target != "ru" {
+		t.Fatalf("requests = %+v", requests)
 	}
 }
 
@@ -379,8 +400,8 @@ func TestQuickTranslationUnsupportedDetectionUsesDeterministicFallback(t *testin
 	}
 }
 
-func TestDirectReplaceUnreliableDetectionUsesAutoSource(t *testing.T) {
-	selection := &fakeSelection{copies: []copyResult{{text: "ambiguous", snapshot: ClipboardSnapshot{Text: "saved", HasText: true}}}}
+func TestDirectReplaceUnreliableUsableDetectionUsesExplicitSource(t *testing.T) {
+	selection := &fakeSelection{copies: []copyResult{{text: "ambiguous source text with enough language content", snapshot: ClipboardSnapshot{Text: "saved", HasText: true}}}}
 	targets := &fakeTargets{exists: true}
 	var requests []translation.TranslateRequest
 	completerCalls := 0
@@ -399,13 +420,13 @@ func TestDirectReplaceUnreliableDetectionUsesAutoSource(t *testing.T) {
 	)
 
 	controller.ReplaceSelection()
-	if len(requests) != 1 || requests[0].Source != "auto" || requests[0].Target != "ru" || completerCalls != 0 || len(selection.pastes) != 1 || selection.pastes[0] != "перевод" || selection.pasteSnaps[0].Text != "saved" {
+	if len(requests) != 1 || requests[0].Source != "de" || requests[0].Target != "ru" || completerCalls != 0 || len(selection.pastes) != 1 || selection.pastes[0] != "перевод" || selection.pasteSnaps[0].Text != "saved" {
 		t.Fatalf("requests = %+v, completer calls = %d, pastes = %+v, snapshots = %+v", requests, completerCalls, selection.pastes, selection.pasteSnaps)
 	}
 }
 
-func TestQuickTranslationUnreliableDetectionKeepsAutoSourceAfterTargetChange(t *testing.T) {
-	selection := &fakeSelection{copies: []copyResult{{text: "Wyhodząc"}}}
+func TestQuickTranslationUnreliableUsableDetectionKeepsExplicitSourceAfterTargetChange(t *testing.T) {
+	selection := &fakeSelection{copies: []copyResult{{text: "To jest wystarczajaco dlugi polski tekst do tlumaczenia"}}}
 	var requests []translation.TranslateRequest
 	completerCalls := 0
 	controller := NewHotkeyController(
@@ -428,7 +449,7 @@ func TestQuickTranslationUnreliableDetectionKeepsAutoSourceAfterTargetChange(t *
 		t.Fatal(err)
 	}
 	controller.requests.Wait()
-	if len(requests) != 2 || requests[0].Source != "auto" || requests[0].Target != "ru" || requests[1].Source != "auto" || requests[1].Target != "de" || completerCalls != 0 {
+	if len(requests) != 2 || requests[0].Source != "pl" || requests[0].Target != "ru" || requests[1].Source != "pl" || requests[1].Target != "de" || completerCalls != 0 {
 		t.Fatalf("requests = %+v, completer calls = %d", requests, completerCalls)
 	}
 }

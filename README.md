@@ -147,7 +147,7 @@ Sympllate/
   },
   "localModel": {
     "modelFile": "",
-    "profile": "generic",
+    "profile": "translategemma-raw",
     "startupTimeoutSeconds": 180,
     "fitTargetMiB": 1024
   },
@@ -216,7 +216,7 @@ Sympllate/
 Параметры localModel:
 
 - `modelFile`: путь к GGUF-модели. Относительный путь считается от каталога `translator.exe`. Если значение пустое, в папке `models` должна быть ровно одна `.gguf`-модель.
-- `profile`: профиль модели. Для обычной работы используется `generic`.
+- `profile`: профиль модели. По умолчанию используется `translategemma-raw`.
 - `startupTimeoutSeconds`: максимальное время запуска локальной модели.
 - `fitTargetMiB`: объём памяти, на который ориентируется запуск модели.
 

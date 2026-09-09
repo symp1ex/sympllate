@@ -50,7 +50,7 @@ func TestSettingsBindingsModelListAndProfileSave(t *testing.T) {
 		t.Fatalf("models = %v, %v", models, err)
 	}
 	cfg, err := get()
-	if err != nil || cfg.LocalModel.Profile != config.ProfileGeneric || cfg.LocalModel.ModelFile != "" {
+	if err != nil || cfg.LocalModel.Profile != config.ProfileTranslateGemmaRaw || cfg.LocalModel.ModelFile != "" {
 		t.Fatalf("defaults = %+v, %v", cfg.LocalModel, err)
 	}
 	cfg.LocalModel.Profile = "generic"

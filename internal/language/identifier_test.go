@@ -83,14 +83,18 @@ func TestLanguageIdentifierResolveSourcePolicy(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name      string
+		text      string
 		detection Detection
 		source    string
 		want      string
 		calls     int
 	}{
-		{name: "reliable auto", detection: Detection{Language: "de", Reliable: true}, source: "auto", want: "de", calls: 1},
-		{name: "unreliable auto", detection: Detection{Language: "de", Reliable: false}, source: "auto", want: "auto", calls: 1},
-		{name: "explicit bypass", detection: Detection{Language: "de", Reliable: true}, source: "fr", want: "fr", calls: 0},
+		{name: "reliable auto", text: "text", detection: Detection{Language: "de", Reliable: true}, source: "auto", want: "de", calls: 1},
+		{name: "unreliable usable auto", text: "This is long enough natural language text for classification.", detection: Detection{Language: "de", Reliable: false}, source: "auto", want: "de", calls: 1},
+		{name: "unreliable short auto", text: "test", detection: Detection{Language: "de", Reliable: false}, source: "auto", want: "auto", calls: 1},
+		{name: "missing candidate", text: "This is long enough natural language text for classification.", detection: Detection{}, source: "auto", want: "auto", calls: 1},
+		{name: "unsupported candidate", text: "This is long enough natural language text for classification.", detection: Detection{Language: "nl", Reliable: true}, source: "auto", want: "auto", calls: 1},
+		{name: "explicit bypass", text: "text", detection: Detection{Language: "de", Reliable: true}, source: "fr", want: "fr", calls: 0},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -99,9 +103,12 @@ func TestLanguageIdentifierResolveSourcePolicy(t *testing.T) {
 				calls++
 				return test.detection
 			}))
-			resolved, detection := identifier.ResolveSource("ambiguous text", test.source)
+			resolved, detection := identifier.ResolveSource(test.text, test.source)
 			if resolved != test.want || calls != test.calls {
 				t.Fatalf("ResolveSource() = %q, %+v; calls = %d", resolved, detection, calls)
+			}
+			if test.name == "unreliable usable auto" && (detection.Reliable || detection.Language != "de") {
+				t.Fatalf("ResolveSource() changed detection metadata: %+v", detection)
 			}
 		})
 	}
@@ -112,7 +119,7 @@ func TestLanguageIdentifierKeepsAutoForShortAmbiguousScripts(t *testing.T) {
 	identifier := NewLanguageIdentifier(classifierFunc(func(string) Detection {
 		return Detection{Language: "de", Confidence: 0.4, Reliable: false}
 	}))
-	for _, text := range []string{"test", "тест"} {
+	for _, text := range []string{"OK", "Go", "test", "да", "нет", "USB", "root", "123"} {
 		resolved, detection := identifier.ResolveSource(text, "auto")
 		if resolved != "auto" || detection.Reliable {
 			t.Fatalf("ResolveSource(%q) = %q, %+v", text, resolved, detection)

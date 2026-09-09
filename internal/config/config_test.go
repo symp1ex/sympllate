@@ -13,14 +13,14 @@ import (
 func TestLocalModelProfileDefaultsAndLegacyConfig(t *testing.T) {
 	t.Parallel()
 	want := Default()
-	if want.LocalModel.Profile != "generic" || want.LocalModel.ModelFile != "" || want.LocalModel.ContextSize != 2048 || want.LocalModel.StartupTimeoutSeconds != 180 || want.LocalModel.FitTargetMiB != 1024 {
+	if want.LocalModel.Profile != ProfileTranslateGemmaRaw || want.LocalModel.ModelFile != "" || want.LocalModel.ContextSize != 2048 || want.LocalModel.StartupTimeoutSeconds != 180 || want.LocalModel.FitTargetMiB != 1024 {
 		t.Fatalf("unexpected local defaults: %+v", want.LocalModel)
 	}
 	data, err := json.Marshal(want)
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacy := strings.Replace(string(data), `"profile":"generic",`, "", 1)
+	legacy := strings.Replace(string(data), `"profile":"translategemma-raw",`, "", 1)
 	legacy = strings.Replace(legacy, `"contextSize":2048,`, "", 1)
 	path := filepath.Join(t.TempDir(), "config.json")
 	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {

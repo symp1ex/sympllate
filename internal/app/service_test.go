@@ -79,12 +79,33 @@ func TestServiceTranslateDetectsAutoLanguage(t *testing.T) {
 	}
 }
 
-func TestServiceTranslateKeepsAutoWhenDetectionIsUnreliable(t *testing.T) {
+func TestServiceTranslateKeepsAutoWhenUnreliableDetectionIsTooShort(t *testing.T) {
 	t.Parallel()
 	var requests []translation.TranslateRequest
 	service := NewService(context.Background(), fakeTranslator{result: "Hello", detected: "de", requests: &requests}, testIdentifier(language.Detection{Language: "de", Reliable: false}), "ru", "en", log.New(io.Discard, "", 0))
 	result, err := service.Translate(context.Background(), translation.TranslateRequest{Text: "test", Source: "auto", Target: "en"})
 	if err != nil || result.DetectedLanguage != "" || len(requests) != 1 || requests[0].Source != "auto" || requests[0].Target != "en" {
+		t.Fatalf("Translate() = %+v, %v; requests = %+v", result, err, requests)
+	}
+}
+
+func TestServiceTranslateUsesUsableUnreliableAutoCandidate(t *testing.T) {
+	t.Parallel()
+	const source = `Метод LanguageIdentifier.ResolveSource должен сохранять путь /api/v1/translate и идентификатор HTTPRequest без изменений.`
+	var requests []translation.TranslateRequest
+	service := NewService(context.Background(), fakeTranslator{result: "Hello", requests: &requests}, testIdentifier(language.Detection{Language: "ru", Confidence: 0.55, Reliable: false}), "ru", "en", log.New(io.Discard, "", 0))
+	result, err := service.Translate(context.Background(), translation.TranslateRequest{Text: source, Source: "auto", Target: "en"})
+	if err != nil || result.DetectedLanguage != "" || result.TargetLanguage != "en" || len(requests) != 1 || requests[0].Source != "ru" || requests[0].Target != "en" {
+		t.Fatalf("Translate() = %+v, %v; requests = %+v", result, err, requests)
+	}
+}
+
+func TestServiceTranslateKeepsAutoWhenDetectionHasNoCandidate(t *testing.T) {
+	t.Parallel()
+	var requests []translation.TranslateRequest
+	service := NewService(context.Background(), fakeTranslator{result: "translated", requests: &requests}, testIdentifier(language.Detection{}), "ru", "en", log.New(io.Discard, "", 0))
+	result, err := service.Translate(context.Background(), translation.TranslateRequest{Text: "This input is long enough, but local detection found no candidate.", Source: "auto", Target: "ru"})
+	if err != nil || result.DetectedLanguage != "" || result.TargetLanguage != "ru" || len(requests) != 1 || requests[0].Source != "auto" || requests[0].Target != "ru" {
 		t.Fatalf("Translate() = %+v, %v; requests = %+v", result, err, requests)
 	}
 }

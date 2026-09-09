@@ -1,6 +1,11 @@
 package language
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
+
+const minimumUnreliableCandidateLetters = 20
 
 type DetectionReason string
 
@@ -77,8 +82,32 @@ func (i *LanguageIdentifier) ResolveSource(text, source string) (string, Detecti
 		return source, Detection{}
 	}
 	detection := i.Detect(text)
-	if detection.Reliable {
+	if usableSourceCandidate(text, detection) {
 		return detection.Language, detection
 	}
 	return "auto", detection
+}
+
+func usableSourceCandidate(text string, detection Detection) bool {
+	if detection.Language == "" || detection.Language == "auto" || !IsSupported(detection.Language) {
+		return false
+	}
+	if detection.Reliable {
+		return true
+	}
+
+	// The classifier ranks letter trigrams. Requiring a conservative amount of
+	// letter content keeps short labels, identifiers, and numbers on the true
+	// auto fallback while allowing a supported low-confidence candidate for
+	// normal prose and prose mixed with technical syntax.
+	letters := 0
+	for _, character := range text {
+		if unicode.IsLetter(character) {
+			letters++
+			if letters >= minimumUnreliableCandidateLetters {
+				return true
+			}
+		}
+	}
+	return false
 }
