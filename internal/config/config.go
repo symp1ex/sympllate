@@ -31,15 +31,16 @@ type Config struct {
 var Cfg = Default()
 
 const (
-	ProviderAuto          = "auto"
-	ProviderOllama        = "ollama"
-	ProviderLocal         = "local"
-	ProfileGeneric        = "generic"
-	ProfileTranslateGemma = "translategemma"
-	LogLevelDebug         = "debug"
-	LogLevelInfo          = "info"
-	LogLevelWarning       = "warning"
-	LogLevelError         = "error"
+	ProviderAuto             = "auto"
+	ProviderOllama           = "ollama"
+	ProviderLocal            = "local"
+	ProfileGeneric           = "generic"
+	ProfileTranslateGemma    = "translategemma"
+	ProfileTranslateGemmaRaw = "translategemma-raw"
+	LogLevelDebug            = "debug"
+	LogLevelInfo             = "info"
+	LogLevelWarning          = "warning"
+	LogLevelError            = "error"
 )
 
 type SelectSetting struct {
@@ -268,8 +269,8 @@ func unwrapPathError(err error) error {
 }
 
 func (c Config) Validate() error {
-	if c.LocalModel.Profile != ProfileTranslateGemma && c.LocalModel.Profile != ProfileGeneric {
-		return errors.New("localModel.profile must be translategemma or generic")
+	if c.LocalModel.Profile != ProfileTranslateGemma && c.LocalModel.Profile != ProfileTranslateGemmaRaw && c.LocalModel.Profile != ProfileGeneric {
+		return errors.New("localModel.profile must be translategemma, translategemma-raw, or generic")
 	}
 	if err := validateSelectSetting("provider", c.Provider); err != nil {
 		return err

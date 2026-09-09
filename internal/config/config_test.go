@@ -60,14 +60,14 @@ func TestValidateLocalModelContextSize(t *testing.T) {
 
 func TestLocalModelProfilesValidateAndRoundTrip(t *testing.T) {
 	t.Parallel()
-	for _, profile := range []string{"translategemma", "generic", "auto", "unknown", "", "Generic"} {
+	for _, profile := range []string{ProfileTranslateGemma, ProfileTranslateGemmaRaw, ProfileGeneric, "auto", "unknown", "", "Generic"} {
 		t.Run(profile, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.json")
 			cfg := Default()
 			cfg.LocalModel.Profile = profile
 			cfg.LocalModel.ModelFile = "models/gemma-3-1b-it-Q8_0.gguf"
 			err := Save(path, cfg)
-			if profile != "translategemma" && profile != "generic" {
+			if profile != ProfileTranslateGemma && profile != ProfileTranslateGemmaRaw && profile != ProfileGeneric {
 				if err == nil || !strings.Contains(err.Error(), "localModel.profile") {
 					t.Fatalf("invalid profile accepted: %v", err)
 				}

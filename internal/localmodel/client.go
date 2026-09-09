@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sympllate/translator/internal/config"
 	"github.com/sympllate/translator/internal/language"
 	"github.com/sympllate/translator/internal/translation"
 )
@@ -21,6 +22,8 @@ const maxResponseBytes = 4 << 20
 type Client struct {
 	endpoint           string
 	tokenCountEndpoint string
+	rawEndpoint        string
+	rawTokenEndpoint   string
 	apiKey             string
 	model              string
 	profile            string
@@ -47,6 +50,7 @@ func newClient(baseURL, apiKey string, contextSize, numPredict int, temperature 
 	baseURL = strings.TrimRight(baseURL, "/")
 	return &Client{
 		endpoint: baseURL + "/v1/chat/completions", tokenCountEndpoint: baseURL + "/v1/chat/completions/input_tokens",
+		rawEndpoint: baseURL + "/completion", rawTokenEndpoint: baseURL + "/tokenize",
 		apiKey: apiKey, model: ModelAlias, profile: "translategemma", contextSize: contextSize, numPredict: numPredict, temperature: temperature,
 		maxInputCharacters: maxInputCharacters, httpClient: &http.Client{Timeout: timeout},
 	}
@@ -63,6 +67,20 @@ type chatRequest struct {
 type chatMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+}
+
+type rawCompletionRequest struct {
+	Prompt      string  `json:"prompt"`
+	NPredict    int     `json:"n_predict"`
+	Temperature float64 `json:"temperature"`
+	Stream      bool    `json:"stream"`
+}
+
+type rawCompletionResponse struct {
+	Content string `json:"content"`
+	Error   struct {
+		Message string `json:"message"`
+	} `json:"error"`
 }
 
 // TranslateGemma requires exactly one structured content entry per user message.
@@ -113,6 +131,8 @@ func (c *Client) translateOnce(ctx context.Context, req translation.TranslateReq
 	switch c.profile {
 	case "translategemma":
 		text, err = c.translateTranslateGemma(ctx, req)
+	case config.ProfileTranslateGemmaRaw:
+		text, err = c.translateTranslateGemmaRaw(ctx, req)
 	case "generic":
 		prompt := buildGenericPrompt(req)
 		text, err = c.Complete(ctx, prompt.text)
@@ -126,6 +146,38 @@ func (c *Client) translateOnce(ctx context.Context, req translation.TranslateReq
 		return "", err
 	}
 	return text, nil
+}
+
+func (c *Client) translateTranslateGemmaRaw(ctx context.Context, req translation.TranslateRequest) (string, error) {
+	prompt, err := renderTranslateGemmaCanonicalPrompt(req.Source, req.Target, req.Text)
+	if err != nil {
+		return "", err
+	}
+	return c.completeRaw(ctx, prompt)
+}
+
+// /completion applies tokenizer.ggml.add_bos_token. Starting this text with
+// <bos> would therefore produce two BOS tokens for the TranslateGemma GGUF.
+func renderTranslateGemmaCanonicalPrompt(source, target, text string) (string, error) {
+	if strings.EqualFold(source, "auto") {
+		return "", errors.New("TranslateGemma requires an explicit source language; select a source language instead of auto")
+	}
+	sourceName, sourceOK := translateGemmaLanguageName(source)
+	targetName, targetOK := translateGemmaLanguageName(target)
+	if !sourceOK || !targetOK {
+		return "", fmt.Errorf("TranslateGemma does not support language pair %q to %q", source, target)
+	}
+	return fmt.Sprintf("<start_of_turn>user\nYou are a professional %s (%s) to %s (%s) translator. Your goal is to accurately convey the meaning and nuances of the original %s text while adhering to %s grammar, vocabulary, and cultural sensitivities.\nProduce only the %s translation, without any additional explanations or commentary. Please translate the following %s text into %s:\n\n\n%s<end_of_turn>\n<start_of_turn>model\n",
+		sourceName, source, targetName, target, sourceName, targetName, targetName, sourceName, targetName, strings.TrimSpace(text)), nil
+}
+
+func translateGemmaLanguageName(code string) (string, bool) {
+	for _, item := range language.Supported() {
+		if item.Code == code && item.Code != "auto" {
+			return item.Name, true
+		}
+	}
+	return "", false
 }
 
 func (c *Client) translateTranslateGemma(ctx context.Context, req translation.TranslateRequest) (string, error) {
@@ -207,11 +259,55 @@ func (c *Client) Complete(ctx context.Context, prompt string) (string, error) {
 	if strings.TrimSpace(prompt) == "" {
 		return "", errors.New("model prompt is empty")
 	}
+	if c.profile == config.ProfileTranslateGemmaRaw {
+		return c.completeRaw(ctx, prompt)
+	}
 	payload, err := c.marshalChatRequest(prompt)
 	if err != nil {
 		return "", err
 	}
 	return c.completePayload(ctx, payload)
+}
+
+func (c *Client) completeRaw(ctx context.Context, prompt string) (string, error) {
+	payload, err := json.Marshal(rawCompletionRequest{
+		Prompt: prompt, NPredict: c.numPredict, Temperature: c.temperature, Stream: false,
+	})
+	if err != nil {
+		return "", fmt.Errorf("marshal local request: %w", err)
+	}
+
+	c.requestMu.Lock()
+	defer c.requestMu.Unlock()
+	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, c.rawEndpoint, bytes.NewReader(payload))
+	if err != nil {
+		return "", fmt.Errorf("create local request: %w", err)
+	}
+	httpRequest.Header.Set("Content-Type", "application/json")
+	httpRequest.Header.Set("Authorization", "Bearer "+c.apiKey)
+	response, err := c.httpClient.Do(httpRequest)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
+			return "", context.Canceled
+		}
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return "", errors.New("the local model did not respond in time")
+		}
+		return "", fmt.Errorf("the local model is unavailable: %w", err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("read local model response: %w", err)
+	}
+	if len(body) > maxResponseBytes {
+		return "", errors.New("the local model response is too large")
+	}
+	result, err := ParseRawCompletionResponse(response.StatusCode, body)
+	if err != nil {
+		return "", err
+	}
+	return result.Text, nil
 }
 
 func (c *Client) marshalChatRequest(prompt string) ([]byte, error) {
@@ -327,6 +423,31 @@ func ParseChatResponse(statusCode int, body []byte) (translation.TranslateResult
 		return translation.TranslateResult{}, errors.New("the local model returned no translation choices")
 	}
 	result := translation.CleanResult(decoded.Choices[0].Message.Content)
+	if result == "" {
+		return translation.TranslateResult{}, errors.New("the local model returned an empty translation")
+	}
+	return translation.TranslateResult{Text: result}, nil
+}
+
+func ParseRawCompletionResponse(statusCode int, body []byte) (translation.TranslateResult, error) {
+	var decoded rawCompletionResponse
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		if statusCode < 200 || statusCode >= 300 {
+			return translation.TranslateResult{}, fmt.Errorf("the local model returned HTTP %d and an invalid response", statusCode)
+		}
+		return translation.TranslateResult{}, fmt.Errorf("the local model returned invalid JSON: %w", err)
+	}
+	if statusCode < 200 || statusCode >= 300 {
+		message := strings.TrimSpace(decoded.Error.Message)
+		if message == "" {
+			message = http.StatusText(statusCode)
+		}
+		if overflow := parseContextOverflowError(statusCode, message); overflow != nil {
+			return translation.TranslateResult{}, overflow
+		}
+		return translation.TranslateResult{}, fmt.Errorf("the local model returned HTTP %d: %s", statusCode, message)
+	}
+	result := translation.CleanResult(decoded.Content)
 	if result == "" {
 		return translation.TranslateResult{}, errors.New("the local model returned an empty translation")
 	}

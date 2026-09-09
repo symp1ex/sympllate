@@ -82,8 +82,8 @@ async function mountSettings(initialModels: string[], modelFile = '', modelError
   return { field, change, click, saved, markup: () => renderToStaticMarkup(render()), listCalls: () => listCalls, setModels: (next: string[]) => { models = next } }
 }
 
-test('normal Settings offers only the generic profile', async () => {
-  const panel = await mountSettings(['models/one.gguf', 'models/two.GGUF'])
+test('normal Settings offers the generic and raw TranslateGemma profiles', async () => {
+  const panel = await mountSettings(['models/one.gguf', 'models/two.GGUF'], '', '', ['generic', 'translategemma-raw'])
   assert.equal(panel.listCalls(), 1)
   assert.equal(panel.field('modelFile').props.value, '')
   assert.equal(panel.field('profile').props.value, 'generic')
@@ -92,12 +92,14 @@ test('normal Settings offers only the generic profile', async () => {
   assert.match(markup, /models\/two.GGUF/)
   assert.doesNotMatch(markup, /value="translategemma"/)
   assert.match(markup, /<option value="generic" selected="">generic/)
+  assert.match(markup, /<option value="translategemma-raw">translategemma-raw/)
 })
 
-test('debug Settings offers generic and translategemma profiles', async () => {
-  const panel = await mountSettings([], '', '', ['generic', 'translategemma'], 'translategemma')
+test('debug Settings additionally offers the Jinja TranslateGemma profile', async () => {
+  const panel = await mountSettings([], '', '', ['generic', 'translategemma-raw', 'translategemma'], 'translategemma')
   const markup = panel.markup()
   assert.match(markup, /<option value="generic">generic/)
+  assert.match(markup, /<option value="translategemma-raw">translategemma-raw/)
   assert.match(markup, /<option value="translategemma" selected="">translategemma/)
 })
 

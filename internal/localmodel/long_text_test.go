@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/sympllate/translator/internal/app"
+	"github.com/sympllate/translator/internal/config"
 	"github.com/sympllate/translator/internal/language"
 	"github.com/sympllate/translator/internal/translation"
 )
@@ -81,6 +82,114 @@ func TestLongTranslationPreservesProfileProtocolAndStructure(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRawLongTranslationUsesTokenizerAndRawCompletion(t *testing.T) {
+	first := strings.Repeat("alpha beta gamma. ", 6)
+	second := strings.Repeat("second paragraph. ", 7) + "\nthird line"
+	source := first + "\n\n" + second
+	var chunks []string
+	var tokenCounts int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer key" {
+			t.Errorf("Authorization = %q", got)
+		}
+		switch r.URL.Path {
+		case "/tokenize":
+			var body rawTokenizeRequest
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+				return
+			}
+			if !body.AddSpecial || !body.ParseSpecial {
+				t.Errorf("tokenizer flags = add_special:%v parse_special:%v", body.AddSpecial, body.ParseSpecial)
+			}
+			text := rawPromptSource(t, body.Content)
+			tokenCounts++
+			tokens := make([]int, utf8.RuneCountInString(text)+40)
+			_ = json.NewEncoder(w).Encode(rawTokenizeResponse{Tokens: tokens})
+		case "/completion":
+			var body rawCompletionRequest
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+				return
+			}
+			text := rawPromptSource(t, body.Prompt)
+			chunks = append(chunks, text)
+			_ = json.NewEncoder(w).Encode(rawCompletionResponse{Content: strings.ToUpper(text)})
+		default:
+			t.Errorf("unexpected endpoint: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	client := newClient(server.URL, "key", 260, 40, 0, 5000, time.Second)
+	client.profile = config.ProfileTranslateGemmaRaw
+	result, err := client.Translate(t.Context(), translation.TranslateRequest{Text: source, Source: "en", Target: "ru"})
+	if err != nil || result.Text != strings.ToUpper(source) {
+		t.Fatalf("Translate() = %q, %v; want %q", result.Text, err, strings.ToUpper(source))
+	}
+	if tokenCounts == 0 {
+		t.Fatalf("chunks=%q token-count calls=%d, want long-text path", chunks, tokenCounts)
+	}
+	wantChunks := []string{strings.TrimSpace(first), second}
+	if strings.Join(chunks, "\x00") != strings.Join(wantChunks, "\x00") {
+		t.Fatalf("source chunks = %#v, want %#v", chunks, wantChunks)
+	}
+}
+
+func TestRawTokenCountAndCompletionUseSamePrompt(t *testing.T) {
+	var tokenPrompt, completionPrompt string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/tokenize":
+			var body rawTokenizeRequest
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+				return
+			}
+			if !body.AddSpecial || !body.ParseSpecial {
+				t.Errorf("tokenizer flags = add_special:%v parse_special:%v", body.AddSpecial, body.ParseSpecial)
+			}
+			tokenPrompt = body.Content
+			_ = json.NewEncoder(w).Encode(rawTokenizeResponse{Tokens: make([]int, 20)})
+		case "/completion":
+			var body rawCompletionRequest
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+				return
+			}
+			completionPrompt = body.Prompt
+			_ = json.NewEncoder(w).Encode(rawCompletionResponse{Content: "translated"})
+		default:
+			t.Errorf("unexpected endpoint: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	client := newClient(server.URL, "key", 200, 20, 0, 5000, time.Second)
+	client.profile = config.ProfileTranslateGemmaRaw
+	result, err := client.Translate(t.Context(), translation.TranslateRequest{
+		Text: "source text long enough to require tokenizer", Source: "en", Target: "ru",
+	})
+	if err != nil || result.Text != "translated" {
+		t.Fatalf("Translate() = %q, %v", result.Text, err)
+	}
+	if tokenPrompt == "" || tokenPrompt != completionPrompt {
+		t.Fatalf("token prompt and completion prompt differ:\nTOKEN: %q\nCOMPLETION: %q", tokenPrompt, completionPrompt)
+	}
+}
+
+func rawPromptSource(t *testing.T, prompt string) string {
+	t.Helper()
+	if strings.HasPrefix(prompt, "<bos>") {
+		t.Errorf("raw prompt contains a manual BOS: %q", prompt)
+	}
+	start := strings.LastIndex(prompt, "\n\n\n")
+	end := strings.LastIndex(prompt, "<end_of_turn>\n<start_of_turn>model\n")
+	if start < 0 || end < start+3 {
+		t.Errorf("invalid canonical prompt: %q", prompt)
+		return ""
+	}
+	return prompt[start+3 : end]
 }
 
 func TestLongTranslationFallsBackWhenTokenCountingIsUnavailable(t *testing.T) {

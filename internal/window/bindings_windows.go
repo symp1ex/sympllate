@@ -52,7 +52,7 @@ func bindMainSettings(w webview.WebView, mainWindow *MainWindow) error {
 }
 
 func localModelProfiles(debug bool) []string {
-	profiles := []string{config.ProfileGeneric}
+	profiles := []string{config.ProfileGeneric, config.ProfileTranslateGemmaRaw}
 	if debug {
 		profiles = append(profiles, config.ProfileTranslateGemma)
 	}

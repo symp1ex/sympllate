@@ -84,8 +84,8 @@ func TestSettingsProfileOptionsFollowDebugMode(t *testing.T) {
 		debug bool
 		want  []string
 	}{
-		{name: "normal", want: []string{config.ProfileGeneric}},
-		{name: "debug", debug: true, want: []string{config.ProfileGeneric, config.ProfileTranslateGemma}},
+		{name: "normal", want: []string{config.ProfileGeneric, config.ProfileTranslateGemmaRaw}},
+		{name: "debug", debug: true, want: []string{config.ProfileGeneric, config.ProfileTranslateGemmaRaw, config.ProfileTranslateGemma}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			view := &settingsWebView{bindings: make(map[string]any)}

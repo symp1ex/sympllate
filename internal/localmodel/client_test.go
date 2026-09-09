@@ -8,6 +8,7 @@ import (
 	"errors"
 	"image"
 	"image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sympllate/translator/internal/config"
 	"github.com/sympllate/translator/internal/language"
 	"github.com/sympllate/translator/internal/translation"
 )
@@ -66,6 +68,181 @@ func TestParseChatResponse(t *testing.T) {
 		if _, err := ParseChatResponse(test.status, []byte(test.body)); err == nil {
 			t.Fatalf("ParseChatResponse(%d, %q) expected error", test.status, test.body)
 		}
+	}
+}
+
+func TestRenderTranslateGemmaCanonicalPrompt(t *testing.T) {
+	t.Parallel()
+	want := "<start_of_turn>user\nYou are a professional Russian (ru) to English (en) translator. Your goal is to accurately convey the meaning and nuances of the original Russian text while adhering to English grammar, vocabulary, and cultural sensitivities.\nProduce only the English translation, without any additional explanations or commentary. Please translate the following Russian text into English:\n\n\nSource text<end_of_turn>\n<start_of_turn>model\n"
+	got, err := renderTranslateGemmaCanonicalPrompt("ru", "en", "  Source text\n")
+	if err != nil || got != want {
+		t.Fatalf("renderTranslateGemmaCanonicalPrompt() = %q, %v; want %q", got, err, want)
+	}
+	for _, forbidden := range []string{"<bos>", "SYMPLLATE_SOURCE_BEGIN", "SYMPLLATE_SOURCE_END"} {
+		if strings.Contains(got, forbidden) {
+			t.Errorf("canonical prompt contains %q: %q", forbidden, got)
+		}
+	}
+}
+
+func TestRawTranslateGemmaRequest(t *testing.T) {
+	t.Parallel()
+	wantPrompt, err := renderTranslateGemmaCanonicalPrompt("ru", "en", "Source text")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/completion" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer raw-key" {
+			t.Errorf("Authorization = %q", got)
+		}
+		var body rawCompletionRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			return
+		}
+		if body.Prompt != wantPrompt || body.NPredict != 321 || body.Temperature != 0.25 || body.Stream {
+			t.Errorf("unexpected raw request: %+v", body)
+		}
+		_, _ = io.WriteString(w, `{"content":"Translation: Hello","tokens_evaluated":76}`)
+	}))
+	defer server.Close()
+	client := NewClient(server.URL, "raw-key", 321, 0.25, 100, time.Second)
+	client.profile = config.ProfileTranslateGemmaRaw
+	result, err := client.Translate(t.Context(), translation.TranslateRequest{Text: "Source text", Source: "ru", Target: "en"})
+	if err != nil || result.Text != "Hello" {
+		t.Fatalf("Translate() = %+v, %v", result, err)
+	}
+}
+
+func TestRawProfileCompleteUsesRawEndpoint(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/completion" {
+			t.Errorf("Complete endpoint = %q", r.URL.Path)
+		}
+		var body rawCompletionRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			return
+		}
+		if body.Prompt != "batch prompt" {
+			t.Errorf("Complete prompt = %q", body.Prompt)
+		}
+		_, _ = io.WriteString(w, `{"content":"result"}`)
+	}))
+	defer server.Close()
+	client := NewClient(server.URL, "key", 100, 0, 100, time.Second)
+	client.profile = config.ProfileTranslateGemmaRaw
+	result, err := client.Complete(t.Context(), "batch prompt")
+	if err != nil || result != "result" {
+		t.Fatalf("Complete() = %q, %v", result, err)
+	}
+}
+
+func TestParseRawCompletionResponse(t *testing.T) {
+	t.Parallel()
+	result, err := ParseRawCompletionResponse(http.StatusOK, []byte(`{"content":"Translation: Hello"}`))
+	if err != nil || result.Text != "Hello" {
+		t.Fatalf("ParseRawCompletionResponse() = %+v, %v", result, err)
+	}
+	for _, test := range []struct {
+		status int
+		body   string
+	}{
+		{http.StatusInternalServerError, `{"error":{"code":500,"message":"generation failed","type":"server_error"}}`},
+		{http.StatusBadGateway, `{`},
+		{http.StatusOK, `{`},
+		{http.StatusOK, `{"content":" "}`},
+	} {
+		if _, err := ParseRawCompletionResponse(test.status, []byte(test.body)); err == nil {
+			t.Fatalf("ParseRawCompletionResponse(%d, %q) expected error", test.status, test.body)
+		}
+	}
+}
+
+func TestParseRawCompletionResponsePreservesContextOverflow(t *testing.T) {
+	t.Parallel()
+	_, err := ParseRawCompletionResponse(http.StatusBadRequest, []byte(`{"error":{"message":"request (2517 tokens) exceeds the available context size (2048 tokens)"}}`))
+	var overflow *ContextOverflowError
+	if !errors.As(err, &overflow) || overflow.RequestedTokens != 2517 || overflow.AvailableTokens != 2048 {
+		t.Fatalf("ParseRawCompletionResponse() error = %#v", err)
+	}
+}
+
+func TestRawCompletionCancellationAndTimeout(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		timeout time.Duration
+		cancel  bool
+	}{
+		{name: "cancellation", timeout: time.Minute, cancel: true},
+		{name: "timeout", timeout: 10 * time.Millisecond},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				select {
+				case <-r.Context().Done():
+				case <-time.After(100 * time.Millisecond):
+				}
+			}))
+			defer server.Close()
+			client := NewClient(server.URL, "key", 10, 0, 100, test.timeout)
+			client.profile = config.ProfileTranslateGemmaRaw
+			ctx, cancel := context.WithCancel(context.Background())
+			if test.cancel {
+				cancel()
+			} else {
+				defer cancel()
+			}
+			_, err := client.Complete(ctx, "prompt")
+			if test.cancel && !errors.Is(err, context.Canceled) {
+				t.Fatalf("Complete() error = %v, want cancellation", err)
+			}
+			if !test.cancel && (err == nil || !strings.Contains(err.Error(), "did not respond in time")) {
+				t.Fatalf("Complete() error = %v, want timeout", err)
+			}
+		})
+	}
+}
+
+func TestRawCompletionHTTPFailures(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{name: "non-2xx", status: http.StatusBadRequest, body: `{}`},
+		{name: "server error payload", status: http.StatusInternalServerError, body: `{"error":{"code":500,"message":"generation failed","type":"server_error"}}`},
+		{name: "malformed JSON", status: http.StatusOK, body: `{`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/completion" {
+					t.Errorf("endpoint = %q", r.URL.Path)
+				}
+				w.WriteHeader(test.status)
+				_, _ = io.WriteString(w, test.body)
+			}))
+			defer server.Close()
+			client := NewClient(server.URL, "key", 10, 0, 100, time.Second)
+			client.profile = config.ProfileTranslateGemmaRaw
+			if _, err := client.Complete(t.Context(), "prompt"); err == nil {
+				t.Fatal("Complete() expected error")
+			}
+		})
+	}
+}
+
+func TestRawTranslateGemmaRejectsAutoWithoutSendingRequest(t *testing.T) {
+	t.Parallel()
+	client := NewClient("http://127.0.0.1:1", "key", 100, 0, 2000, time.Second)
+	client.profile = config.ProfileTranslateGemmaRaw
+	_, err := client.Translate(context.Background(), translation.TranslateRequest{Text: "hello", Source: "auto", Target: "ru"})
+	if err == nil || !strings.Contains(err.Error(), "explicit source language") {
+		t.Fatalf("expected source language validation, got %v", err)
 	}
 }
 

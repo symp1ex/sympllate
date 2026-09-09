@@ -61,6 +61,30 @@ func TestNormalizeLocalModelProfileKeepsDebugProfile(t *testing.T) {
 	}
 }
 
+func TestNormalizeLocalModelProfileKeepsRawProfileInNormalMode(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "config.json")
+	cfg := config.Default()
+	cfg.LocalModel.Profile = config.ProfileTranslateGemmaRaw
+	if err := config.Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	got, err := normalizeLocalModelProfile(path, cfg, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LocalModel.Profile != config.ProfileTranslateGemmaRaw {
+		t.Fatalf("normal-mode raw profile = %q", got.LocalModel.Profile)
+	}
+	saved, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.LocalModel.Profile != config.ProfileTranslateGemmaRaw {
+		t.Fatalf("saved raw profile = %q", saved.LocalModel.Profile)
+	}
+}
+
 func TestNormalizeLocalModelProfileReturnsSaveError(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()

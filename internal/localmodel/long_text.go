@@ -14,6 +14,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/sympllate/translator/internal/config"
 	"github.com/sympllate/translator/internal/translation"
 )
 
@@ -56,6 +57,16 @@ type inputTokenCountResponse struct {
 	InputTokens int `json:"input_tokens"`
 }
 
+type rawTokenizeRequest struct {
+	Content      string `json:"content"`
+	AddSpecial   bool   `json:"add_special"`
+	ParseSpecial bool   `json:"parse_special"`
+}
+
+type rawTokenizeResponse struct {
+	Tokens []int `json:"tokens"`
+}
+
 func (c *Client) translateDocument(ctx context.Context, req translation.TranslateRequest) (string, error) {
 	if err := c.validateProfileRequest(req); err != nil {
 		return "", err
@@ -84,7 +95,7 @@ func (c *Client) translateDocument(ctx context.Context, req translation.Translat
 
 func (c *Client) validateProfileRequest(req translation.TranslateRequest) error {
 	switch c.profile {
-	case "translategemma":
+	case "translategemma", config.ProfileTranslateGemmaRaw:
 		if strings.EqualFold(req.Source, "auto") {
 			return errors.New("TranslateGemma requires an explicit source language; select a source language instead of auto")
 		}
@@ -259,6 +270,18 @@ func (c *Client) translationPayload(req translation.TranslateRequest) ([]byte, e
 	switch c.profile {
 	case "translategemma":
 		return c.marshalTranslateGemmaRequest(req)
+	case config.ProfileTranslateGemmaRaw:
+		prompt, err := renderTranslateGemmaCanonicalPrompt(req.Source, req.Target, req.Text)
+		if err != nil {
+			return nil, err
+		}
+		// /tokenize defaults to no added special tokens. These flags make its
+		// sequence match /completion, including exactly one model-added BOS.
+		payload, err := json.Marshal(rawTokenizeRequest{Content: prompt, AddSpecial: true, ParseSpecial: true})
+		if err != nil {
+			return nil, fmt.Errorf("marshal local token-count request: %w", err)
+		}
+		return payload, nil
 	case "generic":
 		return c.marshalChatRequest(buildGenericPrompt(req).text)
 	default:
@@ -269,7 +292,11 @@ func (c *Client) translationPayload(req translation.TranslateRequest) ([]byte, e
 func (c *Client) countInputTokens(ctx context.Context, payload []byte) (int, error) {
 	c.requestMu.Lock()
 	defer c.requestMu.Unlock()
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.tokenCountEndpoint, bytes.NewReader(payload))
+	endpoint := c.tokenCountEndpoint
+	if c.profile == config.ProfileTranslateGemmaRaw {
+		endpoint = c.rawTokenEndpoint
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return 0, err
 	}
@@ -286,6 +313,13 @@ func (c *Client) countInputTokens(ctx context.Context, payload []byte) (int, err
 	}
 	if len(body) > tokenCountResponseLimit || response.StatusCode < 200 || response.StatusCode >= 300 {
 		return 0, errors.New("local token counting is unavailable")
+	}
+	if c.profile == config.ProfileTranslateGemmaRaw {
+		var decoded rawTokenizeResponse
+		if err := json.Unmarshal(body, &decoded); err != nil || len(decoded.Tokens) == 0 {
+			return 0, errors.New("local token counting returned an invalid response")
+		}
+		return len(decoded.Tokens), nil
 	}
 	var decoded inputTokenCountResponse
 	if err := json.Unmarshal(body, &decoded); err != nil || decoded.InputTokens <= 0 {

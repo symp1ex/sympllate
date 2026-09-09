@@ -19,7 +19,7 @@ import (
 )
 
 func TestRuntimePassesProfileToClient(t *testing.T) {
-	for _, profile := range []string{"", "translategemma", "generic"} {
+	for _, profile := range []string{"", "translategemma", "translategemma-raw", "generic"} {
 		t.Run(profile, func(t *testing.T) {
 			process := &fakeProcess{done: make(chan struct{})}
 			var server *httptest.Server
