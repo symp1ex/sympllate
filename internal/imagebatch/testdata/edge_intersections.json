@@ -1,0 +1,718 @@
+[
+  {
+    "name": "99920-2296-05-o5fx801v-us-en-tws-18/p1-b2-par1",
+    "paragraph": {
+      "id": "p1-b2-par1",
+      "text": "Check the engine oil daily before starting the\nengine otherwise shortage of the engine oil may\ncause serious damage to the engine such as\nseizure.",
+      "box": { "x": 111, "y": 175, "width": 647, "height": 138 },
+      "lines": [
+        {
+          "id": "p1-b2-par1-l1",
+          "text": "Check the engine oil daily before starting the",
+          "box": { "x": 141, "y": 175, "width": 617, "height": 38 }
+        },
+        {
+          "id": "p1-b2-par1-l2",
+          "text": "engine otherwise shortage of the engine oil may",
+          "box": { "x": 114, "y": 210, "width": 643, "height": 39 }
+        },
+        {
+          "id": "p1-b2-par1-l3",
+          "text": "cause serious damage to the engine such as",
+          "box": { "x": 112, "y": 245, "width": 645, "height": 34 }
+        },
+        {
+          "id": "p1-b2-par1-l4",
+          "text": "seizure.",
+          "box": { "x": 111, "y": 277, "width": 112, "height": 36 }
+        }
+      ]
+    },
+    "protected": [
+      { "x": 114, "y": 51, "width": 252, "height": 33 },
+      { "x": 113, "y": 102, "width": 176, "height": 45 },
+      { "x": 116, "y": 311, "width": 641, "height": 34 },
+      { "x": 135, "y": 343, "width": 508, "height": 37 },
+      { "x": 114, "y": 373, "width": 645, "height": 42 },
+      { "x": 137, "y": 410, "width": 79, "height": 34 },
+      { "x": 116, "y": 444, "width": 641, "height": 33 },
+      { "x": 139, "y": 481, "width": 97, "height": 33 },
+      { "x": 116, "y": 508, "width": 643, "height": 40 },
+      { "x": 140, "y": 541, "width": 237, "height": 37 },
+      { "x": 117, "y": 577, "width": 639, "height": 34 },
+      { "x": 139, "y": 608, "width": 617, "height": 38 },
+      { "x": 139, "y": 641, "width": 186, "height": 38 },
+      { "x": 118, "y": 674, "width": 422, "height": 41 },
+      { "x": 827, "y": 96, "width": 267, "height": 41 },
+      { "x": 852, "y": 135, "width": 617, "height": 38 },
+      { "x": 826, "y": 168, "width": 543, "height": 40 },
+      { "x": 826, "y": 232, "width": 146, "height": 40 },
+      { "x": 1029, "y": 278, "width": 217, "height": 40 },
+      { "x": 1031, "y": 313, "width": 376, "height": 38 },
+      { "x": 869, "y": 314, "width": 115, "height": 41 },
+      { "x": 869, "y": 348, "width": 116, "height": 39 },
+      { "x": 1028, "y": 353, "width": 218, "height": 44 },
+      { "x": 1031, "y": 390, "width": 331, "height": 37 },
+      { "x": 826, "y": 440, "width": 187, "height": 40 },
+      { "x": 1028, "y": 485, "width": 218, "height": 43 },
+      { "x": 1031, "y": 520, "width": 376, "height": 37 },
+      { "x": 869, "y": 523, "width": 115, "height": 40 },
+      { "x": 870, "y": 558, "width": 113, "height": 36 },
+      { "x": 1028, "y": 561, "width": 219, "height": 44 },
+      { "x": 1033, "y": 597, "width": 328, "height": 38 }
+    ],
+    "active": [
+      { "x": 115, "y": 53, "width": 280, "height": 39 },
+      { "x": 115, "y": 106, "width": 328, "height": 39 }
+    ],
+    "parent": { "x": 0, "y": 0, "width": 826, "height": 1165 },
+    "width": 1653,
+    "height": 1165,
+    "text": "Проверяйте уровень масла в двигателе ежедневно перед запуском двигателя. В противном случае, недостаток масла может привести к серьезным повреждениям двигателя, вплоть до его поломки.",
+    "preferred": 32,
+    "step": 33,
+    "oldBase": { "x": 114, "y": 210, "width": 643, "height": 39 }
+  },
+  {
+    "name": "99920-2296-05-o5fx801v-us-en-tws-18/p1-b4-par1",
+    "paragraph": {
+      "id": "p1-b4-par1",
+      "text": "•Remove the oil gauge and wipe it with a clean\ncloth.",
+      "box": { "x": 114, "y": 373, "width": 645, "height": 71 },
+      "lines": [
+        {
+          "id": "p1-b4-par1-l1",
+          "text": "•Remove the oil gauge and wipe it with a clean",
+          "box": { "x": 114, "y": 373, "width": 645, "height": 42 }
+        },
+        {
+          "id": "p1-b4-par1-l2",
+          "text": "cloth.",
+          "box": { "x": 137, "y": 410, "width": 79, "height": 34 }
+        }
+      ]
+    },
+    "protected": [
+      { "x": 114, "y": 51, "width": 252, "height": 33 },
+      { "x": 113, "y": 102, "width": 176, "height": 45 },
+      { "x": 141, "y": 175, "width": 617, "height": 38 },
+      { "x": 114, "y": 210, "width": 643, "height": 39 },
+      { "x": 112, "y": 245, "width": 645, "height": 34 },
+      { "x": 111, "y": 277, "width": 112, "height": 36 },
+      { "x": 116, "y": 311, "width": 641, "height": 34 },
+      { "x": 135, "y": 343, "width": 508, "height": 37 },
+      { "x": 116, "y": 444, "width": 641, "height": 33 },
+      { "x": 139, "y": 481, "width": 97, "height": 33 },
+      { "x": 116, "y": 508, "width": 643, "height": 40 },
+      { "x": 140, "y": 541, "width": 237, "height": 37 },
+      { "x": 117, "y": 577, "width": 639, "height": 34 },
+      { "x": 139, "y": 608, "width": 617, "height": 38 },
+      { "x": 139, "y": 641, "width": 186, "height": 38 },
+      { "x": 118, "y": 674, "width": 422, "height": 41 },
+      { "x": 827, "y": 96, "width": 267, "height": 41 },
+      { "x": 852, "y": 135, "width": 617, "height": 38 },
+      { "x": 826, "y": 168, "width": 543, "height": 40 },
+      { "x": 826, "y": 232, "width": 146, "height": 40 },
+      { "x": 1029, "y": 278, "width": 217, "height": 40 },
+      { "x": 1031, "y": 313, "width": 376, "height": 38 },
+      { "x": 869, "y": 314, "width": 115, "height": 41 },
+      { "x": 869, "y": 348, "width": 116, "height": 39 },
+      { "x": 1028, "y": 353, "width": 218, "height": 44 },
+      { "x": 1031, "y": 390, "width": 331, "height": 37 },
+      { "x": 826, "y": 440, "width": 187, "height": 40 },
+      { "x": 1028, "y": 485, "width": 218, "height": 43 },
+      { "x": 1031, "y": 520, "width": 376, "height": 37 },
+      { "x": 869, "y": 523, "width": 115, "height": 40 },
+      { "x": 870, "y": 558, "width": 113, "height": 36 },
+      { "x": 1028, "y": 561, "width": 219, "height": 44 },
+      { "x": 1033, "y": 597, "width": 328, "height": 38 }
+    ],
+    "active": [
+      { "x": 115, "y": 53, "width": 280, "height": 39 },
+      { "x": 115, "y": 106, "width": 328, "height": 39 },
+      { "x": 116, "y": 212, "width": 630, "height": 20 },
+      { "x": 116, "y": 232, "width": 521, "height": 20 },
+      { "x": 116, "y": 252, "width": 390, "height": 20 },
+      { "x": 118, "y": 313, "width": 633, "height": 27 },
+      { "x": 118, "y": 340, "width": 579, "height": 27 }
+    ],
+    "parent": { "x": 0, "y": 0, "width": 826, "height": 1165 },
+    "width": 1653,
+    "height": 1165,
+    "text": "•Удалите масляный щуп и протрите его чистой тканью.",
+    "preferred": 31.25,
+    "step": 33,
+    "oldBase": { "x": 137, "y": 410, "width": 79, "height": 34 }
+  },
+  {
+    "name": "99920-2296-05-o5fx801v-us-en-tws-18/p1-b7-par1",
+    "paragraph": {
+      "id": "p1-b7-par1",
+      "text": "• Remove the oil gauge to check the oil level. The\nlevel should be between “ADD” and \"FULL” marks.\nDo not overfill.",
+      "box": { "x": 117, "y": 577, "width": 639, "height": 102 },
+      "lines": [
+        {
+          "id": "p1-b7-par1-l1",
+          "text": "• Remove the oil gauge to check the oil level. The",
+          "box": { "x": 117, "y": 577, "width": 639, "height": 34 }
+        },
+        {
+          "id": "p1-b7-par1-l2",
+          "text": "level should be between “ADD” and \"FULL” marks.",
+          "box": { "x": 139, "y": 608, "width": 617, "height": 38 }
+        },
+        {
+          "id": "p1-b7-par1-l3",
+          "text": "Do not overfill.",
+          "box": { "x": 139, "y": 641, "width": 186, "height": 38 }
+        }
+      ]
+    },
+    "protected": [
+      { "x": 114, "y": 51, "width": 252, "height": 33 },
+      { "x": 113, "y": 102, "width": 176, "height": 45 },
+      { "x": 141, "y": 175, "width": 617, "height": 38 },
+      { "x": 114, "y": 210, "width": 643, "height": 39 },
+      { "x": 112, "y": 245, "width": 645, "height": 34 },
+      { "x": 111, "y": 277, "width": 112, "height": 36 },
+      { "x": 116, "y": 311, "width": 641, "height": 34 },
+      { "x": 135, "y": 343, "width": 508, "height": 37 },
+      { "x": 114, "y": 373, "width": 645, "height": 42 },
+      { "x": 137, "y": 410, "width": 79, "height": 34 },
+      { "x": 116, "y": 444, "width": 641, "height": 33 },
+      { "x": 139, "y": 481, "width": 97, "height": 33 },
+      { "x": 116, "y": 508, "width": 643, "height": 40 },
+      { "x": 140, "y": 541, "width": 237, "height": 37 },
+      { "x": 118, "y": 674, "width": 422, "height": 41 },
+      { "x": 827, "y": 96, "width": 267, "height": 41 },
+      { "x": 852, "y": 135, "width": 617, "height": 38 },
+      { "x": 826, "y": 168, "width": 543, "height": 40 },
+      { "x": 826, "y": 232, "width": 146, "height": 40 },
+      { "x": 1029, "y": 278, "width": 217, "height": 40 },
+      { "x": 1031, "y": 313, "width": 376, "height": 38 },
+      { "x": 869, "y": 314, "width": 115, "height": 41 },
+      { "x": 869, "y": 348, "width": 116, "height": 39 },
+      { "x": 1028, "y": 353, "width": 218, "height": 44 },
+      { "x": 1031, "y": 390, "width": 331, "height": 37 },
+      { "x": 826, "y": 440, "width": 187, "height": 40 },
+      { "x": 1028, "y": 485, "width": 218, "height": 43 },
+      { "x": 1031, "y": 520, "width": 376, "height": 37 },
+      { "x": 869, "y": 523, "width": 115, "height": 40 },
+      { "x": 870, "y": 558, "width": 113, "height": 36 },
+      { "x": 1028, "y": 561, "width": 219, "height": 44 },
+      { "x": 1033, "y": 597, "width": 328, "height": 38 }
+    ],
+    "active": [
+      { "x": 115, "y": 53, "width": 280, "height": 39 },
+      { "x": 115, "y": 106, "width": 328, "height": 39 },
+      { "x": 116, "y": 212, "width": 630, "height": 20 },
+      { "x": 116, "y": 232, "width": 521, "height": 20 },
+      { "x": 116, "y": 252, "width": 390, "height": 20 },
+      { "x": 118, "y": 313, "width": 633, "height": 27 },
+      { "x": 118, "y": 340, "width": 579, "height": 27 },
+      { "x": 139, "y": 412, "width": 117, "height": 13 },
+      { "x": 139, "y": 425, "width": 123, "height": 13 },
+      { "x": 118, "y": 446, "width": 458, "height": 30 },
+      { "x": 118, "y": 476, "width": 320, "height": 30 },
+      { "x": 118, "y": 510, "width": 417, "height": 35 },
+      { "x": 118, "y": 545, "width": 355, "height": 35 }
+    ],
+    "parent": { "x": 0, "y": 0, "width": 826, "height": 1165 },
+    "width": 1653,
+    "height": 1165,
+    "text": "• Снимите масляный щуп, чтобы проверить уровень масла. Уровень должен находиться между отметками \"ДОБАВКИ\" и \"МАКС\". Не переливайте масло.",
+    "preferred": 29,
+    "step": 33,
+    "oldBase": { "x": 139, "y": 608, "width": 617, "height": 38 }
+  },
+  {
+    "name": "99920-2296-05-o5fx801v-us-en-tws-20/p1-b6-par1",
+    "paragraph": {
+      "id": "p1-b6-par1",
+      "text": "Engine exhaust may ignite combustible\nmaterials and cause a fire.\nKeep the area around the exhaust outlet\nclear. Locate the unit so that the exhaust\noutlet points toward an open area and is\nlocated at least one meter (3.3 feet) from any",
+      "box": { "x": 136, "y": 649, "width": 599, "height": 204 },
+      "lines": [
+        {
+          "id": "p1-b6-par1-l1",
+          "text": "Engine exhaust may ignite combustible",
+          "box": { "x": 140, "y": 649, "width": 593, "height": 33 }
+        },
+        {
+          "id": "p1-b6-par1-l2",
+          "text": "materials and cause a fire.",
+          "box": { "x": 139, "y": 683, "width": 354, "height": 35 }
+        },
+        {
+          "id": "p1-b6-par1-l3",
+          "text": "Keep the area around the exhaust outlet",
+          "box": { "x": 138, "y": 715, "width": 597, "height": 36 }
+        },
+        {
+          "id": "p1-b6-par1-l4",
+          "text": "clear. Locate the unit so that the exhaust",
+          "box": { "x": 138, "y": 749, "width": 597, "height": 34 }
+        },
+        {
+          "id": "p1-b6-par1-l5",
+          "text": "outlet points toward an open area and is",
+          "box": { "x": 138, "y": 783, "width": 597, "height": 35 }
+        },
+        {
+          "id": "p1-b6-par1-l6",
+          "text": "located at least one meter (3.3 feet) from any",
+          "box": { "x": 136, "y": 815, "width": 598, "height": 38 }
+        }
+      ]
+    },
+    "protected": [
+      { "x": 114, "y": 51, "width": 192, "height": 34 },
+      { "x": 115, "y": 203, "width": 204, "height": 45 },
+      { "x": 332, "y": 282, "width": 214, "height": 49 },
+      { "x": 137, "y": 346, "width": 600, "height": 38 },
+      { "x": 137, "y": 380, "width": 597, "height": 37 },
+      { "x": 138, "y": 415, "width": 595, "height": 34 },
+      { "x": 137, "y": 446, "width": 597, "height": 37 },
+      { "x": 135, "y": 478, "width": 601, "height": 38 },
+      { "x": 137, "y": 514, "width": 214, "height": 35 },
+      { "x": 323, "y": 586, "width": 229, "height": 45 },
+      { "x": 138, "y": 848, "width": 187, "height": 36 },
+      { "x": 115, "y": 961, "width": 643, "height": 40 },
+      { "x": 144, "y": 998, "width": 368, "height": 35 },
+      { "x": 390, "y": 919, "width": 90, "height": 38 },
+      { "x": 658, "y": 99, "width": 265, "height": 53 },
+      { "x": 829, "y": 197, "width": 640, "height": 39 },
+      { "x": 854, "y": 230, "width": 612, "height": 39 },
+      { "x": 854, "y": 264, "width": 243, "height": 37 },
+      { "x": 827, "y": 295, "width": 645, "height": 42 },
+      { "x": 853, "y": 333, "width": 541, "height": 34 },
+      { "x": 828, "y": 363, "width": 641, "height": 42 },
+      { "x": 853, "y": 400, "width": 188, "height": 33 },
+      { "x": 831, "y": 432, "width": 499, "height": 37 },
+      { "x": 830, "y": 466, "width": 639, "height": 36 },
+      { "x": 853, "y": 499, "width": 617, "height": 35 },
+      { "x": 854, "y": 530, "width": 615, "height": 39 },
+      { "x": 852, "y": 564, "width": 326, "height": 38 },
+      { "x": 852, "y": 597, "width": 617, "height": 38 },
+      { "x": 854, "y": 633, "width": 215, "height": 38 }
+    ],
+    "active": [
+      { "x": 116, "y": 67, "width": 150, "height": 35 },
+      { "x": 117, "y": 205, "width": 127, "height": 40 },
+      { "x": 117, "y": 250, "width": 160, "height": 40 },
+      { "x": 350, "y": 284, "width": 177, "height": 45 },
+      { "x": 137, "y": 348, "width": 594, "height": 34 },
+      { "x": 137, "y": 382, "width": 565, "height": 34 },
+      { "x": 137, "y": 416, "width": 592, "height": 34 },
+      { "x": 137, "y": 450, "width": 588, "height": 34 },
+      { "x": 137, "y": 484, "width": 577, "height": 34 },
+      { "x": 137, "y": 518, "width": 529, "height": 34 },
+      { "x": 338, "y": 588, "width": 198, "height": 41 }
+    ],
+    "parent": { "x": 120, "y": 638, "width": 631, "height": 252 },
+    "width": 1653,
+    "height": 1165,
+    "text": "Выхлоп двигателя может воспламенить горючие материалы и вызвать пожар.\nОбеспечьте чистоту в зоне вокруг выходного отверстия. Разместите устройство таким образом, чтобы выходное отверстие указывало на открытое пространство и находилось на расстоянии не менее одного метра (3,3 фута) от любых",
+    "preferred": 33.25,
+    "step": 33.5,
+    "oldBase": { "x": 138, "y": 715, "width": 597, "height": 36 }
+  },
+  {
+    "name": "99920-2296-05-o5fx801v-us-en-tws-20/p1-b11-par1",
+    "paragraph": {
+      "id": "p1-b11-par1",
+      "text": "O Use proper oil for expected temperature (See\nFUEL AND OIL RECOMMENDATIONS chapter).\nUse fresh gasoline.\nO Protect the engine or the equipment from direct\nexposure to weather when not in operation.\nO Before starting the engine, disconnect all possible",
+      "box": { "x": 827, "y": 197, "width": 645, "height": 208 },
+      "lines": [
+        {
+          "id": "p1-b11-par1-l1",
+          "text": "O Use proper oil for expected temperature (See",
+          "box": { "x": 829, "y": 197, "width": 640, "height": 39 }
+        },
+        {
+          "id": "p1-b11-par1-l2",
+          "text": "FUEL AND OIL RECOMMENDATIONS chapter).",
+          "box": { "x": 854, "y": 230, "width": 612, "height": 39 }
+        },
+        {
+          "id": "p1-b11-par1-l3",
+          "text": "Use fresh gasoline.",
+          "box": { "x": 854, "y": 264, "width": 243, "height": 37 }
+        },
+        {
+          "id": "p1-b11-par1-l4",
+          "text": "O Protect the engine or the equipment from direct",
+          "box": { "x": 827, "y": 295, "width": 645, "height": 42 }
+        },
+        {
+          "id": "p1-b11-par1-l5",
+          "text": "exposure to weather when not in operation.",
+          "box": { "x": 853, "y": 333, "width": 541, "height": 34 }
+        },
+        {
+          "id": "p1-b11-par1-l6",
+          "text": "O Before starting the engine, disconnect all possible",
+          "box": { "x": 828, "y": 363, "width": 641, "height": 42 }
+        }
+      ]
+    },
+    "protected": [
+      { "x": 114, "y": 51, "width": 192, "height": 34 },
+      { "x": 115, "y": 203, "width": 204, "height": 45 },
+      { "x": 332, "y": 282, "width": 214, "height": 49 },
+      { "x": 137, "y": 346, "width": 600, "height": 38 },
+      { "x": 137, "y": 380, "width": 597, "height": 37 },
+      { "x": 138, "y": 415, "width": 595, "height": 34 },
+      { "x": 137, "y": 446, "width": 597, "height": 37 },
+      { "x": 135, "y": 478, "width": 601, "height": 38 },
+      { "x": 137, "y": 514, "width": 214, "height": 35 },
+      { "x": 323, "y": 586, "width": 229, "height": 45 },
+      { "x": 140, "y": 649, "width": 593, "height": 33 },
+      { "x": 139, "y": 683, "width": 354, "height": 35 },
+      { "x": 138, "y": 715, "width": 597, "height": 36 },
+      { "x": 138, "y": 749, "width": 597, "height": 34 },
+      { "x": 138, "y": 783, "width": 597, "height": 35 },
+      { "x": 136, "y": 815, "width": 598, "height": 38 },
+      { "x": 138, "y": 848, "width": 187, "height": 36 },
+      { "x": 115, "y": 961, "width": 643, "height": 40 },
+      { "x": 144, "y": 998, "width": 368, "height": 35 },
+      { "x": 390, "y": 919, "width": 90, "height": 38 },
+      { "x": 658, "y": 99, "width": 265, "height": 53 },
+      { "x": 853, "y": 400, "width": 188, "height": 33 },
+      { "x": 831, "y": 432, "width": 499, "height": 37 },
+      { "x": 830, "y": 466, "width": 639, "height": 36 },
+      { "x": 853, "y": 499, "width": 617, "height": 35 },
+      { "x": 854, "y": 530, "width": 615, "height": 39 },
+      { "x": 852, "y": 564, "width": 326, "height": 38 },
+      { "x": 852, "y": 597, "width": 617, "height": 38 },
+      { "x": 854, "y": 633, "width": 215, "height": 38 }
+    ],
+    "active": [
+      { "x": 116, "y": 67, "width": 150, "height": 35 },
+      { "x": 117, "y": 205, "width": 127, "height": 40 },
+      { "x": 117, "y": 250, "width": 160, "height": 40 },
+      { "x": 350, "y": 284, "width": 177, "height": 45 },
+      { "x": 137, "y": 348, "width": 594, "height": 34 },
+      { "x": 137, "y": 382, "width": 565, "height": 34 },
+      { "x": 137, "y": 416, "width": 592, "height": 34 },
+      { "x": 137, "y": 450, "width": 588, "height": 34 },
+      { "x": 137, "y": 484, "width": 577, "height": 34 },
+      { "x": 137, "y": 518, "width": 529, "height": 34 },
+      { "x": 338, "y": 588, "width": 198, "height": 41 },
+      { "x": 140, "y": 717, "width": 385, "height": 13 },
+      { "x": 140, "y": 730, "width": 607, "height": 13 },
+      { "x": 140, "y": 743, "width": 546, "height": 13 },
+      { "x": 140, "y": 848, "width": 184, "height": 36 },
+      { "x": 117, "y": 963, "width": 566, "height": 34 },
+      { "x": 117, "y": 997, "width": 592, "height": 34 },
+      { "x": 368, "y": 921, "width": 135, "height": 34 },
+      { "x": 690, "y": 119, "width": 200, "height": 57 }
+    ],
+    "parent": { "x": 826, "y": 0, "width": 827, "height": 1165 },
+    "width": 1653,
+    "height": 1165,
+    "text": "О Используйте подходящее масло, соответствующее ожидаемой температуре (см. раздел \"РЕКОМЕНДАЦИИ ПО ТИПАМ ТОПЛИВА И МАСЛА\").\nИспользуйте свежее бензин.\nО Защищайте двигатель или оборудование от прямого воздействия погодных условий, когда они не используются.\nО Перед запуском двигателя необходимо отключить все возможные",
+    "preferred": 29.5,
+    "step": 33.5,
+    "oldBase": { "x": 827, "y": 295, "width": 645, "height": 42 }
+  },
+  {
+    "name": "99920-2296-05-o5fx801v-us-en-tws-20/p1-b14-par1",
+    "paragraph": {
+      "id": "p1-b14-par1",
+      "text": "• Put the key into the ignition switch. For Control\nPanel Switch Type, move the throttle lever on the\nequipment to its halfway position between “SLOW”\nspeed and \"FAST\" speed.\nMoving the lever away from its low speed end",
+      "box": { "x": 830, "y": 466, "width": 640, "height": 169 },
+      "lines": [
+        {
+          "id": "p1-b14-par1-l1",
+          "text": "• Put the key into the ignition switch. For Control",
+          "box": { "x": 830, "y": 466, "width": 639, "height": 36 }
+        },
+        {
+          "id": "p1-b14-par1-l2",
+          "text": "Panel Switch Type, move the throttle lever on the",
+          "box": { "x": 853, "y": 499, "width": 617, "height": 35 }
+        },
+        {
+          "id": "p1-b14-par1-l3",
+          "text": "equipment to its halfway position between “SLOW”",
+          "box": { "x": 854, "y": 530, "width": 615, "height": 39 }
+        },
+        {
+          "id": "p1-b14-par1-l4",
+          "text": "speed and \"FAST\" speed.",
+          "box": { "x": 852, "y": 564, "width": 326, "height": 38 }
+        },
+        {
+          "id": "p1-b14-par1-l5",
+          "text": "Moving the lever away from its low speed end",
+          "box": { "x": 852, "y": 597, "width": 617, "height": 38 }
+        }
+      ]
+    },
+    "protected": [
+      { "x": 114, "y": 51, "width": 192, "height": 34 },
+      { "x": 115, "y": 203, "width": 204, "height": 45 },
+      { "x": 332, "y": 282, "width": 214, "height": 49 },
+      { "x": 137, "y": 346, "width": 600, "height": 38 },
+      { "x": 137, "y": 380, "width": 597, "height": 37 },
+      { "x": 138, "y": 415, "width": 595, "height": 34 },
+      { "x": 137, "y": 446, "width": 597, "height": 37 },
+      { "x": 135, "y": 478, "width": 601, "height": 38 },
+      { "x": 137, "y": 514, "width": 214, "height": 35 },
+      { "x": 323, "y": 586, "width": 229, "height": 45 },
+      { "x": 140, "y": 649, "width": 593, "height": 33 },
+      { "x": 139, "y": 683, "width": 354, "height": 35 },
+      { "x": 138, "y": 715, "width": 597, "height": 36 },
+      { "x": 138, "y": 749, "width": 597, "height": 34 },
+      { "x": 138, "y": 783, "width": 597, "height": 35 },
+      { "x": 136, "y": 815, "width": 598, "height": 38 },
+      { "x": 138, "y": 848, "width": 187, "height": 36 },
+      { "x": 115, "y": 961, "width": 643, "height": 40 },
+      { "x": 144, "y": 998, "width": 368, "height": 35 },
+      { "x": 390, "y": 919, "width": 90, "height": 38 },
+      { "x": 658, "y": 99, "width": 265, "height": 53 },
+      { "x": 829, "y": 197, "width": 640, "height": 39 },
+      { "x": 854, "y": 230, "width": 612, "height": 39 },
+      { "x": 854, "y": 264, "width": 243, "height": 37 },
+      { "x": 827, "y": 295, "width": 645, "height": 42 },
+      { "x": 853, "y": 333, "width": 541, "height": 34 },
+      { "x": 828, "y": 363, "width": 641, "height": 42 },
+      { "x": 853, "y": 400, "width": 188, "height": 33 },
+      { "x": 831, "y": 432, "width": 499, "height": 37 },
+      { "x": 854, "y": 633, "width": 215, "height": 38 }
+    ],
+    "active": [
+      { "x": 116, "y": 67, "width": 150, "height": 35 },
+      { "x": 117, "y": 205, "width": 127, "height": 40 },
+      { "x": 117, "y": 250, "width": 160, "height": 40 },
+      { "x": 350, "y": 284, "width": 177, "height": 45 },
+      { "x": 137, "y": 348, "width": 594, "height": 34 },
+      { "x": 137, "y": 382, "width": 565, "height": 34 },
+      { "x": 137, "y": 416, "width": 592, "height": 34 },
+      { "x": 137, "y": 450, "width": 588, "height": 34 },
+      { "x": 137, "y": 484, "width": 577, "height": 34 },
+      { "x": 137, "y": 518, "width": 529, "height": 34 },
+      { "x": 338, "y": 588, "width": 198, "height": 41 },
+      { "x": 140, "y": 717, "width": 385, "height": 13 },
+      { "x": 140, "y": 730, "width": 607, "height": 13 },
+      { "x": 140, "y": 743, "width": 546, "height": 13 },
+      { "x": 140, "y": 848, "width": 184, "height": 36 },
+      { "x": 117, "y": 963, "width": 566, "height": 34 },
+      { "x": 117, "y": 997, "width": 592, "height": 34 },
+      { "x": 368, "y": 921, "width": 135, "height": 34 },
+      { "x": 690, "y": 119, "width": 200, "height": 57 },
+      { "x": 829, "y": 297, "width": 660, "height": 13 },
+      { "x": 829, "y": 310, "width": 127, "height": 13 },
+      { "x": 829, "y": 323, "width": 514, "height": 13 },
+      { "x": 829, "y": 336, "width": 306, "height": 13 },
+      { "x": 855, "y": 404, "width": 186, "height": 25 },
+      { "x": 833, "y": 436, "width": 596, "height": 29 }
+    ],
+    "parent": { "x": 826, "y": 0, "width": 827, "height": 1165 },
+    "width": 1653,
+    "height": 1165,
+    "text": "• Вставьте ключ в замок зажигания. Для переключателей на панели управления, переместите рычаг газа в середину между скоростями \"Низкая\" и \"Высокая\".\nПеремещение рычага от крайнего положения \"Низкая\" скорость.",
+    "preferred": 29.5,
+    "step": 33,
+    "oldBase": { "x": 854, "y": 530, "width": 615, "height": 39 }
+  },
+  {
+    "name": "TAX and Service-4/p1-b1-par1",
+    "paragraph": {
+      "id": "p1-b1-par1",
+      "text": "Select \"To the full amount of order\" in the Method of application block, \"Surcharge\" in the Type block,\nand enter 10% in the Percentage field and click Next. Check Activate discount and click OK.\nCreate services in the stock list directory:",
+      "box": { "x": 111, "y": 115, "width": 1046, "height": 118 },
+      "lines": [
+        {
+          "id": "p1-b1-par1-l1",
+          "text": "Select \"To the full amount of order\" in the Method of application block, \"Surcharge\" in the Type block,",
+          "box": { "x": 113, "y": 115, "width": 1044, "height": 35 }
+        },
+        {
+          "id": "p1-b1-par1-l2",
+          "text": "and enter 10% in the Percentage field and click Next. Check Activate discount and click OK.",
+          "box": { "x": 111, "y": 150, "width": 940, "height": 34 }
+        },
+        {
+          "id": "p1-b1-par1-l3",
+          "text": "Create services in the stock list directory:",
+          "box": { "x": 112, "y": 195, "width": 427, "height": 38 }
+        }
+      ]
+    },
+    "protected": [
+      { "x": 112, "y": 739, "width": 374, "height": 42 },
+      { "x": 117, "y": 790, "width": 86, "height": 39 },
+      { "x": 123, "y": 827, "width": 119, "height": 31 },
+      { "x": 253, "y": 829, "width": 145, "height": 30 },
+      { "x": 115, "y": 858, "width": 60, "height": 35 },
+      { "x": 118, "y": 890, "width": 100, "height": 31 },
+      { "x": 117, "y": 918, "width": 144, "height": 35 },
+      { "x": 115, "y": 947, "width": 101, "height": 35 },
+      { "x": 119, "y": 1007, "width": 138, "height": 28 },
+      { "x": 117, "y": 1062, "width": 152, "height": 33 },
+      { "x": 121, "y": 1121, "width": 293, "height": 34 },
+      { "x": 119, "y": 1152, "width": 166, "height": 32 },
+      { "x": 118, "y": 1181, "width": 120, "height": 34 },
+      { "x": 389, "y": 827, "width": 136, "height": 33 },
+      { "x": 276, "y": 860, "width": 137, "height": 34 },
+      { "x": 275, "y": 889, "width": 65, "height": 34 },
+      { "x": 275, "y": 917, "width": 69, "height": 35 },
+      { "x": 275, "y": 947, "width": 131, "height": 34 },
+      { "x": 275, "y": 976, "width": 117, "height": 34 },
+      { "x": 275, "y": 1033, "width": 155, "height": 33 },
+      { "x": 275, "y": 1090, "width": 174, "height": 32 },
+      { "x": 275, "y": 1210, "width": 136, "height": 34 },
+      { "x": 154, "y": 1395, "width": 51, "height": 33 },
+      { "x": 112, "y": 1454, "width": 1032, "height": 38 },
+      { "x": 111, "y": 1492, "width": 562, "height": 33 },
+      { "x": 483, "y": 231, "width": 96, "height": 32 },
+      { "x": 476, "y": 272, "width": 222, "height": 27 },
+      { "x": 490, "y": 311, "width": 128, "height": 44 },
+      { "x": 458, "y": 1119, "width": 74, "height": 36 },
+      { "x": 634, "y": 228, "width": 137, "height": 38 },
+      { "x": 492, "y": 362, "width": 95, "height": 28 },
+      { "x": 490, "y": 404, "width": 197, "height": 33 },
+      { "x": 517, "y": 446, "width": 114, "height": 27 },
+      { "x": 375, "y": 1296, "width": 67, "height": 29 },
+      { "x": 525, "y": 471, "width": 72, "height": 31 },
+      { "x": 525, "y": 496, "width": 55, "height": 33 },
+      { "x": 527, "y": 524, "width": 136, "height": 29 },
+      { "x": 525, "y": 549, "width": 72, "height": 31 },
+      { "x": 513, "y": 570, "width": 97, "height": 38 },
+      { "x": 527, "y": 604, "width": 122, "height": 27 },
+      { "x": 526, "y": 628, "width": 244, "height": 33 },
+      { "x": 526, "y": 654, "width": 112, "height": 33 },
+      { "x": 525, "y": 681, "width": 105, "height": 31 },
+      { "x": 546, "y": 1122, "width": 72, "height": 31 },
+      { "x": 433, "y": 1323, "width": 112, "height": 32 },
+      { "x": 668, "y": 1124, "width": 25, "height": 28 },
+      { "x": 555, "y": 1321, "width": 98, "height": 37 },
+      { "x": 547, "y": 1397, "width": 60, "height": 29 },
+      { "x": 735, "y": 887, "width": 55, "height": 34 },
+      { "x": 893, "y": 857, "width": 72, "height": 32 },
+      { "x": 855, "y": 888, "width": 57, "height": 32 },
+      { "x": 726, "y": 921, "width": 54, "height": 32 },
+      { "x": 700, "y": 1395, "width": 52, "height": 33 },
+      { "x": 827, "y": 1396, "width": 127, "height": 31 },
+      { "x": 1016, "y": 925, "width": 69, "height": 24 },
+      { "x": 1024, "y": 1397, "width": 103, "height": 29 }
+    ],
+    "active": [],
+    "parent": { "x": 0, "y": 0, "width": 1274, "height": 350 },
+    "width": 1275,
+    "height": 1649,
+    "text": "Выберите опцию \"Полная сумма заказа\" в разделе \"Способ оплаты\", \"Доплата\" в разделе \"Тип\",\nи введите 10% в поле \"Процент\", затем нажмите \"Далее\". Отметьте опцию \"Активировать скидку\" и нажмите \"ОК\".\nСоздайте услуги в каталоге \"Список услуг\":",
+    "preferred": 23,
+    "step": 40.75,
+    "oldBase": { "x": 113, "y": 115, "width": 1044, "height": 35 }
+  },
+  {
+    "name": "TAX and Service-4/p1-b12-par1",
+    "paragraph": {
+      "id": "p1-b12-par1",
+      "text": "Cookingme(m:ssada:00:00\nType of production place:\nModifiers scheme:",
+      "box": { "x": 118, "y": 1121, "width": 296, "height": 94 },
+      "lines": [
+        {
+          "id": "p1-b12-par1-l1",
+          "text": "Cookingme(m:ssada:00:00",
+          "box": { "x": 121, "y": 1121, "width": 293, "height": 34 }
+        },
+        {
+          "id": "p1-b12-par1-l2",
+          "text": "Type of production place:",
+          "box": { "x": 119, "y": 1152, "width": 166, "height": 32 }
+        },
+        {
+          "id": "p1-b12-par1-l3",
+          "text": "Modifiers scheme:",
+          "box": { "x": 118, "y": 1181, "width": 120, "height": 34 }
+        }
+      ]
+    },
+    "protected": [
+      { "x": 113, "y": 115, "width": 1044, "height": 35 },
+      { "x": 111, "y": 150, "width": 940, "height": 34 },
+      { "x": 112, "y": 195, "width": 427, "height": 38 },
+      { "x": 112, "y": 739, "width": 374, "height": 42 },
+      { "x": 117, "y": 790, "width": 86, "height": 39 },
+      { "x": 123, "y": 827, "width": 119, "height": 31 },
+      { "x": 253, "y": 829, "width": 145, "height": 30 },
+      { "x": 115, "y": 858, "width": 60, "height": 35 },
+      { "x": 118, "y": 890, "width": 100, "height": 31 },
+      { "x": 117, "y": 918, "width": 144, "height": 35 },
+      { "x": 115, "y": 947, "width": 101, "height": 35 },
+      { "x": 119, "y": 1007, "width": 138, "height": 28 },
+      { "x": 117, "y": 1062, "width": 152, "height": 33 },
+      { "x": 389, "y": 827, "width": 136, "height": 33 },
+      { "x": 276, "y": 860, "width": 137, "height": 34 },
+      { "x": 275, "y": 889, "width": 65, "height": 34 },
+      { "x": 275, "y": 917, "width": 69, "height": 35 },
+      { "x": 275, "y": 947, "width": 131, "height": 34 },
+      { "x": 275, "y": 976, "width": 117, "height": 34 },
+      { "x": 275, "y": 1033, "width": 155, "height": 33 },
+      { "x": 275, "y": 1090, "width": 174, "height": 32 },
+      { "x": 275, "y": 1210, "width": 136, "height": 34 },
+      { "x": 154, "y": 1395, "width": 51, "height": 33 },
+      { "x": 112, "y": 1454, "width": 1032, "height": 38 },
+      { "x": 111, "y": 1492, "width": 562, "height": 33 },
+      { "x": 483, "y": 231, "width": 96, "height": 32 },
+      { "x": 476, "y": 272, "width": 222, "height": 27 },
+      { "x": 490, "y": 311, "width": 128, "height": 44 },
+      { "x": 458, "y": 1119, "width": 74, "height": 36 },
+      { "x": 634, "y": 228, "width": 137, "height": 38 },
+      { "x": 492, "y": 362, "width": 95, "height": 28 },
+      { "x": 490, "y": 404, "width": 197, "height": 33 },
+      { "x": 517, "y": 446, "width": 114, "height": 27 },
+      { "x": 375, "y": 1296, "width": 67, "height": 29 },
+      { "x": 525, "y": 471, "width": 72, "height": 31 },
+      { "x": 525, "y": 496, "width": 55, "height": 33 },
+      { "x": 527, "y": 524, "width": 136, "height": 29 },
+      { "x": 525, "y": 549, "width": 72, "height": 31 },
+      { "x": 513, "y": 570, "width": 97, "height": 38 },
+      { "x": 527, "y": 604, "width": 122, "height": 27 },
+      { "x": 526, "y": 628, "width": 244, "height": 33 },
+      { "x": 526, "y": 654, "width": 112, "height": 33 },
+      { "x": 525, "y": 681, "width": 105, "height": 31 },
+      { "x": 546, "y": 1122, "width": 72, "height": 31 },
+      { "x": 433, "y": 1323, "width": 112, "height": 32 },
+      { "x": 668, "y": 1124, "width": 25, "height": 28 },
+      { "x": 555, "y": 1321, "width": 98, "height": 37 },
+      { "x": 547, "y": 1397, "width": 60, "height": 29 },
+      { "x": 735, "y": 887, "width": 55, "height": 34 },
+      { "x": 893, "y": 857, "width": 72, "height": 32 },
+      { "x": 855, "y": 888, "width": 57, "height": 32 },
+      { "x": 726, "y": 921, "width": 54, "height": 32 },
+      { "x": 700, "y": 1395, "width": 52, "height": 33 },
+      { "x": 827, "y": 1396, "width": 127, "height": 31 },
+      { "x": 1016, "y": 925, "width": 69, "height": 24 },
+      { "x": 1024, "y": 1397, "width": 103, "height": 29 }
+    ],
+    "active": [
+      { "x": 115, "y": 117, "width": 627, "height": 16 },
+      { "x": 115, "y": 141, "width": 743, "height": 16 },
+      { "x": 115, "y": 165, "width": 282, "height": 16 },
+      { "x": 28, "y": 746, "width": 494, "height": 27 },
+      { "x": 119, "y": 798, "width": 131, "height": 23 },
+      { "x": 158, "y": 829, "width": 49, "height": 13 },
+      { "x": 140, "y": 843, "width": 85, "height": 13 },
+      { "x": 276, "y": 829, "width": 98, "height": 15 },
+      { "x": 288, "y": 844, "width": 75, "height": 15 },
+      { "x": 117, "y": 863, "width": 46, "height": 25 },
+      { "x": 120, "y": 897, "width": 123, "height": 16 },
+      { "x": 45, "y": 926, "width": 227, "height": 19 },
+      { "x": 117, "y": 953, "width": 92, "height": 10 },
+      { "x": 117, "y": 965, "width": 76, "height": 10 },
+      { "x": 128, "y": 1013, "width": 119, "height": 16 },
+      { "x": 119, "y": 1071, "width": 147, "height": 15 }
+    ],
+    "parent": { "x": 117, "y": 863, "width": 556, "height": 433 },
+    "width": 1275,
+    "height": 1649,
+    "text": "Cookingme (m:ssada:00:00\nТип производственного объекта:\nСхема модификаций:",
+    "preferred": 19.75,
+    "step": 30,
+    "oldBase": { "x": 119, "y": 1152, "width": 166, "height": 32 }
+  }
+]

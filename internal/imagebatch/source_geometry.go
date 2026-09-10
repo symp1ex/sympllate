@@ -495,6 +495,33 @@ func safeTranslationBase(geometry SourceTextGeometry, protected []ocr.OCRBox) oc
 		}
 	}
 	if best.Width > 0 && best.Height > 0 {
+		// Before collapsing a multiline paragraph to one clean row, try
+		// trimming narrow intrusions from its top and bottom. Keep the full
+		// width, and leave interior blockers and the no-clean-row path alone.
+		if len(geometry.LineRegions) > 1 {
+			base := geometry.Bounds
+			top, bottom := base.Y, base.Y+base.Height
+			lineHeight := base.Height
+			for _, line := range geometry.LineRegions {
+				lineHeight = min(lineHeight, line.Height)
+			}
+			for _, obstacle := range protected {
+				if boxIntersectionArea(base, obstacle) == 0 {
+					continue
+				}
+				if obstacle.Y <= base.Y {
+					top = max(top, obstacle.Y+obstacle.Height)
+				} else if obstacle.Y+obstacle.Height >= base.Y+base.Height {
+					bottom = min(bottom, obstacle.Y)
+				}
+			}
+			base.Y, base.Height = top, bottom-top
+			// Losing less than half the shortest row preserves every row's
+			// center and keeps height/sourceLines a multiline measurement.
+			if base.Height > 0 && (geometry.Bounds.Height-base.Height)*2 < lineHeight && !intersectsAny(base, protected) {
+				return base
+			}
+		}
 		return best
 	}
 	return geometry.Bounds
