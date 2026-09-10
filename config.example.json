@@ -45,7 +45,8 @@
     "mainWindowHeight": 620,
     "popupWidth": 520,
     "popupHeight": 360,
-    "alwaysOnTopPopup": true
+    "alwaysOnTopPopup": true,
+    "hideIntoTrayOnStartup": false
   },
   "limits": {
     "maxInputCharacters": 131072,

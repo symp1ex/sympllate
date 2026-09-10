@@ -3,10 +3,24 @@
 package window
 
 import (
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
 )
+
+func TestImageBatchLauncherReturnsUnavailableError(t *testing.T) {
+	t.Parallel()
+	view := &settingsWebView{bindings: make(map[string]any)}
+	want := errors.New("Batch Images requires unavailable components: OCR; FFmpeg")
+	if err := bindImageBatchLauncher(view, nil, want); err != nil {
+		t.Fatal(err)
+	}
+	open := view.bindings["OpenImageBatchWindow"].(func() error)
+	if err := open(); !errors.Is(err, want) {
+		t.Fatalf("OpenImageBatchWindow() error = %v", err)
+	}
+}
 
 func TestMainWindowOnlyStartsOneConcurrentOpen(t *testing.T) {
 	window := &MainWindow{state: mainWindowIdle}

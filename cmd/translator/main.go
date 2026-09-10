@@ -26,6 +26,7 @@ import (
 	"github.com/sympllate/translator/internal/logger"
 	"github.com/sympllate/translator/internal/ocr"
 	"github.com/sympllate/translator/internal/ollama"
+	sharedort "github.com/sympllate/translator/internal/onnxruntime"
 	"github.com/sympllate/translator/internal/translation"
 	"github.com/sympllate/translator/internal/tray"
 	"github.com/sympllate/translator/internal/updater"
@@ -34,7 +35,7 @@ import (
 )
 
 var errRestartRequested = errors.New("application restart requested")
-var version = "0.4.3.8"
+var version = "0.4.3.11"
 var debugMode = flag.Bool("debug", false, "enable experimental application features")
 
 func main() {
@@ -78,15 +79,37 @@ func run(debugMode bool) (runErr error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	executableDir := filepath.Dir(configPath)
-	ocrEngine, err := ocr.NewPaddleEngine(executableDir, ocr.DefaultTimeout, applicationLogger)
-	if err != nil {
-		return fmt.Errorf("configure PaddleOCR: %w", err)
+	onnxLease, onnxErr := sharedort.Acquire(executableDir)
+	onnxRuntimeAvailable := onnxErr == nil
+	if onnxErr != nil {
+		applicationLogger.Warnf("optional ONNX Runtime unavailable: %v", onnxErr)
+	} else {
+		defer func(lease *sharedort.Lease) {
+			if err := lease.Close(); err != nil {
+				applicationLogger.Printf("ONNX Runtime bootstrap lease shutdown failed: %v", err)
+			}
+		}(onnxLease)
 	}
-	defer func() {
-		if err := ocrEngine.Close(); err != nil {
-			applicationLogger.Printf("OCR backend shutdown failed: %v", err)
-		}
-	}()
+	var ocrEngine *ocr.PaddleEngine
+	var ocrErr error
+	if onnxRuntimeAvailable {
+		ocrEngine, ocrErr = ocr.NewPaddleEngine(executableDir, ocr.DefaultTimeout, applicationLogger)
+	} else {
+		ocrErr = fmt.Errorf("requires ONNX Runtime: %w", onnxErr)
+	}
+	var localImageExtractor localmodel.ImageTextExtractor
+	var batchOCR imagebatch.StructuredOCR
+	if ocrErr != nil {
+		applicationLogger.Warnf("optional OCR unavailable: %v", ocrErr)
+	} else {
+		localImageExtractor = ocrEngine
+		batchOCR = ocrEngine
+		defer func() {
+			if err := ocrEngine.Close(); err != nil {
+				applicationLogger.Printf("OCR backend shutdown failed: %v", err)
+			}
+		}()
+	}
 	classifier, err := language.NewWhatlangClassifier()
 	if err != nil {
 		return fmt.Errorf("configure language identification: %w", err)
@@ -131,7 +154,7 @@ func run(debugMode bool) (runErr error) {
 			Temperature:        cfg.Ollama.Temperature,
 			FitTargetMiB:       cfg.LocalModel.FitTargetMiB,
 			MaxInputCharacters: cfg.Limits.MaxInputCharacters,
-			ImageTextExtractor: ocrEngine,
+			ImageTextExtractor: localImageExtractor,
 			LanguageIdentifier: identifier,
 		}, applicationLogger.Writer())
 		if err != nil {
@@ -178,50 +201,91 @@ func run(debugMode bool) (runErr error) {
 	renderConfig.MaximumFontSize = cfg.ImageBatch.MaximumFontSize
 	renderConfig.LineSpacing = cfg.ImageBatch.LineSpacing
 	renderConfig.JPEGQuality = cfg.ImageBatch.JPEGQuality
-	inpaintEngine, err := inpaint.NewEngine(executableDir)
-	if err != nil {
-		return fmt.Errorf("configure local LaMa inpainting: %w", err)
+	var inpaintEngine inpaint.Engine
+	var inpaintErr error
+	if onnxRuntimeAvailable {
+		inpaintEngine, inpaintErr = inpaint.NewEngine(executableDir)
+	} else {
+		inpaintErr = fmt.Errorf("requires ONNX Runtime: %w", onnxErr)
+	}
+	if inpaintErr != nil {
+		applicationLogger.Warnf("optional inpaint / LaMa unavailable: %v", inpaintErr)
+	}
+	if onnxLease != nil {
+		if err := onnxLease.Close(); err != nil {
+			applicationLogger.Printf("ONNX Runtime bootstrap lease shutdown failed: %v", err)
+		}
+	}
+	batchPrerequisites := imagebatch.NewPrerequisites(executableDir, batchOCR, inpaintEngine, onnxRuntimeAvailable)
+	batchUnavailable := batchPrerequisites.Check()
+	var batchService *imagebatch.Service
+	if batchUnavailable == nil {
+		batchService, err = imagebatch.NewService(ctx, executableDir, batchOCR, completer, cfg.Limits.MaxInputCharacters, renderConfig, inpaintEngine, applicationLogger)
+		if err != nil {
+			batchUnavailable = fmt.Errorf("Batch Images is unavailable: %w", err)
+		}
+	}
+	if batchUnavailable != nil {
+		applicationLogger.Warnf("optional Batch Images subsystem unavailable: %v", batchUnavailable)
+		if inpaintEngine != nil && batchService == nil {
+			if err := inpaintEngine.Close(); err != nil {
+				applicationLogger.Printf("image inpaint shutdown failed: %v", err)
+			}
+			inpaintEngine = nil
+		}
 	}
 	if startupWasCancelled(startupWindow) {
-		_ = inpaintEngine.Close()
-		return nil
-	}
-	batchService, err := imagebatch.NewService(ctx, executableDir, ocrEngine, completer, cfg.Limits.MaxInputCharacters, renderConfig, inpaintEngine, applicationLogger)
-	if err != nil {
-		_ = ocrEngine.Close()
-		_ = inpaintEngine.Close()
-		return fmt.Errorf("configure image batch service: %w", err)
-	}
-	if startupWasCancelled(startupWindow) {
-		batchService.Close()
-		batchService.Wait()
+		if batchService != nil {
+			batchService.Close()
+			batchService.Wait()
+		}
 		return nil
 	}
 	clip := clipboard.New(applicationLogger)
 	popup := window.NewPopup(cfg, html, service, clip)
 	if err := popup.Start(); err != nil {
-		batchService.Close()
-		batchService.Wait()
+		if batchService != nil {
+			batchService.Close()
+			batchService.Wait()
+		}
 		return err
 	}
 	if startupWasCancelled(startupWindow) {
 		popup.Close()
-		batchService.Close()
-		batchService.Wait()
+		if batchService != nil {
+			batchService.Close()
+			batchService.Wait()
+		}
 		return nil
 	}
-	batchWindow := window.NewImageBatchWindow(cfg, html, service, batchService, clip, popup)
-	if err := batchWindow.Start(); err != nil {
-		batchService.Close()
-		batchService.Wait()
-		popup.Close()
-		return err
+	var batchWindow *window.ImageBatchWindow
+	if batchService != nil {
+		batchWindow = window.NewImageBatchWindow(cfg, html, service, batchService, clip, popup)
+		if err := batchWindow.Start(); err != nil {
+			batchUnavailable = fmt.Errorf("Batch Images window is unavailable: %w", err)
+			applicationLogger.Warnf("optional Batch Images window unavailable: %v", err)
+			batchService.Close()
+			batchService.Wait()
+			batchService = nil
+			batchWindow = nil
+		}
+	}
+	shutdownImageBatch := func() {
+		if batchService != nil {
+			batchService.Close()
+		}
+		if batchWindow != nil {
+			batchWindow.Close()
+			batchWindow = nil
+		}
+		if batchService != nil {
+			batchService.Wait()
+			batchService = nil
+		}
 	}
 	if startupWasCancelled(startupWindow) {
-		batchWindow.Close()
+		shutdownImageBatch()
 		popup.Close()
-		batchService.Close()
-		batchService.Wait()
 		return nil
 	}
 	targets := window.NewOriginTargetManager()
@@ -230,19 +294,15 @@ func run(debugMode bool) (runErr error) {
 	hotkeyManager := hotkeys.NewManager(showCombination, replaceCombination, controller.ShowTranslation, controller.ReplaceSelection)
 	if err := hotkeyManager.Start(); err != nil {
 		controller.Close()
-		batchWindow.Close()
+		shutdownImageBatch()
 		popup.Close()
-		batchService.Close()
-		batchService.Wait()
 		return err
 	}
 	if startupWasCancelled(startupWindow) {
 		hotkeyManager.Close()
 		controller.Close()
-		batchWindow.Close()
+		shutdownImageBatch()
 		popup.Close()
-		batchService.Close()
-		batchService.Wait()
 		return nil
 	}
 	applicationLogger.Printf("global hotkeys registered: show=%s replace=%s", showCombination.Display, replaceCombination.Display)
@@ -254,23 +314,23 @@ func run(debugMode bool) (runErr error) {
 		default:
 		}
 	}
-	mainWindow := window.NewMainWindow(cfg, configPath, version, html, service, batchWindow, clip, popup, applicationLogger, debugMode, showError, requestRestart)
+	mainWindow := window.NewMainWindow(cfg, configPath, version, html, service, batchWindow, batchUnavailable, clip, popup, applicationLogger, debugMode, showError, requestRestart)
 	systemTray := tray.New(mainWindow.Open, mainWindow.OpenSettings, fmt.Sprintf("Sympllate v%s", version), applicationLogger)
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
 			service.Close()
-			batchService.Close()
 			systemTray.Close()
 			hotkeyManager.Close()
 			mainWindow.Shutdown()
-			batchWindow.Close()
+			shutdownImageBatch()
 			cancel()
 			controller.Close()
 			service.Wait()
-			batchService.Wait()
-			if err := ocrEngine.Close(); err != nil {
-				applicationLogger.Printf("OCR backend shutdown failed: %v", err)
+			if ocrEngine != nil {
+				if err := ocrEngine.Close(); err != nil {
+					applicationLogger.Printf("OCR backend shutdown failed: %v", err)
+				}
 			}
 			popup.Close()
 			if localRuntime != nil {
@@ -301,6 +361,9 @@ func run(debugMode bool) (runErr error) {
 		}
 		startupWindow = nil
 	}
+	if shouldOpenMainWindowOnStartup(cfg) {
+		mainWindow.Open()
+	}
 	restart := false
 	select {
 	case <-systemTray.Quit():
@@ -329,6 +392,10 @@ func normalizeLocalModelProfile(configPath string, cfg config.Config, debugMode 
 
 func startupUIRequired(selectedProvider string) bool {
 	return selectedProvider == config.ProviderLocal
+}
+
+func shouldOpenMainWindowOnStartup(cfg config.Config) bool {
+	return !cfg.UI.HideIntoTrayOnStartup
 }
 
 func startupWasCancelled(startupWindow *window.StartupWindow) bool {

@@ -99,16 +99,20 @@ func (b *ImageBatchWindow) run(ready chan<- error) {
 	w.Run()
 }
 
-func (b *ImageBatchWindow) Open() {
+func (b *ImageBatchWindow) Open() error {
+	if err := b.batch.CheckPrerequisites(); err != nil {
+		return err
+	}
 	b.mu.RLock()
 	hwnd := b.hwnd
 	b.mu.RUnlock()
 	if hwnd == 0 {
-		return
+		return errors.New("Batch Images window is unavailable")
 	}
 	restoreWindowIfNeeded(hwnd)
 	showWindow.Call(hwnd, swShow)
 	setForegroundWindow.Call(hwnd)
+	return nil
 }
 
 func (b *ImageBatchWindow) Hide() {

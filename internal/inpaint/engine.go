@@ -101,12 +101,12 @@ func NewEngine(executableDir string) (Engine, error) {
 	if executableDir == "" {
 		return nil, errors.New("inpaint executable directory is empty")
 	}
-	modelPath := filepath.Join(executableDir, "bin", "inpaint", modelName)
+	modelPath := ModelPath(executableDir)
 	if err := requireRegularFile(sharedort.DLLPath(executableDir)); err != nil {
 		return nil, fmt.Errorf("ONNX Runtime DLL %q is unavailable: %w", sharedort.DLLPath(executableDir), err)
 	}
-	if err := requireRegularFile(modelPath); err != nil {
-		return nil, fmt.Errorf("LaMa model %q is unavailable: %w", modelPath, err)
+	if err := RequireModel(executableDir); err != nil {
+		return nil, err
 	}
 	lease, err := sharedort.Acquire(executableDir)
 	if err != nil {
@@ -164,6 +164,18 @@ func NewEngine(executableDir string) (Engine, error) {
 	}
 	engine.session = advancedSession{session: session}
 	return engine, nil
+}
+
+func ModelPath(executableDir string) string {
+	return filepath.Join(executableDir, "bin", "inpaint", modelName)
+}
+
+func RequireModel(executableDir string) error {
+	path := ModelPath(executableDir)
+	if err := requireRegularFile(path); err != nil {
+		return fmt.Errorf("LaMa model %q is unavailable: %w", path, err)
+	}
+	return nil
 }
 
 func (e *runtimeEngine) Inpaint(ctx context.Context, source *image.NRGBA, mask *image.Gray) (Result, error) {

@@ -111,6 +111,9 @@ func TestLoadValidConfig(t *testing.T) {
 	if len(cfg.Provider.List) == 0 || len(cfg.DefaultLanguagePair.First.List) == 0 {
 		t.Fatal("legacy select values were not populated with default options")
 	}
+	if cfg.UI.HideIntoTrayOnStartup {
+		t.Fatal("legacy config unexpectedly enabled startup-to-tray")
+	}
 }
 
 func TestValidateProviders(t *testing.T) {
@@ -137,6 +140,9 @@ func TestDefaultEnablesUpdaterAndConfiguresLogs(t *testing.T) {
 	}
 	if !cfg.Updater.Enabled {
 		t.Fatal("default updater is disabled")
+	}
+	if cfg.UI.HideIntoTrayOnStartup {
+		t.Fatal("default config hides the main window on startup")
 	}
 	if cfg.Logs.LogLevel.Active != LogLevelWarning || cfg.Logs.StoreDays != 2 {
 		t.Fatalf("default logs config = %+v", cfg.Logs)

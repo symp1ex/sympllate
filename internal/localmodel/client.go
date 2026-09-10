@@ -408,7 +408,7 @@ func (c *Client) TranslateImage(ctx context.Context, req translation.ImageTransl
 
 func (c *Client) ImageCapability() translation.ImageCapability {
 	if c.imageTextExtractor == nil {
-		return translation.ImageCapability{Supported: false, Reason: "local image translation requires PaddleOCR models in the application bin directory"}
+		return translation.ImageCapability{Supported: false, Reason: "local image translation requires PaddleOCR models and ONNX Runtime in the application directories"}
 	}
 	return c.imageTextExtractor.Capability()
 }

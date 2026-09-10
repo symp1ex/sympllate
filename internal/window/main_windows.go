@@ -32,18 +32,19 @@ const (
 )
 
 type MainWindow struct {
-	cfg         config.Config
-	cfgPath     string
-	version     string
-	html        string
-	service     *app.Service
-	batchWindow *ImageBatchWindow
-	clip        *clipboard.Manager
-	popup       *Popup
-	logger      logger.PrintLogger
-	debug       bool
-	onError     func(error)
-	onRestart   func()
+	cfg              config.Config
+	cfgPath          string
+	version          string
+	html             string
+	service          *app.Service
+	batchWindow      *ImageBatchWindow
+	batchUnavailable error
+	clip             *clipboard.Manager
+	popup            *Popup
+	logger           logger.PrintLogger
+	debug            bool
+	onError          func(error)
+	onRestart        func()
 
 	mu    sync.Mutex
 	state mainWindowState
@@ -56,22 +57,23 @@ type MainWindow struct {
 	updateCheckRunning bool
 }
 
-func NewMainWindow(cfg config.Config, cfgPath, version, html string, service *app.Service, batchWindow *ImageBatchWindow, clip *clipboard.Manager, popup *Popup, logger logger.PrintLogger, debug bool, onError func(error), onRestart func()) *MainWindow {
+func NewMainWindow(cfg config.Config, cfgPath, version, html string, service *app.Service, batchWindow *ImageBatchWindow, batchUnavailable error, clip *clipboard.Manager, popup *Popup, logger logger.PrintLogger, debug bool, onError func(error), onRestart func()) *MainWindow {
 	return &MainWindow{
-		cfg:         cfg,
-		cfgPath:     cfgPath,
-		version:     version,
-		html:        html,
-		service:     service,
-		batchWindow: batchWindow,
-		clip:        clip,
-		popup:       popup,
-		logger:      logger,
-		debug:       debug,
-		onError:     onError,
-		onRestart:   onRestart,
-		state:       mainWindowIdle,
-		view:        mainWindowViewMain,
+		cfg:              cfg,
+		cfgPath:          cfgPath,
+		version:          version,
+		html:             html,
+		service:          service,
+		batchWindow:      batchWindow,
+		batchUnavailable: batchUnavailable,
+		clip:             clip,
+		popup:            popup,
+		logger:           logger,
+		debug:            debug,
+		onError:          onError,
+		onRestart:        onRestart,
+		state:            mainWindowIdle,
+		view:             mainWindowViewMain,
 	}
 }
 
@@ -200,7 +202,7 @@ func (m *MainWindow) run() {
 		m.failOpen(fmt.Errorf("configure settings window bindings: %w", err))
 		return
 	}
-	if err := bindImageBatchLauncher(w, m.batchWindow); err != nil {
+	if err := bindImageBatchLauncher(w, m.batchWindow, m.batchUnavailable); err != nil {
 		m.destroyWebView(w, hwnd)
 		m.failOpen(fmt.Errorf("configure image batch launcher: %w", err))
 		return

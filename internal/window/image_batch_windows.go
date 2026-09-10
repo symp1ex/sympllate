@@ -118,11 +118,16 @@ func bindImageBatch(w webview.WebView, hwnd uintptr, service *imagebatch.Service
 	return nil
 }
 
-func bindImageBatchLauncher(w webview.WebView, batchWindow *ImageBatchWindow) error {
-	if batchWindow == nil {
-		return errors.New("image batch window is unavailable")
-	}
-	if err := w.Bind("OpenImageBatchWindow", func() { batchWindow.Open() }); err != nil {
+func bindImageBatchLauncher(w webview.WebView, batchWindow *ImageBatchWindow, unavailable error) error {
+	if err := w.Bind("OpenImageBatchWindow", func() error {
+		if batchWindow == nil {
+			if unavailable != nil {
+				return unavailable
+			}
+			return errors.New("Batch Images is unavailable")
+		}
+		return batchWindow.Open()
+	}); err != nil {
 		return fmt.Errorf("create binding OpenImageBatchWindow: %w", err)
 	}
 	return nil

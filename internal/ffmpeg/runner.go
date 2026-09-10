@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -25,6 +26,10 @@ type Runner interface {
 }
 
 type ExecRunner struct{}
+
+func ExecutablePath(executableDir string) string {
+	return filepath.Join(executableDir, "bin", "ffmpeg", "ffmpeg.exe")
+}
 
 func (ExecRunner) Run(ctx context.Context, executable string, args []string, stdout, stderr io.Writer) error {
 	command := exec.CommandContext(ctx, executable, args...)

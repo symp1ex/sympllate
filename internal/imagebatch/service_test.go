@@ -477,12 +477,29 @@ func TestBatchPreflightAndExplorerFailure(t *testing.T) {
 func newBatchTestService(t *testing.T, executableDir string, recognizer StructuredOCR, completer translation.RawCompleter) *Service {
 	t.Helper()
 	writeTestFont(t, executableDir)
+	writeBatchPrerequisiteFiles(t, executableDir)
 	service, err := NewService(context.Background(), executableDir, recognizer, completer, 12_000, DefaultRenderConfig(), &fakeInpaintEngine{}, log.New(io.Discard, "", 0))
 	if err != nil {
 		t.Fatal(err)
 	}
 	service.openDirectory = func(string) error { return nil }
 	return service
+}
+
+func writeBatchPrerequisiteFiles(t *testing.T, executableDir string) {
+	t.Helper()
+	for _, path := range []string{
+		filepath.Join(executableDir, "runtime", "onnx", "onnxruntime.dll"),
+		filepath.Join(executableDir, "bin", "inpaint", "inpainting_lama.onnx"),
+		filepath.Join(executableDir, "bin", "ffmpeg", "ffmpeg.exe"),
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("test"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func waitBatch(t *testing.T, service *Service, id string) ImageBatchStatus {

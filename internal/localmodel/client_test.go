@@ -698,11 +698,11 @@ func TestClientReportsUnsupportedImageInput(t *testing.T) {
 	t.Parallel()
 	client := NewClient("http://127.0.0.1:1", "test-key", 10, 0, 100, time.Second)
 	capability := client.ImageCapability()
-	if capability.Supported || !strings.Contains(capability.Reason, "PaddleOCR") {
+	if capability.Supported || !strings.Contains(capability.Reason, "PaddleOCR") || !strings.Contains(capability.Reason, "ONNX Runtime") {
 		t.Fatalf("ImageCapability() = %+v", capability)
 	}
 	_, err := client.TranslateImage(context.Background(), localImageRequest(t))
-	if err == nil || !strings.Contains(err.Error(), "PaddleOCR") {
+	if err == nil || !strings.Contains(err.Error(), "PaddleOCR") || !strings.Contains(err.Error(), "ONNX Runtime") {
 		t.Fatalf("TranslateImage() error = %v", err)
 	}
 }

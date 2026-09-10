@@ -33,6 +33,7 @@ type Service struct {
 	openDirectory func(string) error
 	renderer      *Renderer
 	ffmpeg        *ffmpegAdapter
+	prerequisites Prerequisites
 
 	mu       sync.Mutex
 	closed   bool
@@ -63,6 +64,7 @@ func NewService(ctx context.Context, executableDir string, recognizer Structured
 	if recognizer == nil || executableDir == "" {
 		return nil, errors.New("invalid image batch service configuration")
 	}
+	prerequisites := NewPrerequisites(executableDir, recognizer, inpainter, true)
 	renderer, err := NewRenderer(executableDir, renderConfig, inpainter)
 	if err != nil {
 		return nil, err
@@ -71,7 +73,7 @@ func NewService(ctx context.Context, executableDir string, recognizer Structured
 		ctx: ctx, executableDir: executableDir, ocr: recognizer, translator: structuredTranslator,
 		selections: NewSelectionStore(DefaultSelectionTTL), logger: log, now: time.Now,
 		openDirectory: openExplorer, jobs: make(map[string]*batchJob),
-		renderer: renderer, ffmpeg: newFFmpegAdapter(executableDir),
+		renderer: renderer, ffmpeg: newFFmpegAdapter(executableDir), prerequisites: prerequisites,
 	}, nil
 }
 
@@ -83,6 +85,9 @@ func (s *Service) SelectDirectory(path string) (BatchSelection, error) {
 }
 
 func (s *Service) Start(request StartImageBatchRequest) (string, error) {
+	if err := s.CheckPrerequisites(); err != nil {
+		return "", err
+	}
 	if strings.TrimSpace(request.SelectionID) == "" {
 		return "", errors.New("select images before starting batch translation")
 	}
@@ -162,6 +167,10 @@ func (s *Service) Start(request StartImageBatchRequest) (string, error) {
 	s.logf("image batch started: id=%s kind=%s files=%d source=%s target=%s output=%s debug=%t", id, selection.Kind, len(selection.Files), request.Source, request.Target, filepath.Base(layout.Root), request.Debug)
 	go func() { defer s.wg.Done(); s.run(jobContext, job) }()
 	return id, nil
+}
+
+func (s *Service) CheckPrerequisites() error {
+	return s.prerequisites.Check()
 }
 
 func (s *Service) Status(id string) (ImageBatchStatus, error) {

@@ -111,6 +111,18 @@ func TestStartupUIRequiredForSelectedProvider(t *testing.T) {
 	}
 }
 
+func TestMainWindowStartupVisibilityFollowsConfig(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	if !shouldOpenMainWindowOnStartup(cfg) {
+		t.Fatal("default config should open the main window")
+	}
+	cfg.UI.HideIntoTrayOnStartup = true
+	if shouldOpenMainWindowOnStartup(cfg) {
+		t.Fatal("startup-to-tray config should keep the main window hidden")
+	}
+}
+
 func TestStartupErrorSuppressesUserCancellation(t *testing.T) {
 	t.Parallel()
 	wrapped := fmt.Errorf("start local provider: %w", context.Canceled)

@@ -207,7 +207,8 @@ libswscale      9.  5.102 /  9.  5.102
     "mainWindowHeight": 620,
     "popupWidth": 520,
     "popupHeight": 360,
-    "alwaysOnTopPopup": true
+    "alwaysOnTopPopup": true,
+    "hideIntoTrayOnStartup": false
   },
   "limits": {
     "maxInputCharacters": 131072,
@@ -266,7 +267,7 @@ libswscale      9.  5.102 /  9.  5.102
 
 Прочие параметры:
 
-- `ui`: размеры главного окна и окна быстрого перевода.
+- `ui`: размеры главного окна и окна быстрого перевода; `hideIntoTrayOnStartup` оставляет приложение в tray при запуске.
 - `limits.maxInputCharacters`: максимальный размер текста в символах.
 - `limits.clipboardWaitMilliseconds`: ожидание появления выделенного текста в буфере обмена.
 - `updater.enabled`: включение проверки обновлений.

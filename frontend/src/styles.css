@@ -126,11 +126,11 @@ button, input, select, textarea { font: inherit; }
 .custom-titlebar button.custom-titlebar__version--checking,
 .custom-titlebar button.custom-titlebar__version--installing { cursor: default; }
 .custom-titlebar button.custom-titlebar__version--disabled:hover,
-.custom-titlebar button.custom-titlebar__version--checking:hover,
-.custom-titlebar button.custom-titlebar__version--installing:hover { color: var(--on-surface-variant); background: transparent; }
+.custom-titlebar button.custom-titlebar__version--checking:hover { color: var(--on-surface-variant); background: transparent; }
 .custom-titlebar button.custom-titlebar__version--available,
-.custom-titlebar button.custom-titlebar__version--installing { color: var(--primary); }
+.custom-titlebar button.custom-titlebar__version--installing,
 .custom-titlebar button.custom-titlebar__version--error { color: var(--error); }
+.custom-titlebar button.custom-titlebar__version--installing:hover { color: var(--error); background: transparent; }
 
 .custom-titlebar__spinner {
   width: 9px;

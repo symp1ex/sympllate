@@ -106,11 +106,12 @@ type LanguagePair struct {
 }
 
 type UIConfig struct {
-	MainWindowWidth  int  `json:"mainWindowWidth"`
-	MainWindowHeight int  `json:"mainWindowHeight"`
-	PopupWidth       int  `json:"popupWidth"`
-	PopupHeight      int  `json:"popupHeight"`
-	AlwaysOnTopPopup bool `json:"alwaysOnTopPopup"`
+	MainWindowWidth       int  `json:"mainWindowWidth"`
+	MainWindowHeight      int  `json:"mainWindowHeight"`
+	PopupWidth            int  `json:"popupWidth"`
+	PopupHeight           int  `json:"popupHeight"`
+	AlwaysOnTopPopup      bool `json:"alwaysOnTopPopup"`
+	HideIntoTrayOnStartup bool `json:"hideIntoTrayOnStartup"`
 }
 
 type LimitsConfig struct {
@@ -138,12 +139,12 @@ func Default() Config {
 	languages := supportedTargetLanguages()
 	return Config{
 		Provider:               newSelectSetting(ProviderAuto, []string{ProviderAuto, ProviderOllama, ProviderLocal}),
-		LocalModel:             LocalModelConfig{ModelFile: "", Profile: ProfileTranslateGemmaRaw, ContextSize: 2048, StartupTimeoutSeconds: 180, FitTargetMiB: 1024},
+		LocalModel:             LocalModelConfig{ModelFile: "", Profile: ProfileGeneric, ContextSize: 2048, StartupTimeoutSeconds: 180, FitTargetMiB: 1024},
 		Ollama:                 OllamaConfig{BaseURL: "http://127.0.0.1:11434", Model: "translategemma:latest", TimeoutSeconds: 120, KeepAlive: "10m", NumCtx: 2048, NumPredict: 1024, Temperature: 0},
 		Hotkeys:                HotkeyConfig{ShowTranslation: "Ctrl+Win+X", ReplaceSelection: "Ctrl+Win+R"},
 		DefaultLanguagePair:    LanguagePair{First: newSelectSetting("ru", languages), Second: newSelectSetting("en", languages)},
 		FallbackTargetLanguage: newSelectSetting("ru", languages),
-		UI:                     UIConfig{MainWindowWidth: 900, MainWindowHeight: 620, PopupWidth: 520, PopupHeight: 360, AlwaysOnTopPopup: true},
+		UI:                     UIConfig{MainWindowWidth: 900, MainWindowHeight: 620, PopupWidth: 520, PopupHeight: 360, AlwaysOnTopPopup: true, HideIntoTrayOnStartup: false},
 		Limits:                 LimitsConfig{MaxInputCharacters: 131072, ClipboardWaitMilliseconds: 800},
 		Updater:                UpdaterConfig{Enabled: true},
 		Logs:                   LogsConfig{LogLevel: newSelectSetting(LogLevelWarning, []string{LogLevelDebug, LogLevelInfo, LogLevelWarning, LogLevelError}), StoreDays: 2},
