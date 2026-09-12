@@ -160,6 +160,10 @@ func (c *Client) BatchBlockTranslator() translation.BatchBlockTranslator {
 	}
 }
 
+func (c *Client) RequiresExplicitSourceLanguage() bool {
+	return c.profile == config.ProfileTranslateGemma || c.profile == config.ProfileTranslateGemmaRaw
+}
+
 func (c *Client) translateOnce(ctx context.Context, req translation.TranslateRequest) (string, error) {
 	var text string
 	var err error
@@ -394,6 +398,9 @@ func (c *Client) TranslateImage(ctx context.Context, req translation.ImageTransl
 		return translation.ImageTranslateResult{}, nil
 	}
 	resolvedSource, detection := c.languageIdentifier.ResolveSource(text, req.Source)
+	if resolvedSource == "auto" && c.RequiresExplicitSourceLanguage() {
+		resolvedSource = language.FallbackSourceLanguage(text)
+	}
 	target := language.NonCollidingTarget(resolvedSource, req.Target, req.DefaultLanguageFirst, req.DefaultLanguageSecond)
 	result, err := c.Translate(ctx, translation.TranslateRequest{Text: text, Source: resolvedSource, Target: target})
 	if err != nil {

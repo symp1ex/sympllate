@@ -18,6 +18,10 @@ type Translator interface {
 	Translate(ctx context.Context, req translation.TranslateRequest) (translation.TranslateResult, error)
 }
 
+type explicitSourceLanguageRequirer interface {
+	RequiresExplicitSourceLanguage() bool
+}
+
 type VisionTranslator interface {
 	TranslateImage(ctx context.Context, req translation.ImageTranslateRequest) (translation.ImageTranslateResult, error)
 	ImageCapability() translation.ImageCapability
@@ -192,6 +196,9 @@ func (s *Service) Translate(ctx context.Context, req translation.TranslateReques
 	}
 	originalSource := req.Source
 	resolvedSource, detection := s.identifier.ResolveSource(req.Text, req.Source)
+	if resolvedSource == "auto" && requiresExplicitSourceLanguage(s.translator) {
+		resolvedSource = language.FallbackSourceLanguage(req.Text)
+	}
 	req.Source = resolvedSource
 	req.Target = language.NonCollidingTarget(req.Source, req.Target, s.defaultLanguageFirst, s.defaultLanguageSecond)
 	result, err := s.translator.Translate(ctx, req)
@@ -206,6 +213,11 @@ func (s *Service) Translate(ctx context.Context, req translation.TranslateReques
 	}
 	result.TargetLanguage = req.Target
 	return result, nil
+}
+
+func requiresExplicitSourceLanguage(translator Translator) bool {
+	requirer, ok := translator.(explicitSourceLanguageRequirer)
+	return ok && requirer.RequiresExplicitSourceLanguage()
 }
 
 func (s *Service) TranslateImage(ctx context.Context, req translation.ImageTranslateRequest) (translation.ImageTranslateResult, error) {

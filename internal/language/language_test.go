@@ -39,3 +39,44 @@ func TestNonCollidingTarget(t *testing.T) {
 		})
 	}
 }
+
+func TestFallbackSourceLanguage(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		text string
+		want string
+	}{
+		{name: "cyrillic", text: "Привет", want: "ru"},
+		{name: "Ukrainian-specific Cyrillic", text: "Привіт", want: "uk"},
+		{name: "unsupported Cyrillic stays supported", text: "ў", want: "ru"},
+		{name: "plain Latin", text: "hello", want: "en"},
+		{name: "German", text: "groß", want: "de"},
+		{name: "Spanish", text: "mañana", want: "es"},
+		{name: "Spanish punctuation", text: "¿123?", want: "es"},
+		{name: "Polish", text: "cześć", want: "pl"},
+		{name: "Portuguese", text: "ação", want: "pt"},
+		{name: "Turkish", text: "ışık", want: "tr"},
+		{name: "French", text: "Noël", want: "fr"},
+		{name: "Italian", text: "così", want: "it"},
+		{name: "kana with Han", text: "日本語かな", want: "ja"},
+		{name: "Hangul", text: "안녕", want: "ko"},
+		{name: "Han", text: "你好", want: "zh"},
+		{name: "Arabic", text: "مرحبا", want: "ar"},
+		{name: "no language signal", text: "123 ! 😊", want: "en"},
+		{name: "ambiguous Latin mark", text: "façade", want: "en"},
+		{name: "conflicting Latin signals", text: "groß mañana", want: "en"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got := FallbackSourceLanguage(test.text)
+			if got != test.want {
+				t.Fatalf("FallbackSourceLanguage(%q) = %q, want %q", test.text, got, test.want)
+			}
+			if got == "auto" || !IsSupported(got) {
+				t.Fatalf("FallbackSourceLanguage(%q) returned unsupported source %q", test.text, got)
+			}
+		})
+	}
+}

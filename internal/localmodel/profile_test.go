@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sympllate/translator/internal/config"
 	"github.com/sympllate/translator/internal/translation"
 )
 
@@ -93,17 +94,28 @@ func TestProfileRequestsPreserveSource(t *testing.T) {
 	}
 }
 
-func TestTranslateGemmaRejectsAutoWithoutSendingRequest(t *testing.T) {
+func TestTranslateGemmaRejectsUnresolvedAutoWithoutSendingRequest(t *testing.T) {
 	client := NewClient("http://127.0.0.1:1", "key", 100, 0, 2000, time.Second)
 	_, err := client.Translate(context.Background(), translation.TranslateRequest{Text: "hello", Source: "auto", Target: "ru"})
 	if err == nil || !strings.Contains(err.Error(), "explicit source language") {
 		t.Fatalf("expected source language validation, got %v", err)
 	}
-	client.imageTextExtractor = fakeImageTextExtractor{text: "recognized text"}
-	imageRequest := localImageRequest(t)
-	imageRequest.Source = "auto"
-	if _, err := client.TranslateImage(t.Context(), imageRequest); err == nil || !strings.Contains(err.Error(), "explicit source language") {
-		t.Fatalf("expected the same validation after OCR, got %v", err)
+}
+
+func TestClientReportsWhetherProfileRequiresExplicitSource(t *testing.T) {
+	client := NewClient("http://127.0.0.1:1", "key", 100, 0, 2000, time.Second)
+	for _, test := range []struct {
+		profile string
+		want    bool
+	}{
+		{profile: config.ProfileTranslateGemma, want: true},
+		{profile: config.ProfileTranslateGemmaRaw, want: true},
+		{profile: config.ProfileGeneric, want: false},
+	} {
+		client.profile = test.profile
+		if got := client.RequiresExplicitSourceLanguage(); got != test.want {
+			t.Errorf("RequiresExplicitSourceLanguage() for %q = %t, want %t", test.profile, got, test.want)
+		}
 	}
 }
 

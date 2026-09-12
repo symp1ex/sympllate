@@ -35,7 +35,7 @@ import (
 )
 
 var errRestartRequested = errors.New("application restart requested")
-var version = "0.4.3.11"
+var version = "0.4.3.14"
 var debugMode = flag.Bool("debug", false, "enable experimental application features")
 
 func main() {

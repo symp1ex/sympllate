@@ -22,6 +22,10 @@ type fakeTranslator struct {
 	requests *[]translation.TranslateRequest
 }
 
+type explicitSourceTranslator struct{ fakeTranslator }
+
+func (explicitSourceTranslator) RequiresExplicitSourceLanguage() bool { return true }
+
 type fakeVisionTranslator struct {
 	fakeTranslator
 	imageResult   string
@@ -110,12 +114,38 @@ func TestServiceTranslateKeepsAutoWhenDetectionHasNoCandidate(t *testing.T) {
 	}
 }
 
+func TestServiceTranslateUsesExplicitSourceFallbackBeforeTargetSelection(t *testing.T) {
+	t.Parallel()
+	var requests []translation.TranslateRequest
+	service := NewService(context.Background(), explicitSourceTranslator{fakeTranslator{result: "Hello", requests: &requests}}, testIdentifier(language.Detection{Language: "de", Reliable: false}), "ru", "en", log.New(io.Discard, "", 0))
+	result, err := service.Translate(context.Background(), translation.TranslateRequest{Text: "коротко", Source: "auto", Target: "ru"})
+	if err != nil || result.DetectedLanguage != "" || result.TargetLanguage != "en" {
+		t.Fatalf("Translate() = %+v, %v", result, err)
+	}
+	if len(requests) != 1 || requests[0].Source != "ru" || requests[0].Target != "en" {
+		t.Fatalf("translator requests = %+v", requests)
+	}
+}
+
+func TestServiceTranslateDoesNotOverrideSuccessfulDetectionWithFallback(t *testing.T) {
+	t.Parallel()
+	var requests []translation.TranslateRequest
+	service := NewService(context.Background(), explicitSourceTranslator{fakeTranslator{result: "Hello", requests: &requests}}, testIdentifier(language.Detection{Language: "de", Reliable: true}), "ru", "en", log.New(io.Discard, "", 0))
+	result, err := service.Translate(context.Background(), translation.TranslateRequest{Text: "Привіт", Source: "auto", Target: "en"})
+	if err != nil || result.DetectedLanguage != "de" || result.TargetLanguage != "en" {
+		t.Fatalf("Translate() = %+v, %v", result, err)
+	}
+	if len(requests) != 1 || requests[0].Source != "de" || requests[0].Target != "en" {
+		t.Fatalf("translator requests = %+v", requests)
+	}
+}
+
 func TestServiceTranslateExplicitSourceBypassesIdentification(t *testing.T) {
 	t.Parallel()
 	calls := 0
 	var requests []translation.TranslateRequest
 	identifier := language.NewLanguageIdentifier(testClassifier{detection: language.Detection{Language: "de", Reliable: true}, calls: &calls})
-	service := NewService(context.Background(), fakeTranslator{result: "Bonjour", requests: &requests}, identifier, "ru", "en", log.New(io.Discard, "", 0))
+	service := NewService(context.Background(), explicitSourceTranslator{fakeTranslator{result: "Bonjour", requests: &requests}}, identifier, "ru", "en", log.New(io.Discard, "", 0))
 	result, err := service.Translate(context.Background(), translation.TranslateRequest{Text: "Bonjour", Source: "fr", Target: "en"})
 	if err != nil || calls != 0 || result.DetectedLanguage != "" || result.TargetLanguage != "en" || len(requests) != 1 || requests[0].Source != "fr" || requests[0].Target != "en" {
 		t.Fatalf("Translate() = %+v, %v; calls = %d, requests = %+v", result, err, calls, requests)

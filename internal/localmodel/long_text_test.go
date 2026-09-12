@@ -564,6 +564,46 @@ func TestAutoDetectionUsesUnreliableCandidateBeforeTranslateGemma(t *testing.T) 
 	}
 }
 
+func TestAutoDetectionUsesScriptFallbackBeforeTranslateGemma(t *testing.T) {
+	for _, profile := range []string{config.ProfileTranslateGemma, config.ProfileTranslateGemmaRaw} {
+		t.Run(profile, func(t *testing.T) {
+			const source = "коротко"
+			classifier := &fixedClassifier{detection: language.Detection{Language: "de", Confidence: 0.4, Reliable: false}}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if profile == config.ProfileTranslateGemmaRaw {
+					if r.URL.Path != "/completion" {
+						t.Errorf("unexpected endpoint: %s", r.URL.Path)
+						return
+					}
+					var body rawCompletionRequest
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+						t.Error(err)
+						return
+					}
+					if got := rawPromptSource(t, body.Prompt); got != source || !strings.Contains(body.Prompt, "Russian (ru) to English (en)") {
+						t.Errorf("raw fallback prompt = %q, source = %q", body.Prompt, got)
+					}
+					_ = json.NewEncoder(w).Encode(rawCompletionResponse{Content: "translated"})
+					return
+				}
+				if got := requestSource(t, r, profile, "ru", "en"); got != source {
+					t.Errorf("TranslateGemma source = %q, want %q", got, source)
+				}
+				writeTranslation(t, w, "translated")
+			}))
+			defer server.Close()
+
+			client := NewClient(server.URL, "key", 100, 0, 5000, time.Second)
+			client.profile = profile
+			service := app.NewService(t.Context(), client, language.NewLanguageIdentifier(classifier), "ru", "en", nil)
+			result, err := service.Translate(t.Context(), translation.TranslateRequest{Text: source, Source: "auto", Target: "ru"})
+			if err != nil || result.Text != "translated" || result.DetectedLanguage != "" || result.TargetLanguage != "en" || classifier.calls != 1 {
+				t.Fatalf("Translate() = %+v, %v; detection calls=%d", result, err, classifier.calls)
+			}
+		})
+	}
+}
+
 func TestAutoDetectionWithoutCandidateKeepsGenericModelFallback(t *testing.T) {
 	const source = "This input is long enough, but the local detector has no language candidate."
 	classifier := &fixedClassifier{}
