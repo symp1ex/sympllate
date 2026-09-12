@@ -1,0 +1,275 @@
+[
+  {
+    "Name": "99920-2296-05-o5fx801v-us-en-tws-14/p1-b25-par1",
+    "Text": "необходимый",
+    "Preferred": 33.25,
+    "SourceLines": 1,
+    "Step": 0,
+    "Alignment": "left",
+    "Base": {
+      "x": 1149,
+      "y": 610,
+      "width": 106,
+      "height": 37
+    },
+    "Box": {
+      "x": 1149,
+      "y": 610,
+      "width": 217,
+      "height": 37
+    },
+    "Protected": [
+      {
+        "x": 1152,
+        "y": 575,
+        "width": 260,
+        "height": 38
+      }
+    ],
+    "Active": [],
+    "Admissible": 26.25,
+    "Maximum": 28.25
+  },
+  {
+    "Name": "TAX and Service-1/p1-b16-par1",
+    "Text": "Группы аллергенов",
+    "Preferred": 14.5,
+    "SourceLines": 1,
+    "Step": 0,
+    "Alignment": "left",
+    "Base": {
+      "x": 162,
+      "y": 671,
+      "width": 95,
+      "height": 28
+    },
+    "Box": {
+      "x": 162,
+      "y": 671,
+      "width": 135,
+      "height": 28
+    },
+    "Protected": [
+      {
+        "x": 163,
+        "y": 649,
+        "width": 208,
+        "height": 25
+      },
+      {
+        "x": 162,
+        "y": 692,
+        "width": 92,
+        "height": 30
+      }
+    ],
+    "Active": [],
+    "Admissible": 12.5,
+    "Maximum": 14.5
+  },
+  {
+    "Name": "TAX and Service-1/p1-b56-par1",
+    "Text": "Стоимость",
+    "Preferred": 20,
+    "SourceLines": 1,
+    "Step": 0,
+    "Alignment": "left",
+    "Base": {
+      "x": 889,
+      "y": 1030,
+      "width": 39,
+      "height": 27
+    },
+    "Box": {
+      "x": 837,
+      "y": 1030,
+      "width": 104,
+      "height": 27
+    },
+    "Protected": [
+      {
+        "x": 890,
+        "y": 1052,
+        "width": 58,
+        "height": 24
+      }
+    ],
+    "Active": [],
+    "Admissible": 14.75,
+    "Maximum": 19
+  },
+  {
+    "Name": "TAX and Service-3/p1-b34-par1",
+    "Text": "Приоритет:",
+    "Preferred": 19.5,
+    "SourceLines": 1,
+    "Step": 0,
+    "Alignment": "center",
+    "Base": {
+      "x": 385,
+      "y": 1395,
+      "width": 68,
+      "height": 38
+    },
+    "Box": {
+      "x": 385,
+      "y": 1395,
+      "width": 68,
+      "height": 56
+    },
+    "Protected": [
+      {
+        "x": 387,
+        "y": 1358,
+        "width": 156,
+        "height": 40
+      }
+    ],
+    "Active": [],
+    "Admissible": 19,
+    "Maximum": 19.5
+  },
+  {
+    "Name": "TAX and Service-4/p1-b13-par1",
+    "Text": "Оценка изображений",
+    "Preferred": 23.75,
+    "SourceLines": 1,
+    "Step": 0,
+    "Alignment": "right",
+    "Base": {
+      "x": 389,
+      "y": 827,
+      "width": 136,
+      "height": 33
+    },
+    "Box": {
+      "x": 374,
+      "y": 827,
+      "width": 235,
+      "height": 33
+    },
+    "Protected": [
+      {
+        "x": 253,
+        "y": 829,
+        "width": 145,
+        "height": 30
+      }
+    ],
+    "Active": [],
+    "Admissible": 20.75,
+    "Maximum": 23.5
+  },
+  {
+    "Name": "TAX and Service-4/p1-b34-par1",
+    "Text": "Предметы",
+    "Preferred": 22,
+    "SourceLines": 1,
+    "Step": 0,
+    "Alignment": "right",
+    "Base": {
+      "x": 525,
+      "y": 496,
+      "width": 55,
+      "height": 33
+    },
+    "Box": {
+      "x": 469,
+      "y": 496,
+      "width": 111,
+      "height": 33
+    },
+    "Protected": [
+      {
+        "x": 525,
+        "y": 471,
+        "width": 72,
+        "height": 31
+      },
+      {
+        "x": 527,
+        "y": 524,
+        "width": 136,
+        "height": 29
+      }
+    ],
+    "Active": [],
+    "Admissible": 18,
+    "Maximum": 22
+  },
+  {
+    "Name": "TAX and Service-5/p1-b19-par1",
+    "Text": "Отчет о продажах за период",
+    "Preferred": 14.5,
+    "SourceLines": 1,
+    "Step": 0,
+    "Alignment": "left",
+    "Base": {
+      "x": 158,
+      "y": 649,
+      "width": 135,
+      "height": 30
+    },
+    "Box": {
+      "x": 158,
+      "y": 649,
+      "width": 198,
+      "height": 30
+    },
+    "Protected": [
+      {
+        "x": 152,
+        "y": 628,
+        "width": 55,
+        "height": 29
+      },
+      {
+        "x": 159,
+        "y": 675,
+        "width": 193,
+        "height": 24
+      }
+    ],
+    "Active": [
+      {
+        "x": 154,
+        "y": 633,
+        "width": 54,
+        "height": 19
+      }
+    ],
+    "Admissible": 11.5,
+    "Maximum": 14.5
+  },
+  {
+    "Name": "TAX and Service-5/p1-b58-par1",
+    "Text": "01.01.1900",
+    "Preferred": 18.75,
+    "SourceLines": 1,
+    "Step": 0,
+    "Alignment": "right",
+    "Base": {
+      "x": 1073,
+      "y": 428,
+      "width": 67,
+      "height": 30
+    },
+    "Box": {
+      "x": 1073,
+      "y": 428,
+      "width": 67,
+      "height": 53
+    },
+    "Protected": [
+      {
+        "x": 1073,
+        "y": 405,
+        "width": 66,
+        "height": 30
+      }
+    ],
+    "Active": [],
+    "Admissible": 14.75,
+    "Maximum": 18.75
+  }
+]

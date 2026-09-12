@@ -621,17 +621,37 @@ func (r *Renderer) fitBlockWithin(ctx context.Context, text string, preferredFon
 	}
 	candidates = constrainLayoutCandidates(candidates, bounds)
 	normalMinimum := math.Max(r.config.MinimumFontSize, preferredFontSize*r.config.Layout.PreferredShrinkRatio)
-	box, fit, err := r.bestCandidateFit(ctx, text, preferredFontSize, maximumFontSize, normalMinimum, sourceLines, sourceLineStep, alignment, verticalAlignment, base, candidates, protected, active, false)
-	if err != nil || fit.Fits {
-		return box, fit, err
-	}
-	if normalMinimum > r.config.MinimumFontSize {
-		box, fit, err = r.bestCandidateFit(ctx, text, preferredFontSize, maximumFontSize, r.config.MinimumFontSize, sourceLines, sourceLineStep, alignment, verticalAlignment, base, candidates, protected, active, true)
+	fitCandidates := func(searchCollisionFonts bool) (ocr.OCRBox, TextFitResult, error) {
+		box, fit, err := r.bestCandidateFit(ctx, text, preferredFontSize, maximumFontSize, normalMinimum, sourceLines, sourceLineStep, alignment, verticalAlignment, base, candidates, protected, active, false, searchCollisionFonts)
 		if err != nil || fit.Fits {
 			return box, fit, err
 		}
+		if normalMinimum > r.config.MinimumFontSize {
+			return r.bestCandidateFit(ctx, text, preferredFontSize, maximumFontSize, r.config.MinimumFontSize, sourceLines, sourceLineStep, alignment, verticalAlignment, base, candidates, protected, active, true, searchCollisionFonts)
+		}
+		return box, fit, nil
 	}
-	return r.forceFitBlockWithin(ctx, text, preferredFontSize, sourceLines, sourceLineStep, alignment, verticalAlignment, base, protected, active, width, height, bounds)
+	// Keep the existing normal -> emergency -> force result as the incumbent.
+	// A newly recovered strict fit can otherwise preempt a larger force fit,
+	// or win on expansion/anchor score while making the text much smaller.
+	incumbentBox, incumbent, err := fitCandidates(false)
+	if err != nil {
+		return ocr.OCRBox{}, TextFitResult{}, err
+	}
+	if !incumbent.Fits {
+		incumbentBox, incumbent, err = r.forceFitBlockWithin(ctx, text, preferredFontSize, sourceLines, sourceLineStep, alignment, verticalAlignment, base, protected, active, width, height, bounds)
+		if err != nil {
+			return ocr.OCRBox{}, TextFitResult{}, err
+		}
+	}
+	box, fit, err := fitCandidates(true)
+	if err != nil {
+		return ocr.OCRBox{}, TextFitResult{}, err
+	}
+	if !fit.Fits || (incumbent.Fits && (fit.Score >= incumbent.Score || fit.FontSize < incumbent.FontSize)) {
+		return incumbentBox, incumbent, nil
+	}
+	return box, fit, nil
 }
 
 func (r *Renderer) forceFitBlock(ctx context.Context, text string, preferred float64, sourceLines int, sourceLineStep float64, alignment, verticalAlignment string, base ocr.OCRBox, protected, active []ocr.OCRBox, width, height int) (ocr.OCRBox, TextFitResult, error) {
@@ -878,7 +898,7 @@ func (r *Renderer) textFitRequest(text string, minimum, maximum, preferred, sour
 	}
 }
 
-func (r *Renderer) bestCandidateFit(ctx context.Context, text string, preferred, maximum, minimum float64, sourceLines int, sourceLineStep float64, alignment, verticalAlignment string, base ocr.OCRBox, candidates []layoutCandidate, occupied, active []ocr.OCRBox, emergency bool) (ocr.OCRBox, TextFitResult, error) {
+func (r *Renderer) bestCandidateFit(ctx context.Context, text string, preferred, maximum, minimum float64, sourceLines int, sourceLineStep float64, alignment, verticalAlignment string, base ocr.OCRBox, candidates []layoutCandidate, occupied, active []ocr.OCRBox, emergency, searchCollisionFonts bool) (ocr.OCRBox, TextFitResult, error) {
 	request := r.textFitRequest(text, minimum, maximum, preferred, sourceLineStep)
 	bestBox := base
 	var best TextFitResult
@@ -888,22 +908,39 @@ func (r *Renderer) bestCandidateFit(ctx context.Context, text string, preferred,
 		if err != nil {
 			return ocr.OCRBox{}, TextFitResult{}, err
 		}
-		decorateLayoutResult(&fit, preferred, sourceLines, sourceLineStep, alignment, base, candidate, emergency)
-		lineLayouts := positionTextLines(fit, candidate.box, alignment, verticalAlignment, r.config.HorizontalTextPadding, r.config.VerticalTextPadding)
-		ink := renderedLineRegions(lineLayouts, fit.LineHeight, fit.Ascent)
-		if intersectsRegionSets(ink, occupied) || intersectsRegionSets(ink, active) {
-			fit.Fits = false
-			fit.Overflow = true
-			fit.FallbackReason = "protected_source_region"
-		}
-		if !fit.Fits {
-			if best.FontSize == 0 {
-				best = fit
+		minimumSize := fit.MinimumFontSize
+		searchSmaller := false
+		for size := fit.FontSize; ; size -= fontSizeStep {
+			decorateLayoutResult(&fit, preferred, sourceLines, sourceLineStep, alignment, base, candidate, emergency)
+			lineLayouts := positionTextLines(fit, candidate.box, alignment, verticalAlignment, r.config.HorizontalTextPadding, r.config.VerticalTextPadding)
+			ink := renderedLineRegions(lineLayouts, fit.LineHeight, fit.Ascent)
+			if intersectsRegionSets(ink, occupied) || intersectsRegionSets(ink, active) {
+				searchSmaller = searchSmaller || fit.Fits
+				fit.Fits = false
+				fit.Overflow = true
+				fit.FallbackReason = "protected_source_region"
 			}
-			continue
-		}
-		if !best.Fits || fit.Score < best.Score {
-			bestBox, best = candidate.box, fit
+			if !fit.Fits {
+				if best.FontSize == 0 {
+					best = fit
+				}
+			} else if !best.Fits || fit.Score < best.Score {
+				bestBox, best = candidate.box, fit
+			}
+			// Only a colliding bbox fit needs this search. Line breaks and
+			// alignment can move ink non-monotonically, so inspect every smaller
+			// size in this phase and retain the existing score ordering.
+			if !searchCollisionFonts || !searchSmaller || size-fontSizeStep < minimumSize {
+				break
+			}
+			if err := ctx.Err(); err != nil {
+				return ocr.OCRBox{}, TextFitResult{}, err
+			}
+			fit, err = measureFit(ctx, r.fonts, request, size-fontSizeStep)
+			if err != nil {
+				return ocr.OCRBox{}, TextFitResult{}, err
+			}
+			fit.MinimumFontSize = minimumSize
 		}
 	}
 	return bestBox, best, nil
