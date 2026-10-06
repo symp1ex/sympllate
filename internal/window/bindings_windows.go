@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	webview "github.com/jchv/go-webview2"
+	webview "github.com/symp1ex/go-webview2"
 	"github.com/sympllate/translator/internal/app"
 	"github.com/sympllate/translator/internal/clipboard"
 	"github.com/sympllate/translator/internal/config"

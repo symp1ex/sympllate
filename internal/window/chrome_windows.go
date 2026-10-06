@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	webview "github.com/jchv/go-webview2"
+	webview "github.com/symp1ex/go-webview2"
 )
 
 const (
