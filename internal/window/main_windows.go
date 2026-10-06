@@ -13,6 +13,7 @@ import (
 	"github.com/sympllate/translator/internal/clipboard"
 	"github.com/sympllate/translator/internal/config"
 	"github.com/sympllate/translator/internal/logger"
+	"github.com/sympllate/translator/internal/webassets"
 )
 
 type mainWindowState uint8
@@ -35,7 +36,6 @@ type MainWindow struct {
 	cfg              config.Config
 	cfgPath          string
 	version          string
-	html             string
 	service          *app.Service
 	batchWindow      *ImageBatchWindow
 	batchUnavailable error
@@ -57,12 +57,11 @@ type MainWindow struct {
 	updateCheckRunning bool
 }
 
-func NewMainWindow(cfg config.Config, cfgPath, version, html string, service *app.Service, batchWindow *ImageBatchWindow, batchUnavailable error, clip *clipboard.Manager, popup *Popup, logger logger.PrintLogger, debug bool, onError func(error), onRestart func()) *MainWindow {
+func NewMainWindow(cfg config.Config, cfgPath, version string, service *app.Service, batchWindow *ImageBatchWindow, batchUnavailable error, clip *clipboard.Manager, popup *Popup, logger logger.PrintLogger, debug bool, onError func(error), onRestart func()) *MainWindow {
 	return &MainWindow{
 		cfg:              cfg,
 		cfgPath:          cfgPath,
 		version:          version,
-		html:             html,
 		service:          service,
 		batchWindow:      batchWindow,
 		batchUnavailable: batchUnavailable,
@@ -217,7 +216,18 @@ func (m *MainWindow) run() {
 		m.failOpen(fmt.Errorf("configure main window frame: %w", err))
 		return
 	}
-	w.SetHtml(m.html)
+	if err := webassets.Register(w); err != nil {
+		m.destroyWebView(w, hwnd)
+		m.failOpen(err)
+		return
+	}
+	indexURL, err := webassets.IndexURL()
+	if err != nil {
+		m.destroyWebView(w, hwnd)
+		m.failOpen(err)
+		return
+	}
+	w.Navigate(indexURL)
 
 	m.mu.Lock()
 	stopping := m.state == mainWindowStopping

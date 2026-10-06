@@ -30,12 +30,11 @@ import (
 	"github.com/sympllate/translator/internal/translation"
 	"github.com/sympllate/translator/internal/tray"
 	"github.com/sympllate/translator/internal/updater"
-	"github.com/sympllate/translator/internal/webassets"
 	"github.com/sympllate/translator/internal/window"
 )
 
 var errRestartRequested = errors.New("application restart requested")
-var version = "0.4.3.14"
+var version = "0.4.4.0"
 var debugMode = flag.Bool("debug", false, "enable experimental application features")
 
 func main() {
@@ -187,10 +186,6 @@ func run(debugMode bool) (runErr error) {
 	if err != nil {
 		return fmt.Errorf("invalid hotkeys.replaceSelection: %w", err)
 	}
-	html, err := webassets.HTML()
-	if err != nil {
-		return err
-	}
 	service := app.NewService(ctx, translator, identifier, cfg.DefaultLanguagePair.First.Active, cfg.DefaultLanguagePair.Second.Active, applicationLogger)
 	completer, ok := translator.(translation.RawCompleter)
 	if !ok {
@@ -242,7 +237,7 @@ func run(debugMode bool) (runErr error) {
 		return nil
 	}
 	clip := clipboard.New(applicationLogger)
-	popup := window.NewPopup(cfg, html, service, clip)
+	popup := window.NewPopup(cfg, service, clip)
 	if err := popup.Start(); err != nil {
 		if batchService != nil {
 			batchService.Close()
@@ -260,7 +255,7 @@ func run(debugMode bool) (runErr error) {
 	}
 	var batchWindow *window.ImageBatchWindow
 	if batchService != nil {
-		batchWindow = window.NewImageBatchWindow(cfg, html, service, batchService, clip, popup)
+		batchWindow = window.NewImageBatchWindow(cfg, service, batchService, clip, popup)
 		if err := batchWindow.Start(); err != nil {
 			batchUnavailable = fmt.Errorf("Batch Images window is unavailable: %w", err)
 			applicationLogger.Warnf("optional Batch Images window unavailable: %v", err)
@@ -314,7 +309,7 @@ func run(debugMode bool) (runErr error) {
 		default:
 		}
 	}
-	mainWindow := window.NewMainWindow(cfg, configPath, version, html, service, batchWindow, batchUnavailable, clip, popup, applicationLogger, debugMode, showError, requestRestart)
+	mainWindow := window.NewMainWindow(cfg, configPath, version, service, batchWindow, batchUnavailable, clip, popup, applicationLogger, debugMode, showError, requestRestart)
 	systemTray := tray.New(mainWindow.Open, mainWindow.OpenSettings, fmt.Sprintf("Sympllate v%s", version), applicationLogger)
 	var cleanupOnce sync.Once
 	cleanup := func() {

@@ -3,62 +3,48 @@ package webassets
 import (
 	"embed"
 	"fmt"
-	"path"
-	"regexp"
-	"strings"
+	"sync"
+
+	webview "github.com/symp1ex/go-webview2"
+	"github.com/sympllate/translator/internal/webviewresource"
 )
 
 //go:embed dist
 var files embed.FS
 
+const origin = "https://app.sympllate.local"
+
 var (
-	stylePattern  = regexp.MustCompile(`<link[^>]+href="([^"]+\.css)"[^>]*>`)
-	scriptPattern = regexp.MustCompile(`<script[^>]+src="([^"]+\.js)"[^>]*></script>`)
+	providerOnce sync.Once
+	provider     *webviewresource.Provider
+	providerErr  error
 )
 
-func HTML() (string, error) {
-	index, err := files.ReadFile("dist/index.html")
-	if err != nil {
-		return "", fmt.Errorf("read embedded frontend: %w", err)
+func getProvider() (*webviewresource.Provider, error) {
+	providerOnce.Do(func() {
+		provider, providerErr = webviewresource.New(origin, files, "dist")
+	})
+	if providerErr != nil {
+		return nil, fmt.Errorf("initialize embedded WebView resources: %w", providerErr)
 	}
-	page := string(index)
-	page, err = inline(page, stylePattern, "style")
-	if err != nil {
-		return "", err
-	}
-	page, err = inline(page, scriptPattern, "script")
-	if err != nil {
-		return "", err
-	}
-	return page, nil
+	return provider, nil
 }
 
-func inline(page string, pattern *regexp.Regexp, kind string) (string, error) {
-	var inlineErr error
-	result := pattern.ReplaceAllStringFunc(page, func(tag string) string {
-		match := pattern.FindStringSubmatch(tag)
-		if len(match) != 2 {
-			return tag
-		}
-		asset := strings.TrimPrefix(match[1], "/")
-		asset = path.Clean(asset)
-		if strings.HasPrefix(asset, "../") {
-			inlineErr = fmt.Errorf("invalid frontend asset path %q", asset)
-			return tag
-		}
-		data, err := files.ReadFile("dist/" + asset)
-		if err != nil {
-			inlineErr = fmt.Errorf("read frontend asset %q: %w", asset, err)
-			return tag
-		}
-		if kind == "style" {
-			return "<style>" + string(data) + "</style>"
-		}
-		content := strings.ReplaceAll(string(data), "</script", "<\\/script")
-		return `<script type="module">` + content + `</script>`
-	})
-	if inlineErr != nil {
-		return "", inlineErr
+func Register(w webview.WebView) error {
+	provider, err := getProvider()
+	if err != nil {
+		return err
 	}
-	return result, nil
+	if err := provider.Register(w); err != nil {
+		return fmt.Errorf("register embedded WebView resources: %w", err)
+	}
+	return nil
+}
+
+func IndexURL() (string, error) {
+	provider, err := getProvider()
+	if err != nil {
+		return "", err
+	}
+	return provider.URL("index.html", nil)
 }

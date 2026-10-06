@@ -17,3 +17,4 @@ _ffmpeg_build/
 *.exe
 *.txt
 !assets/fonts/GO-FONT-LICENSE.txt
+/internal/webassets/dist/

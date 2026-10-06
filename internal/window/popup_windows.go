@@ -16,6 +16,7 @@ import (
 	"github.com/sympllate/translator/internal/clipboard"
 	"github.com/sympllate/translator/internal/config"
 	"github.com/sympllate/translator/internal/logger"
+	"github.com/sympllate/translator/internal/webassets"
 )
 
 const (
@@ -50,7 +51,6 @@ type monitorInfo struct {
 
 type Popup struct {
 	cfg     config.Config
-	html    string
 	service *app.Service
 	clip    *clipboard.Manager
 	mu      sync.RWMutex
@@ -61,8 +61,8 @@ type Popup struct {
 	done    chan struct{}
 }
 
-func NewPopup(cfg config.Config, html string, service *app.Service, clip *clipboard.Manager) *Popup {
-	return &Popup{cfg: cfg, html: html, service: service, clip: clip}
+func NewPopup(cfg config.Config, service *app.Service, clip *clipboard.Manager) *Popup {
+	return &Popup{cfg: cfg, service: service, clip: clip}
 }
 
 func (p *Popup) SetQuickTranslationHandler(handler app.QuickTranslationHandler) {
@@ -115,7 +115,16 @@ func (p *Popup) run(ready chan<- error) {
 		return
 	}
 	showWindow.Call(p.hwnd, swHide)
-	w.SetHtml(p.html)
+	if err := webassets.Register(w); err != nil {
+		ready <- err
+		return
+	}
+	indexURL, err := webassets.IndexURL()
+	if err != nil {
+		ready <- err
+		return
+	}
+	w.Navigate(indexURL)
 	ready <- nil
 	w.Run()
 }

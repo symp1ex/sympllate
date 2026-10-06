@@ -13,6 +13,7 @@ import (
 	"github.com/sympllate/translator/internal/config"
 	"github.com/sympllate/translator/internal/imagebatch"
 	"github.com/sympllate/translator/internal/logger"
+	"github.com/sympllate/translator/internal/webassets"
 )
 
 const (
@@ -22,7 +23,6 @@ const (
 
 type ImageBatchWindow struct {
 	cfg     config.Config
-	html    string
 	service *app.Service
 	batch   *imagebatch.Service
 	clip    *clipboard.Manager
@@ -34,8 +34,8 @@ type ImageBatchWindow struct {
 	done chan struct{}
 }
 
-func NewImageBatchWindow(cfg config.Config, html string, service *app.Service, batch *imagebatch.Service, clip *clipboard.Manager, popup *Popup) *ImageBatchWindow {
-	return &ImageBatchWindow{cfg: cfg, html: html, service: service, batch: batch, clip: clip, popup: popup}
+func NewImageBatchWindow(cfg config.Config, service *app.Service, batch *imagebatch.Service, clip *clipboard.Manager, popup *Popup) *ImageBatchWindow {
+	return &ImageBatchWindow{cfg: cfg, service: service, batch: batch, clip: clip, popup: popup}
 }
 
 func (b *ImageBatchWindow) Start() error {
@@ -94,7 +94,16 @@ func (b *ImageBatchWindow) run(ready chan<- error) {
 		return
 	}
 	showWindow.Call(hwnd, swHide)
-	w.SetHtml(b.html)
+	if err := webassets.Register(w); err != nil {
+		ready <- err
+		return
+	}
+	indexURL, err := webassets.IndexURL()
+	if err != nil {
+		ready <- err
+		return
+	}
+	w.Navigate(indexURL)
 	ready <- nil
 	w.Run()
 }
