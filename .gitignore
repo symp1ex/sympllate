@@ -12,7 +12,7 @@
 rules/
 AGENTS.md
 .idea/
-_resources/
+__doc/
 _ffmpeg_build/
 *.exe
 *.txt
