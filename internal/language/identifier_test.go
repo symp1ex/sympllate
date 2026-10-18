@@ -95,6 +95,11 @@ func TestLanguageIdentifierResolveSourcePolicy(t *testing.T) {
 		{name: "missing candidate", text: "This is long enough natural language text for classification.", detection: Detection{}, source: "auto", want: "auto", calls: 1},
 		{name: "unsupported candidate", text: "This is long enough natural language text for classification.", detection: Detection{Language: "nl", Reliable: true}, source: "auto", want: "auto", calls: 1},
 		{name: "explicit bypass", text: "text", detection: Detection{Language: "de", Reliable: true}, source: "fr", want: "fr", calls: 0},
+		{name: "empty", text: "", detection: Detection{Language: "uk"}, source: "auto", want: "auto", calls: 0},
+		{name: "whitespace", text: " \t\r\n ", detection: Detection{Language: "uk"}, source: "auto", want: "auto", calls: 0},
+		{name: "auto candidate", text: strings.Repeat("a", 20), detection: Detection{Language: "auto", Reliable: true}, source: "auto", want: "auto", calls: 1},
+		{name: "below length threshold", text: strings.Repeat("a", 19), detection: Detection{Language: "en"}, source: "auto", want: "auto", calls: 1},
+		{name: "at length threshold", text: strings.Repeat("a", 20), detection: Detection{Language: "en"}, source: "auto", want: "en", calls: 1},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -111,6 +116,73 @@ func TestLanguageIdentifierResolveSourcePolicy(t *testing.T) {
 				t.Fatalf("ResolveSource() changed detection metadata: %+v", detection)
 			}
 		})
+	}
+}
+
+func TestLanguageIdentifierResolveSourceAmbiguousUkrainian(t *testing.T) {
+	t.Parallel()
+	const prose = "Сегодня хорошая погода, поэтому мы решили прогуляться по парку."
+	type testCase struct {
+		name     string
+		text     string
+		reliable bool
+		want     string
+	}
+	tests := []testCase{
+		{name: "unreliable prose", text: prose, want: "ru"},
+		{name: "unreliable short text", text: "да", want: "ru"},
+		{name: "Latin lowercase i", text: "да i", want: "ru"},
+		{name: "Latin uppercase I", text: "да I", want: "ru"},
+		{name: "reliable prose", text: prose, reliable: true, want: "uk"},
+		{name: "reliable short text", text: "да", reliable: true, want: "uk"},
+	}
+	for _, character := range "іІїЇєЄґҐ" {
+		tests = append(tests,
+			testCase{name: "Ukrainian letter " + string(character), text: prose + string(character), want: "uk"},
+			testCase{name: "short Ukrainian letter " + string(character), text: string(character), want: "auto"},
+		)
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			wantDetection := Detection{Language: "uk", Confidence: 0.4, Reliable: test.reliable, Reason: DetectionReasonClassifierUnreliable}
+			if test.reliable {
+				wantDetection.Reason = DetectionReasonClassifier
+			}
+			identifier := NewLanguageIdentifier(classifierFunc(func(string) Detection { return wantDetection }))
+			resolved, detection := identifier.ResolveSource(test.text, "auto")
+			if resolved != test.want || detection != wantDetection {
+				t.Fatalf("ResolveSource(%q) = %q, %+v; want %q, %+v", test.text, resolved, detection, test.want, wantDetection)
+			}
+		})
+	}
+}
+
+func TestLanguageIdentifierExplicitSourcesBypassAmbiguousUkrainian(t *testing.T) {
+	t.Parallel()
+	for _, source := range Supported() {
+		if source.Code == "auto" {
+			continue
+		}
+		t.Run(source.Code, func(t *testing.T) {
+			identifier := NewLanguageIdentifier(classifierFunc(func(string) Detection {
+				t.Fatal("explicit source must bypass classification")
+				return Detection{Language: "uk"}
+			}))
+			resolved, detection := identifier.ResolveSource("да", source.Code)
+			if resolved != source.Code || detection != (Detection{}) {
+				t.Fatalf("ResolveSource() = %q, %+v", resolved, detection)
+			}
+		})
+	}
+}
+
+func TestLanguageIdentifierResolveSourceUnavailable(t *testing.T) {
+	t.Parallel()
+	for _, identifier := range []*LanguageIdentifier{nil, NewLanguageIdentifier(nil), NewLanguageIdentifier((*WhatlangClassifier)(nil))} {
+		resolved, detection := identifier.ResolveSource("Сегодня хорошая погода, поэтому мы решили прогуляться по парку.", "auto")
+		if resolved != "auto" || detection != (Detection{Reason: DetectionReasonUnavailable}) {
+			t.Fatalf("ResolveSource() = %q, %+v", resolved, detection)
+		}
 	}
 }
 

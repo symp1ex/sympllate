@@ -854,6 +854,53 @@ func TestClientTranslateImageChangesCollidingDetectedTargetBeforeTranslation(t *
 	}
 }
 
+func TestClientTranslateImageAmbiguousUkrainianPolicy(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name, text, source     string
+		reliable               bool
+		wantSource, wantTarget string
+		wantDetected           string
+		wantCalls              int
+	}{
+		{name: "unreliable prose", text: "Сегодня хорошая погода, поэтому мы решили прогуляться по парку.", source: "auto", wantSource: "ru", wantTarget: "en", wantCalls: 1},
+		{name: "unreliable short text", text: "да", source: "auto", wantSource: "ru", wantTarget: "en", wantCalls: 1},
+		{name: "reliable Ukrainian", text: "да", source: "auto", reliable: true, wantSource: "uk", wantTarget: "ru", wantDetected: "uk", wantCalls: 1},
+		{name: "Ukrainian-specific letter", text: "Цей текст містить достатньо букв для вибору мови перекладу", source: "auto", wantSource: "uk", wantTarget: "ru", wantCalls: 1},
+		{name: "explicit Ukrainian", text: "да", source: "uk", wantSource: "uk", wantTarget: "ru"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var translationCalls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				translationCalls.Add(1)
+				if got := requestSource(t, r, config.ProfileTranslateGemma, test.wantSource, test.wantTarget); got != test.text {
+					t.Errorf("translation text = %q, want %q", got, test.text)
+				}
+				writeTranslation(t, w, "translated")
+			}))
+			defer server.Close()
+			calls := 0
+			extractor := &trackingImageTextExtractor{text: test.text}
+			identifier := language.NewLanguageIdentifier(localClassifier{
+				detection: language.Detection{Language: "uk", Confidence: 0.4, Reliable: test.reliable}, calls: &calls,
+			})
+			client := NewClientWithImageTextExtractor(server.URL, "test-key", 100, 0, 1000, time.Second, extractor, identifier)
+			request := localImageRequest(t)
+			request.Source = test.source
+			request.Target = "ru"
+			request.DefaultLanguageFirst, request.DefaultLanguageSecond = "ru", "en"
+			result, err := client.TranslateImage(context.Background(), request)
+			if err != nil || result.Text != "translated" || result.DetectedLanguage != test.wantDetected || result.TargetLanguage != test.wantTarget || calls != test.wantCalls || translationCalls.Load() != 1 {
+				t.Fatalf("TranslateImage() = %+v, %v; classifier calls = %d, translation calls = %d", result, err, calls, translationCalls.Load())
+			}
+			if len(extractor.sources) != 1 || extractor.sources[0] != test.source {
+				t.Fatalf("OCR sources = %v, want [%s]", extractor.sources, test.source)
+			}
+		})
+	}
+}
+
 func TestClientTranslateImageKeepsAutoForUnreliableOCRSource(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -104,6 +104,38 @@ func TestServiceTranslateUsesUsableUnreliableAutoCandidate(t *testing.T) {
 	}
 }
 
+func TestServiceTranslateAmbiguousUkrainianPolicy(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name, text, source, target string
+		reliable                   bool
+		wantSource, wantTarget     string
+		wantDetected               string
+		wantCalls                  int
+	}{
+		{name: "auto prose colliding target", text: "Сегодня хорошая погода, поэтому мы решили прогуляться по парку.", source: "auto", target: "ru", wantSource: "ru", wantTarget: "en", wantCalls: 1},
+		{name: "auto short colliding target", text: "да", source: "auto", target: "ru", wantSource: "ru", wantTarget: "en", wantCalls: 1},
+		{name: "auto preserves other target", text: "да", source: "auto", target: "de", wantSource: "ru", wantTarget: "de", wantCalls: 1},
+		{name: "reliable Ukrainian", text: "да", source: "auto", target: "ru", reliable: true, wantSource: "uk", wantTarget: "ru", wantDetected: "uk", wantCalls: 1},
+		{name: "explicit Ukrainian", text: "да", source: "uk", target: "ru", wantSource: "uk", wantTarget: "ru"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			calls := 0
+			identifier := language.NewLanguageIdentifier(testClassifier{
+				detection: language.Detection{Language: "uk", Confidence: 0.4, Reliable: test.reliable}, calls: &calls,
+			})
+			var requests []translation.TranslateRequest
+			service := NewService(context.Background(), fakeTranslator{result: "translated", requests: &requests}, identifier, "ru", "en", nil)
+			result, err := service.Translate(context.Background(), translation.TranslateRequest{Text: test.text, Source: test.source, Target: test.target})
+			want := translation.TranslateRequest{Text: test.text, Source: test.wantSource, Target: test.wantTarget}
+			if err != nil || len(requests) != 1 || requests[0] != want || calls != test.wantCalls || result.DetectedLanguage != test.wantDetected || result.TargetLanguage != test.wantTarget {
+				t.Fatalf("Translate() = %+v, %v; requests = %+v, classifier calls = %d", result, err, requests, calls)
+			}
+		})
+	}
+}
+
 func TestServiceTranslateKeepsAutoWhenDetectionHasNoCandidate(t *testing.T) {
 	t.Parallel()
 	var requests []translation.TranslateRequest

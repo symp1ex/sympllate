@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"sync"
@@ -244,6 +245,7 @@ func TestQuickTranslationReliableDetectionUsesChooseDirection(t *testing.T) {
 		{name: "first side", detected: "ru", wantSource: "ru", wantTarget: "en"},
 		{name: "second side", detected: "en", wantSource: "en", wantTarget: "ru"},
 		{name: "third language", detected: "de", wantSource: "de", wantTarget: "ru"},
+		{name: "reliable Ukrainian", detected: "uk", wantSource: "uk", wantTarget: "ru"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -279,6 +281,46 @@ func TestQuickTranslationReliableDetectionUsesChooseDirection(t *testing.T) {
 	}
 }
 
+func TestQuickTranslationAmbiguousUkrainianUsesRussianBeforeDirectionSelection(t *testing.T) {
+	for _, text := range []string{"Сегодня хорошая погода, поэтому мы решили прогуляться по парку.", "да"} {
+		for _, direct := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/direct=%t", text, direct), func(t *testing.T) {
+				selection := &fakeSelection{copies: []copyResult{{text: text}}}
+				popup := &fakePopup{}
+				calls := 0
+				identifier := language.NewLanguageIdentifier(testClassifier{
+					detection: language.Detection{Language: "uk", Confidence: 0.4, Reliable: false}, calls: &calls,
+				})
+				var requests []translation.TranslateRequest
+				service := NewService(context.Background(), fakeTranslator{result: "translated", requests: &requests}, identifier, "ru", "en", nil)
+				controller := testController(service, selection, &fakeTargets{exists: true}, popup)
+				controller.identifier = identifier
+				if direct {
+					controller.ReplaceSelection()
+				} else {
+					controller.ShowTranslation()
+					state := popup.lastState()
+					if state.Source != "ru" || state.Target != "en" || state.DetectedLanguage != "ru" {
+						t.Fatalf("initial popup state = %+v", state)
+					}
+					controller.requests.Wait()
+					state = popup.lastState()
+					if state.Source != "ru" || state.Target != "en" || state.DetectedLanguage != "ru" || state.TranslatedText != "translated" || state.Error != "" {
+						t.Fatalf("completed popup state = %+v", state)
+					}
+				}
+				want := translation.TranslateRequest{Text: text, Source: "ru", Target: "en"}
+				if len(requests) != 1 || requests[0] != want || calls != 1 {
+					t.Fatalf("requests = %+v, classifier calls = %d; want %+v, 1 call", requests, calls, want)
+				}
+				if direct && (len(selection.pastes) != 1 || selection.pastes[0] != "translated") {
+					t.Fatalf("pasted text = %v", selection.pastes)
+				}
+			})
+		}
+	}
+}
+
 func TestQuickTranslationUnreliableSupportedDetectionUsesExplicitSource(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -289,6 +331,7 @@ func TestQuickTranslationUnreliableSupportedDetectionUsesExplicitSource(t *testi
 		{name: "first side", text: "ambiguous first language", detected: "ru", wantTarget: "en"},
 		{name: "second side", text: "ambiguous second language", detected: "en", wantTarget: "ru"},
 		{name: "Polish regression", text: "To jest wystarczajaco dlugi polski tekst do tlumaczenia", detected: "pl", wantTarget: "ru"},
+		{name: "Ukrainian-specific letter", text: "Цей текст містить достатньо букв для вибору мови перекладу", detected: "uk", wantTarget: "ru"},
 		{name: "Han lining regression", text: "麂皮内衬: 麂皮内衬提供柔软且保护性的表面，防止手表出现划痕和损坏。", detected: "zh", wantTarget: "ru"},
 		{name: "Han product regression", text: "男士女士新款绿色纸质翻盖式防尘耐用波浪纹手表收纳盒，带绒面革内衬，适合户外使用", detected: "zh", wantTarget: "ru"},
 	}

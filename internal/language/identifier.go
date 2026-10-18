@@ -82,6 +82,11 @@ func (i *LanguageIdentifier) ResolveSource(text, source string) (string, Detecti
 		return source, Detection{}
 	}
 	detection := i.Detect(text)
+	// Prefer Russian for ambiguous Ukrainian candidates, even in short text,
+	// without changing the classifier's detection metadata.
+	if detection.Language == "uk" && !detection.Reliable && !strings.ContainsFunc(text, isUkrainianSpecific) {
+		return "ru", detection
+	}
 	if usableSourceCandidate(text, detection) {
 		return detection.Language, detection
 	}
